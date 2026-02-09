@@ -4,7 +4,6 @@ import { AppState } from './state.js';
 import { History } from './history.js';
 import { Canvas2D } from './canvas2d.js';
 import { ToolManager } from './tools.js';
-import { Viewer3D } from './viewer3d.js';
 import { UI } from './ui.js';
 import { exportJSON, importJSON } from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
@@ -20,7 +19,25 @@ const canvasEl = document.getElementById('canvas-2d');
 const canvas2d = new Canvas2D(canvasEl, state);
 
 const viewerContainer = document.getElementById('viewer-3d');
-const viewer3d = new Viewer3D(viewerContainer, state);
+
+// Lazy-load 3D viewer (avoids blocking app if three.js CDN fails)
+let viewer3d = null;
+let viewer3dLoading = false;
+
+async function loadViewer3D() {
+  if (viewer3d) return viewer3d;
+  if (viewer3dLoading) return null;
+  viewer3dLoading = true;
+  try {
+    const { Viewer3D } = await import('./viewer3d.js');
+    viewer3d = new Viewer3D(viewerContainer, state);
+    return viewer3d;
+  } catch (err) {
+    console.error('Failed to load 3D viewer:', err);
+    viewer3dLoading = false;
+    return null;
+  }
+}
 
 let activeView = '2d'; // '2d' | '3d'
 
@@ -69,13 +86,14 @@ tab2d.addEventListener('click', () => {
   update();
 });
 
-tab3d.addEventListener('click', () => {
+tab3d.addEventListener('click', async () => {
   activeView = '3d';
   tab3d.classList.add('active');
   tab2d.classList.remove('active');
   canvasEl.hidden = true;
   viewerContainer.hidden = false;
-  viewer3d.startRendering();
+  const v = await loadViewer3D();
+  if (v) v.startRendering();
 });
 
 // --- Export / Import ---
@@ -96,7 +114,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     document.getElementById('chk-snap').checked = state.settings.snap;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
     update();
-    if (activeView === '3d') {
+    if (activeView === '3d' && viewer3d) {
       viewer3d.rebuildScene();
     }
   } catch (err) {
@@ -118,7 +136,7 @@ function applyTheme(theme) {
   }
   btnTheme.firstChild.textContent = theme === 'dark' ? '\u263E ' : '\u2600 ';
   localStorage.setItem('lineframe-theme', theme);
-  viewer3d.applyTheme();
+  if (viewer3d) viewer3d.applyTheme();
 }
 
 btnTheme.addEventListener('click', () => {
@@ -156,29 +174,31 @@ ui.applyLanguage();
 const helpModal = document.getElementById('help-modal');
 const helpBody = document.getElementById('help-body');
 
-document.getElementById('btn-help').addEventListener('click', () => {
-  // Update help content with current language
+function showHelpModal() {
   helpBody.innerHTML = t('helpContent');
-  // Update modal header text
   const titleEl = helpModal.querySelector('[data-i18n="helpTitle"]');
   if (titleEl) titleEl.textContent = t('helpTitle');
   const closeEl = helpModal.querySelector('[data-i18n="helpClose"]');
   if (closeEl) closeEl.textContent = t('helpClose');
-  helpModal.hidden = false;
-});
+  helpModal.classList.add('visible');
+}
 
-document.getElementById('btn-help-close').addEventListener('click', () => {
-  helpModal.hidden = true;
-});
+function hideHelpModal() {
+  helpModal.classList.remove('visible');
+}
+
+document.getElementById('btn-help').addEventListener('click', showHelpModal);
+
+document.getElementById('btn-help-close').addEventListener('click', hideHelpModal);
 
 helpModal.addEventListener('click', (e) => {
-  if (e.target === helpModal) helpModal.hidden = true;
+  if (e.target === helpModal) hideHelpModal();
 });
 
 // Close modal on Escape
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !helpModal.hidden) {
-    helpModal.hidden = true;
+  if (e.key === 'Escape' && helpModal.classList.contains('visible')) {
+    hideHelpModal();
     e.stopPropagation();
   }
 }, true);
