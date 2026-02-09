@@ -1,0 +1,198 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --toolbar-w: 160px;
+  --panel-w: 220px;
+  --status-h: 28px;
+  --tab-h: 36px;
+  --bg: #1e1e2e;
+  --surface: #2a2a3c;
+  --border: #3a3a4c;
+  --text: #cdd6f4;
+  --text-dim: #888;
+  --accent: #89b4fa;
+  --accent-hover: #74c7ec;
+}
+
+html, body {
+  height: 100%;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-columns: var(--toolbar-w) 1fr var(--panel-w);
+  grid-template-rows: 1fr;
+}
+
+/* Toolbar */
+#toolbar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+#toolbar h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+#toolbar hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 4px 0;
+}
+
+.tool-btn, #btn-export, #btn-import-trigger {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+.tool-btn:hover, #btn-export:hover, #btn-import-trigger:hover {
+  background: rgba(137, 180, 250, 0.1);
+}
+.tool-btn.active {
+  background: rgba(137, 180, 250, 0.2);
+  border-color: var(--accent);
+}
+
+.toggle-label, .grid-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.grid-label select {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+/* Main Area */
+#main-area {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#view-tabs {
+  display: flex;
+  height: var(--tab-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  flex: 0 0 auto;
+  padding: 0 20px;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+#canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#canvas-2d {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+#viewer-3d {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#status-bar {
+  height: var(--status-h);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Property Panel */
+#property-panel {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 12px 10px;
+  overflow-y: auto;
+}
+#property-panel h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.prop-placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Property form styles */
+.prop-group {
+  margin-bottom: 10px;
+}
+.prop-group label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.prop-group input,
+.prop-group select {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+}
+.prop-group input[type="color"] {
+  height: 28px;
+  padding: 2px;
+  cursor: pointer;
+}
+.prop-row {
+  display: flex;
+  gap: 6px;
+}
+.prop-row .prop-group { flex: 1; }

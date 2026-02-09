@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LineFrame CAD</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Left Toolbar -->
+  <aside id="toolbar">
+    <h2>Tools</h2>
+    <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; Select</button>
+    <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; Member</button>
+    <hr>
+    <label class="toggle-label">
+      <input type="checkbox" id="chk-snap" checked>
+      Snap
+    </label>
+    <label class="grid-label">
+      Grid
+      <select id="sel-grid">
+        <option value="0.5">0.5 m</option>
+        <option value="1" selected>1.0 m</option>
+        <option value="2">2.0 m</option>
+      </select>
+    </label>
+    <hr>
+    <button id="btn-export" title="Export JSON">&#128190; Export</button>
+    <button id="btn-import-trigger" title="Import JSON">&#128194; Import</button>
+    <input type="file" id="file-import" accept=".json" hidden>
+  </aside>
+
+  <!-- Main Area -->
+  <main id="main-area">
+    <!-- View Tabs -->
+    <nav id="view-tabs">
+      <button id="tab-2d" class="tab-btn active">2D CAD</button>
+      <button id="tab-3d" class="tab-btn">3D View</button>
+    </nav>
+
+    <!-- Canvas Container -->
+    <div id="canvas-container">
+      <canvas id="canvas-2d"></canvas>
+      <div id="viewer-3d" hidden></div>
+    </div>
+
+    <!-- Status Bar -->
+    <footer id="status-bar">
+      <span id="status-coords">X: 0.00  Y: 0.00</span>
+      <span id="status-snap">Snap: ON</span>
+      <span id="status-zoom">Zoom: 100%</span>
+      <span id="status-tool">Tool: Select</span>
+    </footer>
+  </main>
+
+  <!-- Right Property Panel -->
+  <aside id="property-panel">
+    <h2>Properties</h2>
+    <div id="prop-content">
+      <p class="prop-placeholder">No selection</p>
+    </div>
+  </aside>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
