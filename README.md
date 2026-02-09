@@ -1,4 +1,4 @@
-# LineFrame CAD
+# LineFrame CAD (Ver.Beta01)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材（部材）を2D平面上に配置・編集し、同じデータを3Dで可視化できます。
@@ -63,6 +63,9 @@ Frame2D-CAD/
 ├── index.html          # Entry point / Layout / importmap
 ├── style.css           # Dark/Light themes / CSS Grid layout / Modal
 ├── favicon.svg         # Favicon
+├── package.json        # Dev dependencies (lint tools)
+├── LICENSE             # MIT License
+├── THIRD_PARTY_LICENSES.md  # Third-party license details
 ├── js/
 │   ├── app.js          # App init / Module wiring / Theme / Lang / Help
 │   ├── state.js        # Data model (nodes, members, levels) / CRUD / JSON serialization
@@ -160,4 +163,15 @@ Chrome / Edge / Safari / Firefox (ES Modules + importmap 対応のモダンブ�
 
 ## License
 
-MIT
+MIT License - 詳細は [LICENSE](LICENSE) を参照
+
+### Third-Party Libraries
+
+| ライブラリ | バージョン | ライセンス | 用途 |
+|-----------|-----------|-----------|------|
+| [three.js](https://github.com/mrdoob/three.js) | 0.170.0 | MIT | 3D Viewer (CDN) |
+| [ESLint](https://github.com/eslint/eslint) | ^9.0.0 | MIT | JS Lint (dev) |
+| [HTMLHint](https://github.com/htmlhint/HTMLHint) | ^1.1.0 | MIT | HTML Lint (dev) |
+| [Stylelint](https://github.com/stylelint/stylelint) | ^16.0.0 | MIT | CSS Lint (dev) |
+
+詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照
