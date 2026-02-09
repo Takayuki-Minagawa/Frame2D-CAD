@@ -5,16 +5,16 @@ export class AppState {
     this.schemaVersion = 1;
     this.meta = {
       name: 'untitled',
-      unit: 'm',
+      unit: 'mm',
       createdAt: new Date().toISOString(),
     };
     this.settings = {
-      gridSize: 1.0,
+      gridSize: 1000,
       snap: true,
     };
     this.levels = [
-      { id: 'L0', name: 'GL', z: 0.0 },
-      { id: 'L1', name: '2F', z: 3.5 },
+      { id: 'L0', name: 'GL', z: 0 },
+      { id: 'L1', name: '2F', z: 3500 },
     ];
     this.nodes = [];
     this.members = [];
@@ -56,7 +56,7 @@ export class AppState {
     this.nodes = this.nodes.filter(n => n.id !== id);
   }
 
-  findNodeAt(x, y, tolerance = 0.3) {
+  findNodeAt(x, y, tolerance = 300) {
     let closest = null;
     let minDist = tolerance;
     for (const n of this.nodes) {
@@ -83,7 +83,7 @@ export class AppState {
       type: options.type || 'beam',
       startNodeId,
       endNodeId,
-      section: { b: options.b || 0.2, h: options.h || 0.4 },
+      section: { b: options.b || 200, h: options.h || 400 },
       levelId: options.levelId || 'L0',
       material: options.material || 'steel',
       color: options.color || '#666666',
@@ -127,7 +127,7 @@ export class AppState {
     }
   }
 
-  findMemberAt(x, y, tolerance = 0.3) {
+  findMemberAt(x, y, tolerance = 300) {
     let closest = null;
     let minDist = tolerance;
     for (const m of this.members) {

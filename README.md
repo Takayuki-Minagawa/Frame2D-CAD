@@ -1,163 +1,123 @@
-# LineFrame CAD (2D) + 3D Viewer（GitHub Pages / JavaScript）
+# LineFrame CAD
 
-このREADMEは、**AIエージェントに「ブラウザ上で動作する2D CAD（線材部材配置）と、同一データを3Dで表示するビューワー」を実装させるための指示書**です。  
-実装は **GitHub Pagesで静的ホスティング可能（＝バックエンド無し）** を前提にします。
+ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
+建築の柱・梁・ブレースなどの線材（部材）を2D平面上に配置・編集し、同じデータを3Dで可視化できます。
 
----
+**GitHub Pages** でそのまま動作します（バックエンド不要）。
 
-## 1. ゴール（何を作るか）
+## Demo
 
-### 1.1 作るもの（必須）
-- **2D CAD（平面）**  
-  建築の「線材（部材）」を2D上に配置・編集できるWebアプリ
-- **3D Viewer**  
-  2Dで作った部材データを読み込み、**3Dで可視化**できるWebアプリ
-- **データの保存/読込**  
-  JSONでエクスポート/インポートできること（ローカルファイルとしてDL/読み込み）
+GitHub Pages URL: _(デプロイ後にURLを記載)_
 
-### 1.2 動作条件（必須）
-- **GitHub Pagesで動作**（静的ファイルのみ）
-- **モダンブラウザ（Chrome/Edge/Safari/Firefox）**で動作
-- 追加サーバーやDB不要（ローカル保存は `download` と `File input` のみ）
+## Features
 
----
+### 2D CAD
+- 部材（線分）の作成・選択・移動・削除
+- ノード（端点）のドラッグによる形状変更
+- パン（中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
+- グリッド表示 + スナップ（グリッド / 既存ノード吸着）
+- プロパティパネルで部材属性を編集（種別・断面寸法・レベル・色）
+- Undo / Redo
 
-## 2. 対象ユーザーとユースケース
+### 3D Viewer
+- 部材を断面寸法（b x h）を反映した直方体として3D表示
+- OrbitControls によるカメラ操作（回転 / パン / ズーム）
+- グリッド床・座標軸・ライティング
 
-- 構造/意匠の初期検討で、**柱・梁などの線材**をざっくり配置して全体形状を把握したい
-- 2Dでの編集がメイン、3Dは確認用（干渉チェック等は将来拡張）
+### Data I/O
 
----
+- JSON Export（ファイルダウンロード）
+- JSON Import（ファイル読み込みで状態復元）
+- schemaVersion による互換性管理
 
-## 3. 用語（このプロジェクト内の定義）
+### UI
 
-- **ノード（Node）**: 点（x, y, z）。2D編集では主に (x, y) を扱い、zはレベルで補完可能。
-- **部材（Member）**: 2つのノードを結ぶ線材。3Dでは断面を持つ押し出し形状として表示。
-- **レベル（Level）**: 階高/基準高さ。部材のZを決めるために使用。
-- **スナップ（Snap）**: グリッドや既存ノードに吸着して描きやすくする機能。
+- ダーク / ライトテーマ切替（設定はブラウザに保存）
+- 多言語対応：日本語（デフォルト） / 英語
+- 簡易マニュアル（ヘルプボタンでモーダル表示、多言語対応）
 
----
+## Keyboard Shortcuts
 
-## 4. スコープ
+| Key | Action |
+|-----|--------|
+| `V` | Select tool |
+| `M` | Member tool |
+| `Esc` | Cancel / Deselect |
+| `Delete` | Delete selected member |
+| `Ctrl+Z` | Undo |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
+| `Space + Drag` | Pan |
+| `Shift` (Member tool) | Angle constraint (0/45/90) |
 
-### 4.1 必須機能（MVP）
-#### 2D CAD
-- キャンバスに **部材（線分）を作成**
-  - クリック開始 → クリック終点（またはドラッグ）
-  - 作成中はプレビュー表示
-- **選択/移動/削除**
-  - 部材選択（クリック）
-  - ノード（端点）ドラッグで形状変更
-  - 部材全体ドラッグ移動（任意：Altキー等でモード切替でも可）
-  - Deleteキーで削除
-- **パン・ズーム**
-  - マウスホイールズーム（カーソル中心）
-  - 中ボタン/スペース+ドラッグでパン
-- **グリッド表示 + スナップ**
-  - グリッド間隔（例：0.5m / 1.0m）をUIで変更
-  - スナップON/OFF
-- **プロパティ編集パネル**
-  - 選択部材の属性を編集
-    - 部材種別（beam / column / brace など簡易でOK）
-    - 断面寸法（幅b、高さh）
-    - レベル/高さ（z または levelId）
-    - 表示色（任意）
-- **Undo/Redo（最低限）**
-  - Ctrl+Z / Ctrl+Y（または Ctrl+Shift+Z）
+## Tech Stack
 
-#### 3D Viewer
-- 2Dデータをもとに3D表示
-  - 部材を「線」ではなく **断面を持つ3D形状（直方体）**として表示
-  - 断面寸法（b, h）を反映
-- カメラ操作
-  - Orbit（回転/パン/ズーム）
-- 簡易環境
-  - グリッド床、軸表示、ライト（Ambient + Directional）
-- 表示切替
-  - ワイヤーフレームON/OFF（任意）
-  - ノード点表示ON/OFF（任意）
+- **Vanilla JavaScript** (ES Modules) -- ビルドツール不要
+- **Canvas 2D API** -- 2D CAD 描画
+- **three.js v0.170.0** (CDN / ESM) -- 3D Viewer
+- 単位系: **mm**
 
-#### データI/O
-- JSON Export（ダウンロード）
-- JSON Import（ファイル選択で読み込み）
-- 互換性のため **schemaVersion** を含める
+## Project Structure
 
----
+```
+Frame2D-CAD/
+├── index.html          # Entry point / Layout / importmap
+├── style.css           # Dark/Light themes / CSS Grid layout / Modal
+├── favicon.svg         # Favicon
+├── js/
+│   ├── app.js          # App init / Module wiring / Theme / Lang / Help
+│   ├── state.js        # Data model (nodes, members, levels) / CRUD / JSON serialization
+│   ├── history.js      # Undo/Redo (snapshot, max 50)
+│   ├── grid.js         # Grid drawing / Snap calculation
+│   ├── canvas2d.js     # 2D canvas (pan/zoom camera, rendering)
+│   ├── tools.js        # Select / Member tools / Keyboard shortcuts
+│   ├── viewer3d.js     # 3D scene (three.js, BoxGeometry, OrbitControls)
+│   ├── ui.js           # Toolbar / Property panel / Status bar / i18n apply
+│   ├── io.js           # JSON export/import
+│   └── i18n.js         # i18n dictionary (ja/en) / t() helper
+└── README.md
+```
 
-### 4.2 非ゴール（今回やらない）
-- 寸法線、注記、印刷用図面、JWW/DXF入出力
-- 複雑な拘束（直交維持、平行維持など高度CAD）
-- 解析（構造計算）
-- 複数人同時編集、クラウド保存
+### Architecture
 
----
+```
+app.js ─┬─ state.js      Data model (AppState)
+        ├─ history.js    Undo/Redo snapshots
+        ├─ canvas2d.js ── grid.js    2D rendering
+        ├─ tools.js ──── grid.js     Input handling
+        ├─ viewer3d.js               3D rendering (three.js)
+        ├─ ui.js ──────── i18n.js    UI controls + i18n
+        ├─ io.js                     File I/O
+        └─ i18n.js                   Language dictionary
+```
 
-## 5. 推奨技術スタック（GitHub Pages前提）
+- **state.js** がノード・部材・レベルなど全データを保持する中心モジュール
+- **canvas2d.js** は Canvas 2D API による描画のみを担当し、入力処理は **tools.js** に委譲
+- **viewer3d.js** は2Dデータを mm→m 変換して three.js シーンに描画
+- **i18n.js** が全UIテキストの日本語/英語辞書を管理し、`t(key)` で取得
+- 各モジュールは ES Modules の import/export で疎結合に接続
+- テーマ・言語設定は `localStorage` に永続化
 
-### 5.1 必須条件
-- **フロントエンドのみ**（HTML/CSS/JS）
-- ES Modulesで構成（`type="module"`）
+## Data Format (JSON)
 
-### 5.2 推奨ライブラリ
-- 3D: **three.js（ESM）**
-  - CDN import（例：unpkg / jsdelivr）または `vendor/` に固定配置
-- 2D: できれば **Canvas 2D API を自前実装**（依存を減らす）
-  - もし生産性優先なら Konva / Fabric なども可（ただし依存が増える）
-
-> AIエージェントは、まず「依存少なめ（Vanilla + Canvas + three.js）」でMVPを作ること。  
-> ビルドツール（Vite等）は任意。ただしGitHub Pages公開を確実にすること。
-
----
-
-## 6. 画面構成（UI仕様）
-
-### 6.1 レイアウト（必須）
-- 左：ツールバー（縦）
-- 中央：メインキャンバス（2D or 3D をタブ/ボタンで切替）
-- 右：プロパティパネル
-- 上 or 下：ステータスバー（座標、スナップ状態、ズーム倍率）
-
-### 6.2 ツール（最低限）
-- Select（選択）
-- Member（線材作成）
-- Pan（任意：Spaceで代替でも可）
-- Snap toggle
-- Grid size selector
-
-### 6.3 キーボードショートカット（推奨）
-- `Esc`：操作キャンセル / 選択解除
-- `Del`：削除
-- `Ctrl+Z`：Undo
-- `Ctrl+Y` or `Ctrl+Shift+Z`：Redo
-- `Space + Drag`：Pan
-- `Shift`：スナップ強制（または角度制限 0/45/90 の簡易でも可）
-
----
-
-## 7. データモデル（JSONスキーマ）
-
-AIエージェントは、以下のスキーマで実装すること（将来拡張前提）。
-
-### 7.1 例（保存ファイルの全体）
 ```json
 {
   "schemaVersion": 1,
   "meta": {
     "name": "sample",
-    "unit": "m",
+    "unit": "mm",
     "createdAt": "2026-02-09T00:00:00Z"
   },
   "settings": {
-    "gridSize": 1.0,
+    "gridSize": 1000,
     "snap": true
   },
   "levels": [
-    { "id": "L0", "name": "GL", "z": 0.0 },
-    { "id": "L1", "name": "2F", "z": 3.5 }
+    { "id": "L0", "name": "GL", "z": 0 },
+    { "id": "L1", "name": "2F", "z": 3500 }
   ],
   "nodes": [
     { "id": "N1", "x": 0, "y": 0, "z": 0 },
-    { "id": "N2", "x": 5, "y": 0, "z": 0 }
+    { "id": "N2", "x": 5000, "y": 0, "z": 0 }
   ],
   "members": [
     {
@@ -165,10 +125,39 @@ AIエージェントは、以下のスキーマで実装すること（将来拡
       "type": "beam",
       "startNodeId": "N1",
       "endNodeId": "N2",
-      "section": { "b": 0.2, "h": 0.4 },
+      "section": { "b": 200, "h": 400 },
       "levelId": "L0",
       "material": "steel",
       "color": "#666666"
     }
   ]
 }
+```
+
+## Getting Started
+
+```bash
+# Clone
+git clone https://github.com/<your-username>/Frame2D-CAD.git
+cd Frame2D-CAD
+
+# Start local server (ES Modules require HTTP)
+python3 -m http.server 8080
+
+# Open in browser
+# http://localhost:8080
+```
+
+## Deploy to GitHub Pages
+
+1. GitHubにリポジトリをpush
+2. **Settings > Pages > Source** で `main` ブランチ / `/ (root)` を選択
+3. 数分後に `https://<username>.github.io/Frame2D-CAD/` で公開
+
+## Browser Support
+
+Chrome / Edge / Safari / Firefox (ES Modules + importmap 対応のモダンブラウザ)
+
+## License
+
+MIT

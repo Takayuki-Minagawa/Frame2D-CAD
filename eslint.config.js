@@ -1,0 +1,36 @@
+export default [
+  {
+    files: ["js/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        window: "readonly",
+        document: "readonly",
+        localStorage: "readonly",
+        requestAnimationFrame: "readonly",
+        cancelAnimationFrame: "readonly",
+        getComputedStyle: "readonly",
+        ResizeObserver: "readonly",
+        FileReader: "readonly",
+        Blob: "readonly",
+        URL: "readonly",
+        HTMLElement: "readonly",
+        alert: "readonly",
+        console: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "no-undef": "error",
+      "no-redeclare": "error",
+      "no-constant-condition": "warn",
+      "no-dupe-keys": "error",
+      "no-duplicate-case": "error",
+      "no-unreachable": "warn",
+      "eqeqeq": ["warn", "always"],
+      "no-var": "error",
+      "prefer-const": "warn",
+    },
+  },
+];

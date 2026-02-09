@@ -12,6 +12,40 @@
   --text-dim: #888;
   --accent: #89b4fa;
   --accent-hover: #74c7ec;
+  --canvas-bg: #1e1e2e;
+  --grid-line: rgba(255,255,255,0.08);
+  --grid-axis-x: rgba(255,80,80,0.4);
+  --grid-axis-y: rgba(80,255,80,0.4);
+  --node-color: #89b4fa;
+  --node-selected: #ffd700;
+  --member-default: #666666;
+  --preview-color: rgba(137,180,250,0.6);
+  --edge-overlay: rgba(0,0,0,0.3);
+  --viewer-bg: #1e1e2e;
+  --viewer-grid1: #444466;
+  --viewer-grid2: #333355;
+}
+
+[data-theme="light"] {
+  --bg: #f0f0f5;
+  --surface: #ffffff;
+  --border: #d0d0d8;
+  --text: #1e1e2e;
+  --text-dim: #666;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --canvas-bg: #f8f8fc;
+  --grid-line: rgba(0,0,0,0.08);
+  --grid-axis-x: rgba(220,40,40,0.5);
+  --grid-axis-y: rgba(40,160,40,0.5);
+  --node-color: #2563eb;
+  --node-selected: #d97706;
+  --member-default: #444444;
+  --preview-color: rgba(37,99,235,0.5);
+  --edge-overlay: rgba(0,0,0,0.15);
+  --viewer-bg: #e8e8f0;
+  --viewer-grid1: #9999aa;
+  --viewer-grid2: #bbbbcc;
 }
 
 html, body {
@@ -51,7 +85,7 @@ body {
   margin: 4px 0;
 }
 
-.tool-btn, #btn-export, #btn-import-trigger {
+.tool-btn, #btn-export, #btn-import-trigger, #btn-lang, #btn-help {
   display: block;
   width: 100%;
   padding: 7px 10px;
@@ -63,12 +97,24 @@ body {
   text-align: left;
   font-size: 13px;
 }
-.tool-btn:hover, #btn-export:hover, #btn-import-trigger:hover {
+.tool-btn:hover, #btn-export:hover, #btn-import-trigger:hover,
+#btn-theme:hover, #btn-lang:hover, #btn-help:hover {
   background: rgba(137, 180, 250, 0.1);
+}
+[data-theme="light"] .tool-btn:hover,
+[data-theme="light"] #btn-export:hover,
+[data-theme="light"] #btn-import-trigger:hover,
+[data-theme="light"] #btn-theme:hover,
+[data-theme="light"] #btn-lang:hover,
+[data-theme="light"] #btn-help:hover {
+  background: rgba(37, 99, 235, 0.08);
 }
 .tool-btn.active {
   background: rgba(137, 180, 250, 0.2);
   border-color: var(--accent);
+}
+[data-theme="light"] .tool-btn.active {
+  background: rgba(37, 99, 235, 0.12);
 }
 
 .toggle-label, .grid-label {
@@ -196,3 +242,109 @@ body {
   gap: 6px;
 }
 .prop-row .prop-group { flex: 1; }
+
+/* Theme / Lang / Help buttons */
+#btn-theme {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+
+/* Help Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: min(640px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.modal-close {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.modal-close:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.modal-body {
+  padding: 18px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.modal-body h3 {
+  font-size: 14px;
+  margin: 16px 0 8px;
+  color: var(--accent);
+}
+.modal-body h3:first-child {
+  margin-top: 0;
+}
+.modal-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 8px;
+}
+.modal-body td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.modal-body td:first-child {
+  width: 120px;
+  white-space: nowrap;
+}
+.modal-body kbd {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-family: monospace;
+  font-size: 12px;
+}
+.modal-body ul {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+.modal-body li {
+  margin-bottom: 2px;
+}
+.modal-body p {
+  margin-bottom: 6px;
+}

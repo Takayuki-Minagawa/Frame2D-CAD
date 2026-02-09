@@ -7,8 +7,11 @@ import { ToolManager } from './tools.js';
 import { Viewer3D } from './viewer3d.js';
 import { UI } from './ui.js';
 import { exportJSON, importJSON } from './io.js';
+import { initLang, setLang, getLang, t } from './i18n.js';
 
 // --- Initialize ---
+
+initLang();
 
 const state = new AppState();
 const history = new History(state);
@@ -20,7 +23,6 @@ const viewerContainer = document.getElementById('viewer-3d');
 const viewer3d = new Viewer3D(viewerContainer, state);
 
 let activeView = '2d'; // '2d' | '3d'
-let animFrameId = null;
 
 // --- Render loop ---
 
@@ -36,29 +38,21 @@ function renderLoop() {
   if (activeView === '2d') {
     canvas2d.draw();
   }
-  animFrameId = requestAnimationFrame(renderLoop);
+  requestAnimationFrame(renderLoop);
 }
 
 // --- UI ---
 
 const ui = new UI(state, {
-  onToolChange(tool) {
-    update();
-  },
-  onSnapToggle(snap) {
-    update();
-  },
-  onGridChange(size) {
-    update();
-  },
-  onPropertyChange(memberId) {
-    update();
-  },
+  onToolChange() { update(); },
+  onSnapToggle() { update(); },
+  onGridChange() { update(); },
+  onPropertyChange() { update(); },
 });
 
 // --- Tools ---
 
-const tools = new ToolManager(canvas2d, state, history, update);
+const _tools = new ToolManager(canvas2d, state, history, update);
 
 // --- View Tab Switching ---
 
@@ -99,7 +93,6 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     await importJSON(file, state, history);
-    // Sync UI
     document.getElementById('chk-snap').checked = state.settings.snap;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
     update();
@@ -107,10 +100,88 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
       viewer3d.rebuildScene();
     }
   } catch (err) {
-    alert('Import failed: ' + err.message);
+    alert(t('importFailed') + err.message);
   }
   e.target.value = '';
 });
+
+// --- Theme Toggle ---
+
+const btnTheme = document.getElementById('btn-theme');
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const span = btnTheme.querySelector('[data-i18n]');
+  if (span) {
+    span.dataset.i18n = theme === 'dark' ? 'themeDark' : 'themeLight';
+    span.textContent = t(span.dataset.i18n);
+  }
+  btnTheme.firstChild.textContent = theme === 'dark' ? '\u263E ' : '\u2600 ';
+  localStorage.setItem('lineframe-theme', theme);
+  viewer3d.applyTheme();
+}
+
+btnTheme.addEventListener('click', () => {
+  const current = document.documentElement.dataset.theme || 'dark';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+});
+
+const savedTheme = localStorage.getItem('lineframe-theme') || 'dark';
+applyTheme(savedTheme);
+
+// --- Language Toggle ---
+
+const btnLang = document.getElementById('btn-lang');
+
+function applyLang(lang) {
+  setLang(lang);
+  ui.applyLanguage();
+  // Re-apply theme button text
+  const themeSpan = btnTheme.querySelector('[data-i18n]');
+  if (themeSpan) {
+    themeSpan.textContent = t(themeSpan.dataset.i18n);
+  }
+}
+
+btnLang.addEventListener('click', () => {
+  const next = getLang() === 'ja' ? 'en' : 'ja';
+  applyLang(next);
+});
+
+// Apply initial language to all elements
+ui.applyLanguage();
+
+// --- Help Modal ---
+
+const helpModal = document.getElementById('help-modal');
+const helpBody = document.getElementById('help-body');
+
+document.getElementById('btn-help').addEventListener('click', () => {
+  // Update help content with current language
+  helpBody.innerHTML = t('helpContent');
+  // Update modal header text
+  const titleEl = helpModal.querySelector('[data-i18n="helpTitle"]');
+  if (titleEl) titleEl.textContent = t('helpTitle');
+  const closeEl = helpModal.querySelector('[data-i18n="helpClose"]');
+  if (closeEl) closeEl.textContent = t('helpClose');
+  helpModal.hidden = false;
+});
+
+document.getElementById('btn-help-close').addEventListener('click', () => {
+  helpModal.hidden = true;
+});
+
+helpModal.addEventListener('click', (e) => {
+  if (e.target === helpModal) helpModal.hidden = true;
+});
+
+// Close modal on Escape
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !helpModal.hidden) {
+    helpModal.hidden = true;
+    e.stopPropagation();
+  }
+}, true);
 
 // --- Start ---
 

@@ -13,7 +13,7 @@ export class Canvas2D {
     this.camera = {
       offsetX: 0,
       offsetY: 0,
-      scale: 50, // pixels per meter
+      scale: 0.05, // pixels per mm (50px per 1000mm)
     };
 
     // Temporary drawing state (for member tool preview)
@@ -59,7 +59,7 @@ export class Canvas2D {
   // Zoom centered on screen point
   zoom(delta, sx, sy) {
     const factor = delta > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(5, Math.min(500, this.camera.scale * factor));
+    const newScale = Math.max(0.005, Math.min(1, this.camera.scale * factor));
     const ratio = newScale / this.camera.scale;
     this.camera.offsetX = sx - (sx - this.camera.offsetX) * ratio;
     this.camera.offsetY = sy - (sy - this.camera.offsetY) * ratio;
@@ -71,13 +71,24 @@ export class Canvas2D {
     this.camera.offsetY += dy;
   }
 
+  _cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
   draw() {
     const ctx = this.ctx;
     const w = this.logicalWidth;
     const h = this.logicalHeight;
 
-    // Clear
-    ctx.clearRect(0, 0, w, h);
+    // Clear with theme background
+    ctx.fillStyle = this._cssVar('--canvas-bg');
+    ctx.fillRect(0, 0, w, h);
+
+    // Theme colors
+    const nodeColor = this._cssVar('--node-color');
+    const selectedColor = this._cssVar('--node-selected');
+    const previewColor = this._cssVar('--preview-color');
+    const memberDefault = this._cssVar('--member-default');
 
     // Grid
     drawGrid(ctx, this.camera, this.state.settings.gridSize, w, h);
@@ -94,7 +105,7 @@ export class Canvas2D {
       const isSelected = m.id === this.state.selectedMemberId;
 
       ctx.save();
-      ctx.strokeStyle = isSelected ? '#ffd700' : (m.color || '#666666');
+      ctx.strokeStyle = isSelected ? selectedColor : (m.color || memberDefault);
       ctx.lineWidth = isSelected ? 3 : 2;
       ctx.beginPath();
       ctx.moveTo(s1.x, s1.y);
@@ -113,7 +124,7 @@ export class Canvas2D {
         })();
 
       ctx.save();
-      ctx.fillStyle = isEndOfSelected ? '#ffd700' : '#89b4fa';
+      ctx.fillStyle = isEndOfSelected ? selectedColor : nodeColor;
       ctx.beginPath();
       ctx.arc(s.x, s.y, isEndOfSelected ? 5 : 3, 0, Math.PI * 2);
       ctx.fill();
@@ -125,7 +136,7 @@ export class Canvas2D {
       const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
       const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
       ctx.save();
-      ctx.strokeStyle = 'rgba(137,180,250,0.6)';
+      ctx.strokeStyle = previewColor;
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();

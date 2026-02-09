@@ -4,39 +4,44 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LineFrame CAD</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- Left Toolbar -->
   <aside id="toolbar">
-    <h2>Tools</h2>
-    <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; Select</button>
-    <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; Member</button>
+    <h2 data-i18n="tools">ツール</h2>
+    <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; <span data-i18n="select">選択</span></button>
+    <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; <span data-i18n="member">部材</span></button>
     <hr>
     <label class="toggle-label">
       <input type="checkbox" id="chk-snap" checked>
-      Snap
+      <span data-i18n="snap">スナップ</span>
     </label>
     <label class="grid-label">
-      Grid
+      <span data-i18n="grid">グリッド</span>
       <select id="sel-grid">
-        <option value="0.5">0.5 m</option>
-        <option value="1" selected>1.0 m</option>
-        <option value="2">2.0 m</option>
+        <option value="500">500 mm</option>
+        <option value="1000" selected>1000 mm</option>
+        <option value="2000">2000 mm</option>
       </select>
     </label>
     <hr>
-    <button id="btn-export" title="Export JSON">&#128190; Export</button>
-    <button id="btn-import-trigger" title="Import JSON">&#128194; Import</button>
+    <button id="btn-export" title="Export JSON">&#128190; <span data-i18n="export">保存</span></button>
+    <button id="btn-import-trigger" title="Import JSON">&#128194; <span data-i18n="import">読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
+    <hr>
+    <button id="btn-theme">&#9790; <span data-i18n="themeDark">ダーク</span></button>
+    <button id="btn-lang">&#127760; <span data-i18n="lang">EN</span></button>
+    <button id="btn-help">&#10067; <span data-i18n="help">ヘルプ</span></button>
   </aside>
 
   <!-- Main Area -->
   <main id="main-area">
     <!-- View Tabs -->
     <nav id="view-tabs">
-      <button id="tab-2d" class="tab-btn active">2D CAD</button>
-      <button id="tab-3d" class="tab-btn">3D View</button>
+      <button id="tab-2d" class="tab-btn active" data-i18n="tab2d">2D CAD</button>
+      <button id="tab-3d" class="tab-btn" data-i18n="tab3d">3D 表示</button>
     </nav>
 
     <!-- Canvas Container -->
@@ -47,20 +52,31 @@
 
     <!-- Status Bar -->
     <footer id="status-bar">
-      <span id="status-coords">X: 0.00  Y: 0.00</span>
-      <span id="status-snap">Snap: ON</span>
+      <span id="status-coords">X: 0  Y: 0</span>
+      <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
-      <span id="status-tool">Tool: Select</span>
+      <span id="status-tool" data-i18n="toolSelect">ツール: 選択</span>
     </footer>
   </main>
 
   <!-- Right Property Panel -->
   <aside id="property-panel">
-    <h2>Properties</h2>
+    <h2 data-i18n="properties">プロパティ</h2>
     <div id="prop-content">
-      <p class="prop-placeholder">No selection</p>
+      <p class="prop-placeholder" data-i18n="noSelection">未選択</p>
     </div>
   </aside>
+
+  <!-- Help Modal -->
+  <div id="help-modal" class="modal-overlay" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="helpTitle">簡易マニュアル</h2>
+        <button id="btn-help-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div id="help-body" class="modal-body"></div>
+    </div>
+  </div>
 
   <script type="importmap">
   {

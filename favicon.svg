@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#1e1e2e"/>
+  <!-- Frame structure -->
+  <!-- Columns -->
+  <line x1="7" y1="6" x2="7" y2="26" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="25" y1="6" x2="25" y2="26" stroke="#89b4fa" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Beams -->
+  <line x1="7" y1="6" x2="25" y2="6" stroke="#74c7ec" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="7" y1="16" x2="25" y2="16" stroke="#74c7ec" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="7" y1="26" x2="25" y2="26" stroke="#74c7ec" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Brace -->
+  <line x1="7" y1="16" x2="25" y2="6" stroke="#f9e2af" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
+  <!-- Nodes -->
+  <circle cx="7" cy="6" r="2" fill="#ffd700"/>
+  <circle cx="25" cy="6" r="2" fill="#ffd700"/>
+  <circle cx="7" cy="16" r="2" fill="#ffd700"/>
+  <circle cx="25" cy="16" r="2" fill="#ffd700"/>
+  <circle cx="7" cy="26" r="2" fill="#ffd700"/>
+  <circle cx="25" cy="26" r="2" fill="#ffd700"/>
+</svg>

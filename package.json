@@ -1,0 +1,19 @@
+{
+  "name": "lineframe-cad",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "2D CAD + 3D Viewer for structural frame layout",
+  "scripts": {
+    "lint": "eslint js/",
+    "lint:html": "htmlhint index.html",
+    "lint:css": "stylelint style.css",
+    "lint:all": "npm run lint && npm run lint:html && npm run lint:css"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "htmlhint": "^1.1.0",
+    "stylelint": "^16.0.0",
+    "stylelint-config-standard": "^36.0.0"
+  }
+}

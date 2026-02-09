@@ -292,15 +292,15 @@ export class ToolManager {
       const end = snapped;
 
       // Skip zero-length
-      if (Math.hypot(end.x - start.x, end.y - start.y) < 0.01) return;
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
 
       this.history.save();
 
       // Reuse existing nodes or create new ones
-      let startNode = this.state.findNodeAt(start.x, start.y, 0.01);
+      let startNode = this.state.findNodeAt(start.x, start.y, 1);
       if (!startNode) startNode = this.state.addNode(start.x, start.y);
 
-      let endNode = this.state.findNodeAt(end.x, end.y, 0.01);
+      let endNode = this.state.findNodeAt(end.x, end.y, 1);
       if (!endNode) endNode = this.state.addNode(end.x, end.y);
 
       this.state.addMember(startNode.id, endNode.id);
@@ -328,6 +328,6 @@ export class ToolManager {
 
   _updateCoords(x, y) {
     const el = document.getElementById('status-coords');
-    if (el) el.textContent = `X: ${x.toFixed(2)}  Y: ${y.toFixed(2)}`;
+    if (el) el.textContent = `X: ${Math.round(x)}  Y: ${Math.round(y)}`;
   }
 }

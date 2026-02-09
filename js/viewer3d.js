@@ -17,6 +17,7 @@ export class Viewer3D {
 
     this.showWireframe = false;
     this.showNodes = true;
+    this.gridHelper = null;
 
     this._initialized = false;
   }
@@ -52,8 +53,8 @@ export class Viewer3D {
     this.scene.add(directional);
 
     // Grid floor
-    const gridHelper = new THREE.GridHelper(50, 50, 0x444466, 0x333355);
-    this.scene.add(gridHelper);
+    this.gridHelper = new THREE.GridHelper(50, 50, 0x444466, 0x333355);
+    this.scene.add(this.gridHelper);
 
     // Axes
     const axes = new THREE.AxesHelper(5);
@@ -108,18 +109,19 @@ export class Viewer3D {
       if (!n1 || !n2) continue;
 
       const level = this.state.levels.find(l => l.id === m.levelId);
-      const z = level ? level.z : 0;
+      const z = (level ? level.z : 0) / 1000; // mm -> m for 3D scene
 
       // Start and end positions in 3D (y is up in three.js, so swap y/z)
-      const start = new THREE.Vector3(n1.x, z, -n1.y);
-      const end = new THREE.Vector3(n2.x, z, -n2.y);
+      // Convert mm -> m
+      const start = new THREE.Vector3(n1.x / 1000, z, -n1.y / 1000);
+      const end = new THREE.Vector3(n2.x / 1000, z, -n2.y / 1000);
 
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
       if (length < 0.001) continue;
 
-      const b = m.section?.b || 0.2;
-      const h = m.section?.h || 0.4;
+      const b = (m.section?.b || 200) / 1000; // mm -> m
+      const h = (m.section?.h || 400) / 1000; // mm -> m
 
       const geometry = new THREE.BoxGeometry(length, h, b);
       const material = new THREE.MeshStandardMaterial({
@@ -162,12 +164,12 @@ export class Viewer3D {
         for (const m of this.state.members) {
           if (m.startNodeId === n.id || m.endNodeId === n.id) {
             const level = this.state.levels.find(l => l.id === m.levelId);
-            if (level) z = level.z;
+            if (level) z = level.z / 1000;
             break;
           }
         }
         const sphere = new THREE.Mesh(sphereGeo, sphereMat.clone());
-        sphere.position.set(n.x, z, -n.y);
+        sphere.position.set(n.x / 1000, z, -n.y / 1000);
         this.nodeGroup.add(sphere);
       }
     }
@@ -195,5 +197,21 @@ export class Viewer3D {
   toggleNodes() {
     this.showNodes = !this.showNodes;
     this.rebuildScene();
+  }
+
+  applyTheme() {
+    if (!this._initialized) return;
+    const style = getComputedStyle(document.documentElement);
+    const bg = style.getPropertyValue('--viewer-bg').trim();
+    const g1 = style.getPropertyValue('--viewer-grid1').trim();
+    const g2 = style.getPropertyValue('--viewer-grid2').trim();
+    this.scene.background = new THREE.Color(bg);
+    // Replace grid
+    if (this.gridHelper) {
+      this.scene.remove(this.gridHelper);
+      this.gridHelper.dispose();
+    }
+    this.gridHelper = new THREE.GridHelper(50, 50, new THREE.Color(g1), new THREE.Color(g2));
+    this.scene.add(this.gridHelper);
   }
 }

@@ -1,5 +1,10 @@
 // grid.js - Grid drawing and snap calculation
 
+// Read CSS custom property value
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   const { offsetX, offsetY, scale } = camera;
 
@@ -16,7 +21,7 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   const endY = Math.ceil(worldBottom / gridSize) * gridSize;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.strokeStyle = cssVar('--grid-line');
   ctx.lineWidth = 1;
 
   // Vertical lines
@@ -38,7 +43,7 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   }
 
   // Draw axes
-  ctx.strokeStyle = 'rgba(255,80,80,0.4)';
+  ctx.strokeStyle = cssVar('--grid-axis-x');
   ctx.lineWidth = 1.5;
   const axisYScreen = offsetY;
   ctx.beginPath();
@@ -46,7 +51,7 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   ctx.lineTo(canvasW, axisYScreen);
   ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(80,255,80,0.4)';
+  ctx.strokeStyle = cssVar('--grid-axis-y');
   const axisXScreen = offsetX;
   ctx.beginPath();
   ctx.moveTo(axisXScreen, 0);
@@ -72,7 +77,7 @@ export function snapToNode(x, y, state, tolerance) {
 export function applySnap(worldX, worldY, state, camera) {
   if (!state.settings.snap) return { x: worldX, y: worldY };
 
-  const tolerance = 0.5 / camera.scale * 40; // adaptive tolerance
+  const tolerance = 10 / camera.scale; // ~10 screen pixels in world mm
 
   // Priority: existing node > grid
   const nodeSnap = snapToNode(worldX, worldY, state, tolerance);

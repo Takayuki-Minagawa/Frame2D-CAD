@@ -1,12 +1,13 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
+import { t } from './i18n.js';
+
 export class UI {
   constructor(state, callbacks) {
     this.state = state;
-    this.callbacks = callbacks; // { onToolChange, onSnapToggle, onGridChange, onPropertyChange }
+    this.callbacks = callbacks;
 
     this._setupToolbar();
-    this._setupPropertyPanel();
   }
 
   _setupToolbar() {
@@ -54,12 +55,8 @@ export class UI {
     });
     const toolStatus = document.getElementById('status-tool');
     if (toolStatus) {
-      toolStatus.textContent = `Tool: ${this.state.currentTool === 'select' ? 'Select' : 'Member'}`;
+      toolStatus.textContent = this.state.currentTool === 'select' ? t('toolSelect') : t('toolMember');
     }
-  }
-
-  _setupPropertyPanel() {
-    // Property panel updates are triggered externally via updatePropertyPanel()
   }
 
   updatePropertyPanel() {
@@ -69,13 +66,13 @@ export class UI {
       : null;
 
     if (!member) {
-      container.innerHTML = '<p class="prop-placeholder">No selection</p>';
+      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
       return;
     }
 
     const n1 = this.state.getNode(member.startNodeId);
     const n2 = this.state.getNode(member.endNodeId);
-    const length = n1 && n2 ? Math.hypot(n2.x - n1.x, n2.y - n1.y).toFixed(3) : '?';
+    const length = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y)) : '?';
 
     const levelOptions = this.state.levels.map(l =>
       `<option value="${l.id}" ${l.id === member.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
@@ -83,46 +80,46 @@ export class UI {
 
     container.innerHTML = `
       <div class="prop-group">
-        <label>ID</label>
+        <label>${t('propId')}</label>
         <input type="text" value="${member.id}" disabled>
       </div>
       <div class="prop-group">
-        <label>Type</label>
+        <label>${t('propType')}</label>
         <select id="prop-type">
-          <option value="beam" ${member.type === 'beam' ? 'selected' : ''}>Beam</option>
-          <option value="column" ${member.type === 'column' ? 'selected' : ''}>Column</option>
-          <option value="brace" ${member.type === 'brace' ? 'selected' : ''}>Brace</option>
+          <option value="beam" ${member.type === 'beam' ? 'selected' : ''}>${t('beam')}</option>
+          <option value="column" ${member.type === 'column' ? 'selected' : ''}>${t('column')}</option>
+          <option value="brace" ${member.type === 'brace' ? 'selected' : ''}>${t('brace')}</option>
         </select>
       </div>
       <div class="prop-group">
-        <label>Level</label>
+        <label>${t('propLevel')}</label>
         <select id="prop-level">${levelOptions}</select>
       </div>
       <div class="prop-row">
         <div class="prop-group">
-          <label>Width b (m)</label>
-          <input type="number" id="prop-b" value="${member.section.b}" step="0.01" min="0.01">
+          <label>${t('propWidthB')}</label>
+          <input type="number" id="prop-b" value="${member.section.b}" step="1" min="1">
         </div>
         <div class="prop-group">
-          <label>Height h (m)</label>
-          <input type="number" id="prop-h" value="${member.section.h}" step="0.01" min="0.01">
+          <label>${t('propHeightH')}</label>
+          <input type="number" id="prop-h" value="${member.section.h}" step="1" min="1">
         </div>
       </div>
       <div class="prop-group">
-        <label>Material</label>
+        <label>${t('propMaterial')}</label>
         <select id="prop-material">
-          <option value="steel" ${member.material === 'steel' ? 'selected' : ''}>Steel</option>
-          <option value="rc" ${member.material === 'rc' ? 'selected' : ''}>RC</option>
-          <option value="wood" ${member.material === 'wood' ? 'selected' : ''}>Wood</option>
+          <option value="steel" ${member.material === 'steel' ? 'selected' : ''}>${t('steel')}</option>
+          <option value="rc" ${member.material === 'rc' ? 'selected' : ''}>${t('rc')}</option>
+          <option value="wood" ${member.material === 'wood' ? 'selected' : ''}>${t('wood')}</option>
         </select>
       </div>
       <div class="prop-group">
-        <label>Color</label>
+        <label>${t('propColor')}</label>
         <input type="color" id="prop-color" value="${member.color}">
       </div>
       <div class="prop-group">
-        <label>Length</label>
-        <input type="text" value="${length} m" disabled>
+        <label>${t('propLength')}</label>
+        <input type="text" value="${length} mm" disabled>
       </div>
     `;
 
@@ -151,11 +148,22 @@ export class UI {
 
   updateStatusBar() {
     const snap = document.getElementById('status-snap');
-    if (snap) snap.textContent = `Snap: ${this.state.settings.snap ? 'ON' : 'OFF'}`;
+    if (snap) snap.textContent = this.state.settings.snap ? t('snapOn') : t('snapOff');
   }
 
   updateZoom(scale) {
     const el = document.getElementById('status-zoom');
-    if (el) el.textContent = `Zoom: ${Math.round(scale * 2)}%`;
+    if (el) el.textContent = `Zoom: ${Math.round(scale * 2000)}%`;
+  }
+
+  // Refresh all data-i18n elements and dynamic text
+  applyLanguage() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      el.textContent = t(key);
+    });
+    this._updateToolButtons();
+    this.updateStatusBar();
+    this.updatePropertyPanel();
   }
 }
