@@ -82,8 +82,8 @@ export class ToolManager {
   _onMouseDown(e) {
     const { sx, sy } = this._getScreenPos(e);
 
-    // Pan: middle button or space+left
-    if (e.button === 1 || (e.button === 0 && this._spaceDown)) {
+    // Pan: middle button, right button, or space+left
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && this._spaceDown)) {
       this._isPanning = true;
       this._panStart = { x: sx, y: sy };
       e.preventDefault();

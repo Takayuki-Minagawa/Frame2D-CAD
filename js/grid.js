@@ -58,6 +58,68 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   ctx.lineTo(axisXScreen, canvasH);
   ctx.stroke();
 
+  // Draw origin marker (circle at origin)
+  const originX = offsetX;
+  const originY = offsetY;
+  if (originX >= -20 && originX <= canvasW + 20 && originY >= -20 && originY <= canvasH + 20) {
+    ctx.fillStyle = cssVar('--grid-axis-x');
+    ctx.beginPath();
+    ctx.arc(originX, originY, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw origin reference and axis labels in bottom-left corner
+  const margin = 20;
+  const originRefSize = 60;
+  const originRefX = margin + originRefSize / 2;
+  const originRefY = canvasH - margin - originRefSize / 2;
+
+  // Origin point
+  ctx.fillStyle = cssVar('--grid-axis-x');
+  ctx.beginPath();
+  ctx.arc(originRefX, originRefY, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // X axis arrow (to the right)
+  ctx.strokeStyle = cssVar('--grid-axis-x');
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(originRefX, originRefY);
+  ctx.lineTo(originRefX + 40, originRefY);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(originRefX + 40, originRefY);
+  ctx.lineTo(originRefX + 35, originRefY - 4);
+  ctx.lineTo(originRefX + 35, originRefY + 4);
+  ctx.closePath();
+  ctx.fillStyle = cssVar('--grid-axis-x');
+  ctx.fill();
+
+  // Y axis arrow (upward)
+  ctx.strokeStyle = cssVar('--grid-axis-y');
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(originRefX, originRefY);
+  ctx.lineTo(originRefX, originRefY - 40);
+  ctx.stroke();
+  // Arrowhead
+  ctx.beginPath();
+  ctx.moveTo(originRefX, originRefY - 40);
+  ctx.lineTo(originRefX - 4, originRefY - 35);
+  ctx.lineTo(originRefX + 4, originRefY - 35);
+  ctx.closePath();
+  ctx.fillStyle = cssVar('--grid-axis-y');
+  ctx.fill();
+
+  // Labels (offset to avoid overlap with members)
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillStyle = cssVar('--grid-axis-x');
+  ctx.fillText('X', originRefX + 50, originRefY + 5);
+
+  ctx.fillStyle = cssVar('--grid-axis-y');
+  ctx.fillText('Y', originRefX - 5, originRefY - 50);
+
   ctx.restore();
 }
 

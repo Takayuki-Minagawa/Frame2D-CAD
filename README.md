@@ -14,8 +14,9 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 ### 2D CAD
 - 部材（線分）の作成・選択・移動・削除
 - ノード（端点）のドラッグによる形状変更
-- パン（中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
+- パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
+- 原点と軸方向を左下に常時表示（部材配置の基準）
 - プロパティパネルで部材属性を編集（種別・断面寸法・レベル・色）
 - Undo / Redo
 
@@ -46,7 +47,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 | `Delete` | Delete selected member |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
-| `Space + Drag` | Pan |
+| `Right Drag` / `Middle Drag` / `Space + Drag` | Pan |
 | `Shift` (Member tool) | Angle constraint (0/45/90) |
 
 ## Tech Stack

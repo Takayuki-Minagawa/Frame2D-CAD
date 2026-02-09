@@ -60,8 +60,9 @@ const dict = {
 
 <h3>画面操作</h3>
 <table>
-  <tr><td><b>パン</b></td><td>中ボタンドラッグ / Space + ドラッグ</td></tr>
+  <tr><td><b>パン（移動）</b></td><td>右ドラッグ / 中ボタンドラッグ / Space + ドラッグ</td></tr>
   <tr><td><b>ズーム</b></td><td>マウスホイール（カーソル中心）</td></tr>
+  <tr><td><b>原点・軸表示</b></td><td>左下に原点と軸方向（X, Y）を常時表示</td></tr>
   <tr><td><b>3D表示</b></td><td>上部「3D 表示」タブをクリック</td></tr>
 </table>
 
@@ -150,8 +151,9 @@ const dict = {
 
 <h3>View Controls</h3>
 <table>
-  <tr><td><b>Pan</b></td><td>Middle-button drag / Space + drag</td></tr>
+  <tr><td><b>Pan</b></td><td>Right-button drag / Middle-button drag / Space + drag</td></tr>
   <tr><td><b>Zoom</b></td><td>Mouse wheel (centered on cursor)</td></tr>
+  <tr><td><b>Origin & Axes</b></td><td>Origin and axis directions (X, Y) shown at bottom-left</td></tr>
   <tr><td><b>3D view</b></td><td>Click "3D View" tab at top</td></tr>
 </table>
 
