@@ -267,9 +267,6 @@ export class UI {
     const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
       `<option value="${l.id}" ${l.id === surface.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
-    const topLevelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
-      `<option value="${l.id}" ${l.id === surface.topLevelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
-    ).join('');
 
     const isExteriorWall = surface.type === 'exteriorWall';
     const area = Math.round(Math.abs((surface.x2 - surface.x1) * (surface.y2 - surface.y1)) / 1000000);
