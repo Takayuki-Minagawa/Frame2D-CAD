@@ -34,8 +34,9 @@ async function loadViewer3D() {
     return viewer3d;
   } catch (err) {
     console.error('Failed to load 3D viewer:', err);
-    viewer3dLoading = false;
     return null;
+  } finally {
+    viewer3dLoading = false;
   }
 }
 
@@ -47,7 +48,7 @@ function update() {
   if (activeView === '2d') {
     canvas2d.draw();
   } else if (viewer3d) {
-    viewer3d.rebuildScene();
+    viewer3d.requestRebuild();
   }
   ui.updatePropertyPanel();
   ui.updateZoom(canvas2d.camera.scale);
@@ -118,9 +119,6 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
     ui.refreshLayerSelectors();
     update();
-    if (activeView === '3d' && viewer3d) {
-      viewer3d.rebuildScene();
-    }
   } catch (err) {
     alert(t('importFailed') + err.message);
   }

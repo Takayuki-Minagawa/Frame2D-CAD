@@ -23,6 +23,8 @@ export class Viewer3D {
     this.gridHelper = null;
 
     this._initialized = false;
+    this._isAnimating = false;
+    this._sceneDirty = true;
   }
 
   init() {
@@ -92,6 +94,7 @@ export class Viewer3D {
 
   rebuildScene() {
     if (!this._initialized) return;
+    this._sceneDirty = false;
 
     this._clearGroup(this.surfaceGroup);
     this._clearGroup(this.memberGroup);
@@ -267,6 +270,10 @@ export class Viewer3D {
     }
   }
 
+  requestRebuild() {
+    this._sceneDirty = true;
+  }
+
   _addWallLine3D(surface, base, top) {
     const height = Math.max(0.1, Math.abs(top - base) / 1000);
     const yBase = Math.min(base, top) / 1000;
@@ -440,27 +447,39 @@ export class Viewer3D {
   }
 
   animate() {
-    if (!this._initialized || this.container.hidden) return;
-    this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (!this._initialized) {
+      this._isAnimating = false;
+      return;
+    }
+
+    if (!this.container.hidden) {
+      if (this._sceneDirty) {
+        this.rebuildScene();
+      }
+      this.controls.update();
+      this.renderer.render(this.scene, this.camera);
+    }
+
     requestAnimationFrame(() => this.animate());
   }
 
   startRendering() {
     this.init();
-    this.rebuildScene();
     this.resize();
+    this.requestRebuild();
+    if (this._isAnimating) return;
+    this._isAnimating = true;
     this.animate();
   }
 
   toggleWireframe() {
     this.showWireframe = !this.showWireframe;
-    this.rebuildScene();
+    this.requestRebuild();
   }
 
   toggleNodes() {
     this.showNodes = !this.showNodes;
-    this.rebuildScene();
+    this.requestRebuild();
   }
 
   applyTheme() {
