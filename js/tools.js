@@ -1,6 +1,7 @@
-// tools.js - Select and Member tools
+// tools.js - Select / Member / Surface tools
 
 import { applySnap } from './grid.js';
+import { t } from './i18n.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
@@ -14,8 +15,11 @@ export class ToolManager {
     this._panStart = null;
     this._spaceDown = false;
 
-    // Member tool state
-    this._memberStart = null; // { x, y, nodeId? }
+    // Draw tool states
+    this._memberStart = null;
+    this._surfaceStart = null;
+    this._surfacePolyline = [];
+    this._loadStart = null;
 
     // Select tool drag state
     this._dragTarget = null; // { type: 'node'|'member', id, offsetX?, offsetY? }
@@ -69,7 +73,10 @@ export class ToolManager {
     let minDiff = Math.abs(angle - snapAngles[0]);
     for (const a of snapAngles) {
       const diff = Math.abs(angle - a);
-      if (diff < minDiff) { minDiff = diff; closest = a; }
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = a;
+      }
     }
     return {
       x: origin.x + len * Math.cos(closest),
@@ -98,6 +105,10 @@ export class ToolManager {
       this._selectDown(e);
     } else if (tool === 'member') {
       this._memberDown(e);
+    } else if (tool === 'surface') {
+      this._surfaceDown(e);
+    } else if (tool === 'load') {
+      this._loadDown(e);
     }
   }
 
@@ -118,9 +129,12 @@ export class ToolManager {
       this._selectMove(e);
     } else if (tool === 'member') {
       this._memberMove(e);
+    } else if (tool === 'surface') {
+      this._surfaceMove(e);
+    } else if (tool === 'load') {
+      this._loadMove(e);
     }
 
-    // Update status bar coords
     const world = this._getWorldPos(e);
     this._updateCoords(world.x, world.y);
   }
@@ -152,19 +166,33 @@ export class ToolManager {
 
     // Esc: cancel or deselect
     if (e.key === 'Escape') {
-      if (this.state.currentTool === 'member' && this._memberStart) {
+      if ((this.state.currentTool === 'member' && this._memberStart) ||
+          (this.state.currentTool === 'surface' && (this._surfaceStart || this._surfacePolyline.length)) ||
+          (this.state.currentTool === 'load' && this._loadStart)) {
         this._memberStart = null;
+        this._surfaceStart = null;
+        this._surfacePolyline = [];
+        this._loadStart = null;
         this.c.preview = null;
         this.onUpdate();
       } else {
-        this.state.selectedMemberId = null;
+        this.state.clearSelection();
         this.onUpdate();
       }
     }
 
-    // Delete
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (this.state.selectedMemberId) {
+    // Delete (skip when focused on input/select)
+    if ((e.key === 'Delete' || e.key === 'Backspace') &&
+        e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') {
+      if (this.state.selectedLoadId) {
+        this.history.save();
+        this.state.removeLoad(this.state.selectedLoadId);
+        this.onUpdate();
+      } else if (this.state.selectedSurfaceId) {
+        this.history.save();
+        this.state.removeSurface(this.state.selectedSurfaceId);
+        this.onUpdate();
+      } else if (this.state.selectedMemberId) {
         this.history.save();
         this.state.removeMember(this.state.selectedMemberId);
         this.onUpdate();
@@ -181,6 +209,12 @@ export class ToolManager {
         if (this.history.redo()) this.onUpdate();
       }
     }
+
+    // Close polyline surface
+    if (this.state.currentTool === 'surface' && this.state.surfaceDraftMode === 'polyline' &&
+        (e.key === 'Enter' || e.key === 'Return')) {
+      this._finishSurfacePolyline();
+    }
   }
 
   _onKeyUp(e) {
@@ -195,15 +229,38 @@ export class ToolManager {
     const world = this._getWorldPos(e);
     const tolerance = 8 / this.c.camera.scale;
 
+    // Load hit first
+    const load = this.state.findLoadAt(world.x, world.y);
+    if (load) {
+      this.state.selectedLoadId = load.id;
+      this.state.selectedSurfaceId = null;
+      this.state.selectedMemberId = null;
+      this._dragTarget = null;
+      this.onUpdate();
+      return;
+    }
+
+    // Surface hit
+    const surface = this.state.findSurfaceAt(world.x, world.y);
+    if (surface) {
+      this.state.selectedSurfaceId = surface.id;
+      this.state.selectedMemberId = null;
+      this.state.selectedLoadId = null;
+      this._dragTarget = null;
+      this.onUpdate();
+      return;
+    }
+
     // Check node hit first (for dragging endpoints)
     const node = this.state.findNodeAt(world.x, world.y, tolerance);
     if (node) {
-      // Find member this node belongs to
       const member = this.state.members.find(
         m => m.startNodeId === node.id || m.endNodeId === node.id
       );
       if (member) {
         this.state.selectedMemberId = member.id;
+        this.state.selectedSurfaceId = null;
+        this.state.selectedLoadId = null;
         this._dragTarget = { type: 'node', id: node.id };
         this._isDragging = false;
         this._dragStartPos = { x: world.x, y: world.y };
@@ -216,6 +273,8 @@ export class ToolManager {
     const member = this.state.findMemberAt(world.x, world.y, tolerance);
     if (member) {
       this.state.selectedMemberId = member.id;
+      this.state.selectedSurfaceId = null;
+      this.state.selectedLoadId = null;
       const n1 = this.state.getNode(member.startNodeId);
       const n2 = this.state.getNode(member.endNodeId);
       this._dragTarget = {
@@ -232,8 +291,7 @@ export class ToolManager {
       return;
     }
 
-    // Clicked empty space
-    this.state.selectedMemberId = null;
+    this.state.clearSelection();
     this._dragTarget = null;
     this.onUpdate();
   }
@@ -283,36 +341,91 @@ export class ToolManager {
   _memberDown(e) {
     const snapped = this._getSnappedPos(e);
 
-    if (!this._memberStart) {
-      // First click: set start point
-      this._memberStart = { x: snapped.x, y: snapped.y };
-    } else {
-      // Second click: create member
-      const start = this._memberStart;
-      const end = snapped;
-
-      // Skip zero-length
-      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
-
-      this.history.save();
-
-      // Reuse existing nodes or create new ones
-      let startNode = this.state.findNodeAt(start.x, start.y, 1);
-      if (!startNode) startNode = this.state.addNode(start.x, start.y);
-
-      let endNode = this.state.findNodeAt(end.x, end.y, 1);
-      if (!endNode) endNode = this.state.addNode(end.x, end.y);
-
-      this.state.addMember(startNode.id, endNode.id);
-
-      this._memberStart = null;
-      this.c.preview = null;
-      this.onUpdate();
+    if (this.state.memberDraftType === 'column') {
+      this._placeColumn(snapped);
+      return;
     }
+
+    if (!this._memberStart) {
+      this._memberStart = { x: snapped.x, y: snapped.y };
+      return;
+    }
+
+    const start = this._memberStart;
+    const end = snapped;
+
+    if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
+
+    // 水平ブレースは斜め配置のみ（X軸・Y軸に平行な配置は不可）
+    if (this.state.memberDraftType === 'hbrace') {
+      const dx = Math.abs(end.x - start.x);
+      const dy = Math.abs(end.y - start.y);
+      if (dx < 1 || dy < 1) {
+        alert(t('hbraceNeedsDiagonal'));
+        return;
+      }
+    }
+
+    // 垂直ブレースは上レイヤーが必要
+    let topLevelId = null;
+    if (this.state.memberDraftType === 'vbrace') {
+      topLevelId = this._getAutoTopLevelId();
+      if (!topLevelId) {
+        alert(t('noLevelAbove'));
+        this._memberStart = null;
+        this.c.preview = null;
+        this.onUpdate();
+        return;
+      }
+    }
+
+    this.history.save();
+
+    let startNode = this.state.findNodeAt(start.x, start.y, 1);
+    if (!startNode) startNode = this.state.addNode(start.x, start.y);
+
+    let endNode = this.state.findNodeAt(end.x, end.y, 1);
+    if (!endNode) endNode = this.state.addNode(end.x, end.y);
+
+    const member = this.state.addMember(startNode.id, endNode.id, {
+      type: this.state.memberDraftType || 'beam',
+      levelId: this.state.activeLayerId || 'L0',
+      topLevelId,
+    });
+
+    this.state.selectedMemberId = member.id;
+    this.state.selectedSurfaceId = null;
+    this._memberStart = null;
+    this.c.preview = null;
+    this.onUpdate();
+  }
+
+  _placeColumn(snapped) {
+    const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
+    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLayerId);
+    if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) {
+      alert(t('noLevelAbove'));
+      return;
+    }
+    const topLevel = sortedLevels[activeIdx + 1];
+
+    this.history.save();
+    let node = this.state.findNodeAt(snapped.x, snapped.y, 1);
+    if (!node) node = this.state.addNode(snapped.x, snapped.y);
+
+    const member = this.state.addMember(node.id, node.id, {
+      type: 'column',
+      levelId: this.state.activeLayerId,
+      topLevelId: topLevel.id,
+    });
+    this.state.selectedMemberId = member.id;
+    this.state.selectedSurfaceId = null;
+    this.onUpdate();
   }
 
   _memberMove(e) {
     if (!this._memberStart) return;
+    if (this.state.memberDraftType === 'column') return;
 
     const snapped = this._getSnappedPos(e);
     this.c.preview = {
@@ -320,6 +433,259 @@ export class ToolManager {
       startY: this._memberStart.y,
       endX: snapped.x,
       endY: snapped.y,
+      mode: 'line',
+    };
+    this.onUpdate();
+  }
+
+  // --- Surface Tool ---
+
+  _getEffectiveSurfaceMode() {
+    const type = this.state.surfaceDraftType;
+    if (type === 'exteriorWall') return 'polyline';
+    if (type === 'wall') return 'line';
+    return this.state.surfaceDraftMode;
+  }
+
+  _getAutoTopLevelId() {
+    const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
+    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLayerId);
+    if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) return null;
+    return sortedLevels[activeIdx + 1].id;
+  }
+
+  _surfaceDown(e) {
+    const snapped = this._getSnappedPos(e);
+    const mode = this._getEffectiveSurfaceMode();
+    const type = this.state.surfaceDraftType;
+    const isWallType = type === 'wall' || type === 'exteriorWall';
+
+    if (mode === 'polyline') {
+      this._surfaceStart = null;
+      this._surfacePolylineDown(snapped);
+      return;
+    }
+
+    this._surfacePolyline = [];
+
+    if (!this._surfaceStart) {
+      this._surfaceStart = { x: snapped.x, y: snapped.y };
+      return;
+    }
+
+    const start = this._surfaceStart;
+    const end = snapped;
+
+    // Wall line: check distance; Rect: check width/height
+    if (mode === 'line') {
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
+    } else {
+      if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
+    }
+
+    let topLevelId;
+    if (isWallType) {
+      topLevelId = this._getAutoTopLevelId();
+      if (!topLevelId) {
+        alert(t('noLevelAbove'));
+        this._surfaceStart = null;
+        this.c.preview = null;
+        this.onUpdate();
+        return;
+      }
+    } else {
+      topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+    }
+
+    this.history.save();
+
+    let surface;
+    if (mode === 'line') {
+      surface = this.state.addSurfaceLine(start.x, start.y, end.x, end.y, {
+        type: type || 'wall',
+        levelId: this.state.activeLayerId || 'L0',
+        topLevelId,
+      });
+    } else {
+      surface = this.state.addSurfaceRect(start.x, start.y, end.x, end.y, {
+        type: type || 'floor',
+        levelId: this.state.activeLayerId || 'L0',
+        topLevelId,
+        loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
+      });
+    }
+    this.state.selectedSurfaceId = surface.id;
+    this.state.selectedMemberId = null;
+
+    this._surfaceStart = null;
+    this.c.preview = null;
+    this.onUpdate();
+  }
+
+  _surfaceMove(e) {
+    const mode = this._getEffectiveSurfaceMode();
+
+    if (mode === 'polyline') {
+      this._surfacePolylineMove(e);
+      return;
+    }
+
+    if (!this._surfaceStart) return;
+
+    const snapped = this._getSnappedPos(e);
+    this.c.preview = {
+      startX: this._surfaceStart.x,
+      startY: this._surfaceStart.y,
+      endX: snapped.x,
+      endY: snapped.y,
+      mode: mode === 'line' ? 'line' : 'rect',
+    };
+    this.onUpdate();
+  }
+
+  _surfacePolylineDown(snapped) {
+    if (this._surfacePolyline.length === 0) {
+      // exteriorWall: 入力開始時に既存チェック
+      if (this.state.surfaceDraftType === 'exteriorWall') {
+        const levelId = this.state.activeLayerId || 'L0';
+        const existing = this.state.surfaces.find(
+          s => s.type === 'exteriorWall' && s.levelId === levelId
+        );
+        if (existing) {
+          if (!confirm(t('exteriorWallConfirmReplace'))) return;
+          this.history.save();
+          this.state.removeSurface(existing.id);
+        }
+      }
+      this._surfacePolyline.push({ x: snapped.x, y: snapped.y });
+      this.state.clearSelection();
+      this.onUpdate();
+      return;
+    }
+
+    const first = this._surfacePolyline[0];
+    const closeTol = 8 / this.c.camera.scale;
+    if (this._surfacePolyline.length >= 3 &&
+        Math.hypot(snapped.x - first.x, snapped.y - first.y) <= closeTol) {
+      this._finishSurfacePolyline();
+      return;
+    }
+
+    const last = this._surfacePolyline[this._surfacePolyline.length - 1];
+    if (Math.hypot(snapped.x - last.x, snapped.y - last.y) < 1) return;
+    this._surfacePolyline.push({ x: snapped.x, y: snapped.y });
+    this.onUpdate();
+  }
+
+  _surfacePolylineMove(e) {
+    if (this._surfacePolyline.length === 0) return;
+    const snapped = this._getSnappedPos(e);
+    const points = [...this._surfacePolyline, { x: snapped.x, y: snapped.y }];
+    this.c.preview = {
+      mode: 'polyline',
+      points,
+      closeHint: this._surfacePolyline.length >= 3,
+    };
+    this.onUpdate();
+  }
+
+  _finishSurfacePolyline() {
+    if (this._surfacePolyline.length < 3) return;
+    const type = this.state.surfaceDraftType;
+    const isWallType = type === 'wall' || type === 'exteriorWall';
+
+    let topLevelId;
+    if (isWallType) {
+      topLevelId = this._getAutoTopLevelId();
+      if (!topLevelId) {
+        alert(t('noLevelAbove'));
+        this._surfacePolyline = [];
+        this._surfaceStart = null;
+        this.c.preview = null;
+        this.onUpdate();
+        return;
+      }
+    } else {
+      topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+    }
+
+    this.history.save();
+
+    const surface = this.state.addSurfacePolygon(this._surfacePolyline, {
+      type: type || 'wall',
+      levelId: this.state.activeLayerId || 'L0',
+      topLevelId,
+      loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
+    });
+    if (surface) {
+      this.state.selectedSurfaceId = surface.id;
+      this.state.selectedMemberId = null;
+    }
+    this._surfacePolyline = [];
+    this._surfaceStart = null;
+    this.c.preview = null;
+    this.onUpdate();
+  }
+
+  // --- Load Tool ---
+
+  _loadDown(e) {
+    const snapped = this._getSnappedPos(e);
+    const type = this.state.loadDraftType;
+
+    if (type === 'pointLoad') {
+      this.history.save();
+      const load = this.state.addLoad('pointLoad', {
+        x1: snapped.x, y1: snapped.y,
+        levelId: this.state.activeLayerId || 'L0',
+      });
+      this.state.selectedLoadId = load.id;
+      this.state.selectedMemberId = null;
+      this.state.selectedSurfaceId = null;
+      this.c.preview = null;
+      this.onUpdate();
+      return;
+    }
+
+    // areaLoad / lineLoad: two-click
+    if (!this._loadStart) {
+      this._loadStart = { x: snapped.x, y: snapped.y };
+      return;
+    }
+
+    const start = this._loadStart;
+    const end = snapped;
+
+    if (type === 'areaLoad') {
+      if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
+    } else {
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
+    }
+
+    this.history.save();
+    const load = this.state.addLoad(type, {
+      x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+      levelId: this.state.activeLayerId || 'L0',
+    });
+    this.state.selectedLoadId = load.id;
+    this.state.selectedMemberId = null;
+    this.state.selectedSurfaceId = null;
+    this._loadStart = null;
+    this.c.preview = null;
+    this.onUpdate();
+  }
+
+  _loadMove(e) {
+    if (!this._loadStart) return;
+    if (this.state.loadDraftType === 'pointLoad') return;
+
+    const snapped = this._getSnappedPos(e);
+    this.c.preview = {
+      startX: this._loadStart.x,
+      startY: this._loadStart.y,
+      endX: snapped.x,
+      endY: snapped.y,
+      mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
     };
     this.onUpdate();
   }

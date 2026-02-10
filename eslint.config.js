@@ -17,6 +17,7 @@ export default [
         URL: "readonly",
         HTMLElement: "readonly",
         alert: "readonly",
+        confirm: "readonly",
         console: "readonly",
       },
     },

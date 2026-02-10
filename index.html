@@ -3,16 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LineFrame CAD - Ver.Beta01</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Element Modeler - Ver.Beta02</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260210-1">
 </head>
 <body>
   <!-- Left Toolbar -->
   <aside id="toolbar">
-    <h2 data-i18n="tools">ツール</h2>
-    <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; <span data-i18n="select">選択</span></button>
-    <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; <span data-i18n="member">部材</span></button>
+    <div id="toolbar-quick" class="toolbar-sticky-top">
+      <h2 data-i18n="tools">ツール</h2>
+      <button id="btn-settings">&#9881; <span data-i18n="settings">設定</span></button>
+      <span class="layer-label" data-i18n="activeLayer">レイヤー</span>
+      <div class="layer-controls">
+        <select id="sel-active-layer"></select>
+        <button id="btn-layer-manage" class="layer-manage-btn" title="Layer Management">&#9881;</button>
+      </div>
+      <span class="layer-label" data-i18n="toolLabel">要素</span>
+      <div class="layer-controls">
+        <select id="sel-tool">
+          <option value="select" data-i18n="selectTool">選択</option>
+          <option value="member" data-i18n="member">線材</option>
+          <option value="surface" data-i18n="surface">面材</option>
+          <option value="load" data-i18n="load">荷重</option>
+        </select>
+      </div>
+      <hr>
+    </div>
+    <div id="tool-opts-member" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftMemberType">線材種別</span>
+        <select id="sel-member-type">
+          <option value="beam" data-i18n="beam">梁</option>
+          <option value="column" data-i18n="column">柱</option>
+          <option value="hbrace" data-i18n="hbrace">水平ブレース</option>
+          <option value="vbrace" data-i18n="vbrace">垂直ブレース</option>
+        </select>
+      </label>
+    </div>
+    <div id="tool-opts-surface" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftSurfaceType">面材種別</span>
+        <select id="sel-surface-type">
+          <option value="floor" data-i18n="floor">床</option>
+          <option value="exteriorWall" data-i18n="exteriorWall">外壁</option>
+          <option value="wall" data-i18n="wall">壁</option>
+        </select>
+      </label>
+      <label id="label-surface-mode" class="grid-label">
+        <span data-i18n="surfaceMode">配置方法</span>
+        <select id="sel-surface-mode">
+          <option value="rect" data-i18n="rectMode">矩形</option>
+          <option value="polyline" data-i18n="polylineMode">ポリライン</option>
+        </select>
+      </label>
+      <label id="label-load-direction" class="grid-label">
+        <span data-i18n="loadDirection">荷重方向</span>
+        <select id="sel-load-direction">
+          <option value="x">X</option>
+          <option value="y">Y</option>
+          <option value="twoWay" data-i18n="twoWay">2方向</option>
+        </select>
+      </label>
+      <label id="label-top-layer" class="grid-label">
+        <span data-i18n="topLayer">上端レイヤー</span>
+        <select id="sel-top-layer"></select>
+      </label>
+    </div>
+    <div id="tool-opts-load" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftLoadType">荷重種別</span>
+        <select id="sel-load-type">
+          <option value="areaLoad" data-i18n="areaLoad">面荷重</option>
+          <option value="lineLoad" data-i18n="lineLoad">線荷重</option>
+          <option value="pointLoad" data-i18n="pointLoad">点荷重</option>
+        </select>
+      </label>
+    </div>
     <hr>
     <label class="toggle-label">
       <input type="checkbox" id="chk-snap" checked>
@@ -30,10 +99,6 @@
     <button id="btn-export" title="Export JSON">&#128190; <span data-i18n="export">保存</span></button>
     <button id="btn-import-trigger" title="Import JSON">&#128194; <span data-i18n="import">読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
-    <hr>
-    <button id="btn-theme">&#9790; <span data-i18n="themeDark">ダーク</span></button>
-    <button id="btn-lang">&#127760; <span data-i18n="lang">EN</span></button>
-    <button id="btn-help">&#10067; <span data-i18n="help">ヘルプ</span></button>
   </aside>
 
   <!-- Main Area -->
@@ -55,8 +120,8 @@
       <span id="status-coords">X: 0  Y: 0</span>
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
-      <span id="status-tool" data-i18n="toolSelect">ツール: 選択</span>
-      <span id="status-version">Ver.Beta01</span>
+      <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
+      <span id="status-version">Ver.Beta02</span>
     </footer>
   </main>
 
@@ -79,6 +144,48 @@
     </div>
   </div>
 
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-content modal-settings">
+      <div class="modal-header">
+        <h2 data-i18n="settingsTitle">設定</h2>
+        <button id="btn-settings-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <label data-i18n="themeLabel">テーマ</label>
+          <select id="settings-theme">
+            <option value="dark" data-i18n="themeDark">ダーク</option>
+            <option value="light" data-i18n="themeLight">ライト</option>
+          </select>
+        </div>
+        <div class="settings-group">
+          <label data-i18n="langLabel">言語</label>
+          <select id="settings-lang">
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <hr>
+        <button id="btn-open-help" class="settings-help-btn">&#10067; <span data-i18n="help">ヘルプ</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer Management Modal -->
+  <div id="layer-modal" class="modal-overlay">
+    <div class="modal-content modal-layer">
+      <div class="modal-header">
+        <h2 data-i18n="layerManage">レイヤー管理</h2>
+        <button id="btn-layer-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div id="layer-list"></div>
+        <button id="btn-layer-add" class="settings-help-btn">+ <span data-i18n="layerAdd">追加</span></button>
+      </div>
+    </div>
+  </div>
+
   <script type="importmap">
   {
     "imports": {
@@ -87,6 +194,6 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=20260210-1"></script>
 </body>
 </html>

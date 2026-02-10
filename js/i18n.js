@@ -5,15 +5,45 @@ const dict = {
     // Toolbar
     tools: 'ツール',
     select: '選択',
-    member: '部材',
+    selectTool: '選択',
+    member: '線材',
+    surface: '面材',
+    load: '荷重',
+    toolLabel: '要素',
     snap: 'スナップ',
     grid: 'グリッド',
+    activeLayer: 'レイヤー',
+    draftMemberType: '線材種別',
+    draftSurfaceType: '面材種別',
+    surfaceMode: '形状',
+    rectMode: '矩形',
+    polylineMode: 'ポリライン',
+    loadDirection: '支持方向',
+    topLayer: '上端レイヤー',
     export: '保存',
     import: '読込',
     themeDark: 'ダーク',
     themeLight: 'ライト',
     lang: 'EN',
     help: 'ヘルプ',
+    settings: '設定',
+    settingsTitle: '設定',
+    themeLabel: 'テーマ',
+    langLabel: '言語',
+    layerManage: 'レイヤー管理',
+    layerName: '名前',
+    layerZ: '高さ (mm)',
+    layerAdd: '追加',
+    layerDelete: '削除',
+    layerInUse: 'このレイヤーは使用中です（線材: {m}、面材: {s}）。先に要素を削除またはレイヤー変更してください。',
+    layerCannotDeleteLast: '最低1つのレイヤーが必要です。',
+    layerDuplicateZ: 'この高さ(z値)は既に使用されています。',
+    noLevelAbove: '現在のレイヤーより上にレイヤーがありません。レイヤー管理で追加してください。',
+    bracePattern: 'ブレースパターン',
+    braceSingle: 'シングル',
+    braceCross: '襷掛け',
+    hbraceNeedsDiagonal: '水平ブレースは斜め配置のみ可能です（X軸・Y軸に平行な配置はできません）。',
+    exteriorWallConfirmReplace: 'このレイヤーには既に外壁線があります。既存の外壁線を削除して新しく入力しますか？',
 
     // Tabs
     tab2d: '2D CAD',
@@ -22,26 +52,46 @@ const dict = {
     // Status bar
     snapOn: 'スナップ: ON',
     snapOff: 'スナップ: OFF',
-    toolSelect: 'ツール: 選択',
-    toolMember: 'ツール: 部材',
+    toolSelect: 'ツール: 要素',
+    toolMember: 'ツール: 線材',
+    toolSurface: 'ツール: 面材',
+    toolLoad: 'ツール: 荷重',
 
     // Property panel
     properties: 'プロパティ',
     noSelection: '未選択',
     propId: 'ID',
     propType: '種別',
-    propLevel: 'レベル',
+    propLevel: 'レイヤー',
+    propLayer: 'レイヤー',
     propWidthB: '幅 b (mm)',
     propHeightH: '高さ h (mm)',
     propMaterial: '材料',
     propColor: '色',
     propLength: '長さ',
+    propArea: '面積',
+    propVertices: '頂点数',
     beam: '梁',
     column: '柱',
+    hbrace: '水平ブレース',
+    vbrace: '垂直ブレース',
     brace: 'ブレース',
+    floor: '床',
+    exteriorWall: '外壁',
+    wall: '壁',
+    twoWay: '2方向',
     steel: '鉄骨',
     rc: 'RC',
     wood: '木造',
+
+    // Load types
+    draftLoadType: '荷重種別',
+    areaLoad: '面荷重',
+    lineLoad: '線荷重',
+    pointLoad: '点荷重',
+    loadValue: '荷重値',
+    loadUnit_area: 'N/m²',
+    loadUnit_line: 'N/m',
 
     // Import error
     importFailed: '読込失敗: ',
@@ -52,10 +102,12 @@ const dict = {
     helpContent: `
 <h3>基本操作</h3>
 <table>
-  <tr><td><b>部材作成</b></td><td>「部材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
-  <tr><td><b>選択</b></td><td>「選択」ツール(Vキー)で部材またはノードをクリック</td></tr>
-  <tr><td><b>移動</b></td><td>選択後、ノードまたは部材をドラッグ</td></tr>
-  <tr><td><b>削除</b></td><td>部材を選択してDeleteキー</td></tr>
+  <tr><td><b>線材作成</b></td><td>「線材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
+  <tr><td><b>面材作成</b></td><td>「面材」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
+  <tr><td><b>荷重作成</b></td><td>「荷重」ツール(Lキー)。面荷重は矩形2点、線荷重は線分2点、点荷重は1点クリック</td></tr>
+  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重をクリック</td></tr>
+  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ</td></tr>
+  <tr><td><b>削除</b></td><td>要素を選択してDeleteキー</td></tr>
 </table>
 
 <h3>画面操作</h3>
@@ -68,24 +120,43 @@ const dict = {
 
 <h3>キーボードショートカット</h3>
 <table>
-  <tr><td><kbd>V</kbd></td><td>選択ツール</td></tr>
-  <tr><td><kbd>M</kbd></td><td>部材ツール</td></tr>
-  <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>選択部材を削除</td></tr>
+  <tr><td><kbd>V</kbd></td><td>要素ツール（選択・編集・削除）</td></tr>
+  <tr><td><kbd>M</kbd></td><td>線材ツール</td></tr>
+  <tr><td><kbd>F</kbd></td><td>面材ツール</td></tr>
+  <tr><td><kbd>L</kbd></td><td>荷重ツール</td></tr>
+  <tr><td><kbd>Enter</kbd></td><td>面材ポリラインを閉じて確定</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除 / モーダルを閉じる</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>選択要素を削除</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>元に戻す</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>やり直し</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>角度制限（0/45/90°）</td></tr>
 </table>
 
 <h3>プロパティパネル</h3>
-<p>部材を選択すると右パネルで以下を編集できます:</p>
+<p>要素を選択すると右パネルで以下を編集できます:</p>
 <ul>
-  <li><b>種別</b> - 梁 / 柱 / ブレース</li>
-  <li><b>断面寸法</b> - 幅b, 高さh (mm)</li>
-  <li><b>レベル</b> - 3D表示時の高さ</li>
-  <li><b>材料</b> - 鉄骨 / RC / 木造</li>
-  <li><b>色</b> - 表示色</li>
+  <li><b>線材</b> - 種別 / 断面(b,h) / レイヤー / 材料 / 色</li>
+  <li><b>面材</b> - 種別 / レイヤー / 荷重方向 / 色</li>
+  <li><b>荷重</b> - 種別 / 座標 / 荷重値(面・線) / 力・モーメント(点) / 色</li>
 </ul>
+<p>床スラブは荷重方向（X/Y/2方向）を矢印で表示します。壁要素は平面上で少しオフセットして表示します。</p>
+
+<h3>設定</h3>
+<p>ツールバー上部の ⚙ 設定ボタンから設定モーダルを開きます。</p>
+<ul>
+  <li><b>テーマ</b> - ダーク / ライトを切替</li>
+  <li><b>言語</b> - 日本語 / English を切替</li>
+  <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
+</ul>
+
+<h3>レイヤー管理</h3>
+<p>レイヤー選択横の ⚙ ボタンからレイヤー管理モーダルを開きます。</p>
+<ul>
+  <li><b>追加</b> - 新しいレイヤーを追加（z値は自動計算）</li>
+  <li><b>編集</b> - レイヤー名とz値（高さ mm）を直接編集</li>
+  <li><b>削除</b> - 未使用レイヤーのみ削除可能</li>
+</ul>
+<p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
 <p>「保存」でJSONファイルをダウンロード、「読込」でJSONファイルを読み込みます。</p>
@@ -96,15 +167,45 @@ const dict = {
     // Toolbar
     tools: 'Tools',
     select: 'Select',
-    member: 'Member',
+    selectTool: 'Select',
+    member: 'Line',
+    surface: 'Surface',
+    load: 'Load',
+    toolLabel: 'Element',
     snap: 'Snap',
     grid: 'Grid',
+    activeLayer: 'Layer',
+    draftMemberType: 'Line Type',
+    draftSurfaceType: 'Surface Type',
+    surfaceMode: 'Shape',
+    rectMode: 'Rectangle',
+    polylineMode: 'Polyline',
+    loadDirection: 'Support Dir',
+    topLayer: 'Top Layer',
     export: 'Export',
     import: 'Import',
     themeDark: 'Dark',
     themeLight: 'Light',
     lang: 'JA',
     help: 'Help',
+    settings: 'Settings',
+    settingsTitle: 'Settings',
+    themeLabel: 'Theme',
+    langLabel: 'Language',
+    layerManage: 'Layer Management',
+    layerName: 'Name',
+    layerZ: 'Height (mm)',
+    layerAdd: 'Add',
+    layerDelete: 'Delete',
+    layerInUse: 'This layer is in use (lines: {m}, surfaces: {s}). Remove or reassign them first.',
+    layerCannotDeleteLast: 'At least one layer is required.',
+    layerDuplicateZ: 'This height (z value) is already in use.',
+    noLevelAbove: 'No layer above the current layer. Please add one in Layer Management.',
+    bracePattern: 'Brace Pattern',
+    braceSingle: 'Single',
+    braceCross: 'Cross (X)',
+    hbraceNeedsDiagonal: 'Horizontal braces must be placed diagonally (cannot be parallel to X or Y axis).',
+    exteriorWallConfirmReplace: 'An exterior wall line already exists on this layer. Delete it and start new input?',
 
     // Tabs
     tab2d: '2D CAD',
@@ -113,26 +214,46 @@ const dict = {
     // Status bar
     snapOn: 'Snap: ON',
     snapOff: 'Snap: OFF',
-    toolSelect: 'Tool: Select',
-    toolMember: 'Tool: Member',
+    toolSelect: 'Tool: Element',
+    toolMember: 'Tool: Line',
+    toolSurface: 'Tool: Surface',
+    toolLoad: 'Tool: Load',
 
     // Property panel
     properties: 'Properties',
     noSelection: 'No selection',
     propId: 'ID',
     propType: 'Type',
-    propLevel: 'Level',
+    propLevel: 'Layer',
+    propLayer: 'Layer',
     propWidthB: 'Width b (mm)',
     propHeightH: 'Height h (mm)',
     propMaterial: 'Material',
     propColor: 'Color',
     propLength: 'Length',
+    propArea: 'Area',
+    propVertices: 'Vertices',
     beam: 'Beam',
     column: 'Column',
+    hbrace: 'Horizontal Brace',
+    vbrace: 'Vertical Brace',
     brace: 'Brace',
+    floor: 'Floor',
+    exteriorWall: 'Exterior Wall',
+    wall: 'Wall',
+    twoWay: 'Two-way',
     steel: 'Steel',
     rc: 'RC',
     wood: 'Wood',
+
+    // Load types
+    draftLoadType: 'Load Type',
+    areaLoad: 'Area Load',
+    lineLoad: 'Line Load',
+    pointLoad: 'Point Load',
+    loadValue: 'Load Value',
+    loadUnit_area: 'N/m²',
+    loadUnit_line: 'N/m',
 
     // Import error
     importFailed: 'Import failed: ',
@@ -143,10 +264,12 @@ const dict = {
     helpContent: `
 <h3>Basic Operations</h3>
 <table>
-  <tr><td><b>Create member</b></td><td>Select "Member" tool (M key), click start point → click end point</td></tr>
-  <tr><td><b>Select</b></td><td>Use "Select" tool (V key), click a member or node</td></tr>
-  <tr><td><b>Move</b></td><td>After selecting, drag a node or member</td></tr>
-  <tr><td><b>Delete</b></td><td>Select a member and press Delete key</td></tr>
+  <tr><td><b>Create line</b></td><td>Select "Line" tool (M key), click start point → click end point</td></tr>
+  <tr><td><b>Create surface</b></td><td>Use "Surface" (F). Rectangle: 2 diagonal points. Polyline: click points, then click first point or Enter to close</td></tr>
+  <tr><td><b>Create load</b></td><td>Use "Load" (L). Area load: 2-point rectangle. Line load: 2-point line. Point load: single click</td></tr>
+  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load element</td></tr>
+  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element</td></tr>
+  <tr><td><b>Delete</b></td><td>Select an element and press Delete key</td></tr>
 </table>
 
 <h3>View Controls</h3>
@@ -159,24 +282,43 @@ const dict = {
 
 <h3>Keyboard Shortcuts</h3>
 <table>
-  <tr><td><kbd>V</kbd></td><td>Select tool</td></tr>
-  <tr><td><kbd>M</kbd></td><td>Member tool</td></tr>
-  <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>Delete selected member</td></tr>
+  <tr><td><kbd>V</kbd></td><td>Element tool (select / edit / delete)</td></tr>
+  <tr><td><kbd>M</kbd></td><td>Line tool</td></tr>
+  <tr><td><kbd>F</kbd></td><td>Surface tool</td></tr>
+  <tr><td><kbd>L</kbd></td><td>Load tool</td></tr>
+  <tr><td><kbd>Enter</kbd></td><td>Close and confirm surface polyline</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect / Close modal</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>Delete selected element</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>Redo</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>Angle constraint (0/45/90°)</td></tr>
 </table>
 
 <h3>Property Panel</h3>
-<p>Select a member to edit in the right panel:</p>
+<p>Select an element to edit in the right panel:</p>
 <ul>
-  <li><b>Type</b> - Beam / Column / Brace</li>
-  <li><b>Section</b> - Width b, Height h (mm)</li>
-  <li><b>Level</b> - Height for 3D display</li>
-  <li><b>Material</b> - Steel / RC / Wood</li>
-  <li><b>Color</b> - Display color</li>
+  <li><b>Line</b> - Type / Section (b,h) / Layer / Material / Color</li>
+  <li><b>Surface</b> - Type / Layer / Load direction / Color</li>
+  <li><b>Load</b> - Type / Coordinates / Value (area/line) / Force &amp; Moment (point) / Color</li>
 </ul>
+<p>Floor slabs can show load direction arrows (X/Y/Two-way). Wall surfaces are shown with a slight visual offset in plan.</p>
+
+<h3>Settings</h3>
+<p>Click the ⚙ Settings button at the top of the toolbar to open the settings modal.</p>
+<ul>
+  <li><b>Theme</b> - Switch between Dark / Light</li>
+  <li><b>Language</b> - Switch between Japanese / English</li>
+  <li><b>Help</b> - Opens this quick manual</li>
+</ul>
+
+<h3>Layer Management</h3>
+<p>Click the ⚙ button next to the layer selector to open the layer management modal.</p>
+<ul>
+  <li><b>Add</b> - Add a new layer (z value auto-calculated)</li>
+  <li><b>Edit</b> - Directly edit layer name and z value (height in mm)</li>
+  <li><b>Delete</b> - Only unused layers can be deleted</li>
+</ul>
+<p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
 <p>"Export" downloads a JSON file. "Import" loads a JSON file.</p>
