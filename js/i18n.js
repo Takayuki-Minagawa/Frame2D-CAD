@@ -23,6 +23,10 @@ const dict = {
     themeLight: 'ライト',
     lang: 'EN',
     help: 'ヘルプ',
+    settings: '設定',
+    settingsTitle: '設定',
+    themeLabel: 'テーマ',
+    langLabel: '言語',
 
     // Tabs
     tab2d: '2D CAD',
@@ -136,6 +140,10 @@ const dict = {
     themeLight: 'Light',
     lang: 'JA',
     help: 'Help',
+    settings: 'Settings',
+    settingsTitle: 'Settings',
+    themeLabel: 'Theme',
+    langLabel: 'Language',
 
     // Tabs
     tab2d: '2D CAD',

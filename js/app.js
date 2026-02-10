@@ -127,50 +127,60 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
-// --- Theme Toggle ---
+// --- Settings Modal ---
 
-const btnTheme = document.getElementById('btn-theme');
+const settingsModal = document.getElementById('settings-modal');
+const settingsThemeSelect = document.getElementById('settings-theme');
+const settingsLangSelect = document.getElementById('settings-lang');
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  const span = btnTheme.querySelector('[data-i18n]');
-  if (span) {
-    span.dataset.i18n = theme === 'dark' ? 'themeDark' : 'themeLight';
-    span.textContent = t(span.dataset.i18n);
-  }
-  btnTheme.firstChild.textContent = theme === 'dark' ? '\u263E ' : '\u2600 ';
   localStorage.setItem('lineframe-theme', theme);
   if (viewer3d) viewer3d.applyTheme();
+  if (settingsThemeSelect) settingsThemeSelect.value = theme;
 }
-
-btnTheme.addEventListener('click', () => {
-  const current = document.documentElement.dataset.theme || 'dark';
-  applyTheme(current === 'dark' ? 'light' : 'dark');
-});
-
-const savedTheme = localStorage.getItem('lineframe-theme') || 'dark';
-applyTheme(savedTheme);
-
-// --- Language Toggle ---
-
-const btnLang = document.getElementById('btn-lang');
 
 function applyLang(lang) {
   setLang(lang);
   ui.applyLanguage();
-  // Re-apply theme button text
-  const themeSpan = btnTheme.querySelector('[data-i18n]');
-  if (themeSpan) {
-    themeSpan.textContent = t(themeSpan.dataset.i18n);
-  }
+  if (settingsLangSelect) settingsLangSelect.value = lang;
 }
 
-btnLang.addEventListener('click', () => {
-  const next = getLang() === 'ja' ? 'en' : 'ja';
-  applyLang(next);
+function showSettingsModal() {
+  settingsThemeSelect.value = document.documentElement.dataset.theme || 'dark';
+  settingsLangSelect.value = getLang();
+  settingsModal.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  settingsModal.classList.add('visible');
+}
+
+function hideSettingsModal() {
+  settingsModal.classList.remove('visible');
+}
+
+document.getElementById('btn-settings').addEventListener('click', showSettingsModal);
+document.getElementById('btn-settings-close').addEventListener('click', hideSettingsModal);
+
+settingsThemeSelect.addEventListener('change', (e) => {
+  applyTheme(e.target.value);
 });
 
-// Apply initial language to all elements
+settingsLangSelect.addEventListener('change', (e) => {
+  applyLang(e.target.value);
+  // Re-apply i18n to settings modal itself
+  settingsModal.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+});
+
+settingsModal.addEventListener('click', (e) => {
+  if (e.target === settingsModal) hideSettingsModal();
+});
+
+// Apply initial theme and language
+const savedTheme = localStorage.getItem('lineframe-theme') || 'dark';
+applyTheme(savedTheme);
 ui.applyLanguage();
 
 // --- Help Modal ---
@@ -191,7 +201,10 @@ function hideHelpModal() {
   helpModal.classList.remove('visible');
 }
 
-document.getElementById('btn-help').addEventListener('click', showHelpModal);
+document.getElementById('btn-open-help').addEventListener('click', () => {
+  hideSettingsModal();
+  showHelpModal();
+});
 
 document.getElementById('btn-help-close').addEventListener('click', hideHelpModal);
 
@@ -199,11 +212,16 @@ helpModal.addEventListener('click', (e) => {
   if (e.target === helpModal) hideHelpModal();
 });
 
-// Close modal on Escape
+// Close modals on Escape
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && helpModal.classList.contains('visible')) {
-    hideHelpModal();
-    e.stopPropagation();
+  if (e.key === 'Escape') {
+    if (helpModal.classList.contains('visible')) {
+      hideHelpModal();
+      e.stopPropagation();
+    } else if (settingsModal.classList.contains('visible')) {
+      hideSettingsModal();
+      e.stopPropagation();
+    }
   }
 }, true);
 
