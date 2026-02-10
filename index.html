@@ -24,6 +24,7 @@
       <span class="layer-label" data-i18n="toolLabel">選択</span>
       <div class="layer-controls">
         <select id="sel-tool">
+          <option value="select" data-i18n="selectTool">要素</option>
           <option value="member" data-i18n="member">線材</option>
           <option value="surface" data-i18n="surface">面材</option>
           <option value="load" data-i18n="load">荷重</option>
@@ -69,6 +70,16 @@
       <label id="label-top-layer" class="grid-label">
         <span data-i18n="topLayer">上端レイヤー</span>
         <select id="sel-top-layer"></select>
+      </label>
+    </div>
+    <div id="tool-opts-load" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftLoadType">荷重種別</span>
+        <select id="sel-load-type">
+          <option value="areaLoad" data-i18n="areaLoad">面荷重</option>
+          <option value="lineLoad" data-i18n="lineLoad">線荷重</option>
+          <option value="pointLoad" data-i18n="pointLoad">点荷重</option>
+        </select>
       </label>
     </div>
     <hr>

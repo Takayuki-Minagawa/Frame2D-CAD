@@ -58,6 +58,11 @@ export class UI {
       this.state.surfaceDraftTopLayerId = e.target.value;
     });
 
+    // Load type
+    document.getElementById('sel-load-type').addEventListener('change', e => {
+      this.state.loadDraftType = e.target.value;
+    });
+
     // Keyboard shortcuts for tools
     window.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -67,6 +72,8 @@ export class UI {
         this.state.currentTool = 'member';
       } else if (e.key === 'f' || e.key === 'F') {
         this.state.currentTool = 'surface';
+      } else if (e.key === 'l' || e.key === 'L') {
+        this.state.currentTool = 'load';
       } else {
         return;
       }
@@ -100,8 +107,10 @@ export class UI {
     const tool = this.state.currentTool;
     const memberOpts = document.getElementById('tool-opts-member');
     const surfaceOpts = document.getElementById('tool-opts-surface');
+    const loadOpts = document.getElementById('tool-opts-load');
     if (memberOpts) memberOpts.classList.toggle('visible', tool === 'member');
     if (surfaceOpts) surfaceOpts.classList.toggle('visible', tool === 'surface');
+    if (loadOpts) loadOpts.classList.toggle('visible', tool === 'load');
     this._updateSurfaceSubOptions();
   }
 
@@ -144,6 +153,11 @@ export class UI {
 
   updatePropertyPanel() {
     const container = document.getElementById('prop-content');
+
+    if (this.state.selectedLoadId) {
+      this._renderLoadProperties(container);
+      return;
+    }
 
     if (this.state.selectedSurfaceId) {
       this._renderSurfaceProperties(container);
@@ -329,6 +343,119 @@ export class UI {
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
     bind('prop-surface-color', 'color');
+  }
+
+  _renderLoadProperties(container) {
+    const load = this.state.getLoad(this.state.selectedLoadId);
+    if (!load) {
+      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
+      return;
+    }
+
+    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
+      `<option value="${l.id}" ${l.id === load.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
+    ).join('');
+
+    const isArea = load.type === 'areaLoad';
+    const isLine = load.type === 'lineLoad';
+    const isPoint = load.type === 'pointLoad';
+
+    let coordFields = '';
+    if (isArea || isLine) {
+      coordFields = `
+        <div class="prop-row">
+          <div class="prop-group"><label>X1 (mm)</label><input type="number" id="prop-ld-x1" value="${Math.round(load.x1)}" step="100"></div>
+          <div class="prop-group"><label>Y1 (mm)</label><input type="number" id="prop-ld-y1" value="${Math.round(load.y1)}" step="100"></div>
+        </div>
+        <div class="prop-row">
+          <div class="prop-group"><label>X2 (mm)</label><input type="number" id="prop-ld-x2" value="${Math.round(load.x2)}" step="100"></div>
+          <div class="prop-group"><label>Y2 (mm)</label><input type="number" id="prop-ld-y2" value="${Math.round(load.y2)}" step="100"></div>
+        </div>`;
+    } else {
+      coordFields = `
+        <div class="prop-row">
+          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-ld-x1" value="${Math.round(load.x1)}" step="100"></div>
+          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-ld-y1" value="${Math.round(load.y1)}" step="100"></div>
+        </div>`;
+    }
+
+    let valueFields = '';
+    if (isArea) {
+      valueFields = `
+        <div class="prop-group">
+          <label>${t('loadValue')} (${t('loadUnit_area')})</label>
+          <input type="number" id="prop-ld-value" value="${load.value}" step="100">
+        </div>`;
+    } else if (isLine) {
+      valueFields = `
+        <div class="prop-group">
+          <label>${t('loadValue')} (${t('loadUnit_line')})</label>
+          <input type="number" id="prop-ld-value" value="${load.value}" step="100">
+        </div>`;
+    } else if (isPoint) {
+      valueFields = `
+        <div class="prop-row">
+          <div class="prop-group"><label>FX (N)</label><input type="number" id="prop-ld-fx" value="${load.fx}" step="100"></div>
+          <div class="prop-group"><label>FY (N)</label><input type="number" id="prop-ld-fy" value="${load.fy}" step="100"></div>
+        </div>
+        <div class="prop-row">
+          <div class="prop-group"><label>FZ (N)</label><input type="number" id="prop-ld-fz" value="${load.fz}" step="100"></div>
+          <div class="prop-group"><label>MX (N·m)</label><input type="number" id="prop-ld-mx" value="${load.mx}" step="10"></div>
+        </div>
+        <div class="prop-row">
+          <div class="prop-group"><label>MY (N·m)</label><input type="number" id="prop-ld-my" value="${load.my}" step="10"></div>
+          <div class="prop-group"><label>MZ (N·m)</label><input type="number" id="prop-ld-mz" value="${load.mz}" step="10"></div>
+        </div>`;
+    }
+
+    container.innerHTML = `
+      <div class="prop-group">
+        <label>${t('propId')}</label>
+        <input type="text" value="${load.id}" disabled>
+      </div>
+      <div class="prop-group">
+        <label>${t('propType')}</label>
+        <select id="prop-ld-type">
+          <option value="areaLoad" ${isArea ? 'selected' : ''}>${t('areaLoad')}</option>
+          <option value="lineLoad" ${isLine ? 'selected' : ''}>${t('lineLoad')}</option>
+          <option value="pointLoad" ${isPoint ? 'selected' : ''}>${t('pointLoad')}</option>
+        </select>
+      </div>
+      <div class="prop-group">
+        <label>${t('propLayer')}</label>
+        <select id="prop-ld-level">${levelOptions}</select>
+      </div>
+      ${coordFields}
+      ${valueFields}
+      <div class="prop-group">
+        <label>${t('propColor')}</label>
+        <input type="color" id="prop-ld-color" value="${load.color}">
+      </div>
+    `;
+
+    const bind = (id, key, transform = v => v) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        this.state.updateLoad(load.id, { [key]: transform(el.value) });
+        this.callbacks.onPropertyChange?.(load.id);
+      });
+    };
+
+    bind('prop-ld-type', 'type');
+    bind('prop-ld-level', 'levelId');
+    bind('prop-ld-x1', 'x1', parseFloat);
+    bind('prop-ld-y1', 'y1', parseFloat);
+    bind('prop-ld-x2', 'x2', parseFloat);
+    bind('prop-ld-y2', 'y2', parseFloat);
+    bind('prop-ld-value', 'value', parseFloat);
+    bind('prop-ld-fx', 'fx', parseFloat);
+    bind('prop-ld-fy', 'fy', parseFloat);
+    bind('prop-ld-fz', 'fz', parseFloat);
+    bind('prop-ld-mx', 'mx', parseFloat);
+    bind('prop-ld-my', 'my', parseFloat);
+    bind('prop-ld-mz', 'mz', parseFloat);
+    bind('prop-ld-color', 'color');
   }
 
   updateStatusBar() {

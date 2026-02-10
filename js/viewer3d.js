@@ -16,6 +16,7 @@ export class Viewer3D {
     this.memberGroup = null;
     this.nodeGroup = null;
     this.surfaceGroup = null;
+    this.loadGroup = null;
 
     this.showWireframe = false;
     this.showNodes = true;
@@ -61,6 +62,8 @@ export class Viewer3D {
     this.scene.add(this.memberGroup);
     this.nodeGroup = new THREE.Group();
     this.scene.add(this.nodeGroup);
+    this.loadGroup = new THREE.Group();
+    this.scene.add(this.loadGroup);
 
     this.resize();
 
@@ -93,6 +96,7 @@ export class Viewer3D {
     this._clearGroup(this.surfaceGroup);
     this._clearGroup(this.memberGroup);
     this._clearGroup(this.nodeGroup);
+    this._clearGroup(this.loadGroup);
 
     // Surfaces
     for (const s of this.state.surfaces || []) {
@@ -219,6 +223,41 @@ export class Viewer3D {
         const sphere = new THREE.Mesh(sphereGeo, sphereMat.clone());
         sphere.position.set(n.x / 1000, y, -n.y / 1000);
         this.nodeGroup.add(sphere);
+      }
+    }
+
+    // Loads
+    for (const ld of this.state.loads || []) {
+      const level = this.state.levels.find(l => l.id === ld.levelId);
+      const y = (level ? level.z : 0) / 1000 + 0.05;
+
+      if (ld.type === 'areaLoad') {
+        const xSize = Math.abs(ld.x2 - ld.x1) / 1000;
+        const zSize = Math.abs(ld.y2 - ld.y1) / 1000;
+        const cx = (ld.x1 + ld.x2) / 2000;
+        const cz = -((ld.y1 + ld.y2) / 2000);
+        const geo = new THREE.BoxGeometry(xSize, 0.05, zSize);
+        const mat = new THREE.MeshStandardMaterial({
+          color: new THREE.Color(ld.color || '#e57373'),
+          transparent: true, opacity: 0.35,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(cx, y, cz);
+        this.loadGroup.add(mesh);
+      } else if (ld.type === 'lineLoad') {
+        const pts = [
+          new THREE.Vector3(ld.x1 / 1000, y, -ld.y1 / 1000),
+          new THREE.Vector3(ld.x2 / 1000, y, -ld.y2 / 1000),
+        ];
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(ld.color || '#ffb74d'), linewidth: 2 });
+        this.loadGroup.add(new THREE.Line(geo, mat));
+      } else if (ld.type === 'pointLoad') {
+        const geo = new THREE.SphereGeometry(0.15, 8, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(ld.color || '#ba68c8') });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(ld.x1 / 1000, y, -ld.y1 / 1000);
+        this.loadGroup.add(mesh);
       }
     }
   }

@@ -19,6 +19,7 @@ export class ToolManager {
     this._memberStart = null;
     this._surfaceStart = null;
     this._surfacePolyline = [];
+    this._loadStart = null;
 
     // Select tool drag state
     this._dragTarget = null; // { type: 'node'|'member', id, offsetX?, offsetY? }
@@ -107,7 +108,7 @@ export class ToolManager {
     } else if (tool === 'surface') {
       this._surfaceDown(e);
     } else if (tool === 'load') {
-      // Future feature
+      this._loadDown(e);
     }
   }
 
@@ -131,7 +132,7 @@ export class ToolManager {
     } else if (tool === 'surface') {
       this._surfaceMove(e);
     } else if (tool === 'load') {
-      // Future feature
+      this._loadMove(e);
     }
 
     const world = this._getWorldPos(e);
@@ -166,10 +167,12 @@ export class ToolManager {
     // Esc: cancel or deselect
     if (e.key === 'Escape') {
       if ((this.state.currentTool === 'member' && this._memberStart) ||
-          (this.state.currentTool === 'surface' && (this._surfaceStart || this._surfacePolyline.length))) {
+          (this.state.currentTool === 'surface' && (this._surfaceStart || this._surfacePolyline.length)) ||
+          (this.state.currentTool === 'load' && this._loadStart)) {
         this._memberStart = null;
         this._surfaceStart = null;
         this._surfacePolyline = [];
+        this._loadStart = null;
         this.c.preview = null;
         this.onUpdate();
       } else {
@@ -178,9 +181,14 @@ export class ToolManager {
       }
     }
 
-    // Delete
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (this.state.selectedSurfaceId) {
+    // Delete (skip when focused on input/select)
+    if ((e.key === 'Delete' || e.key === 'Backspace') &&
+        e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') {
+      if (this.state.selectedLoadId) {
+        this.history.save();
+        this.state.removeLoad(this.state.selectedLoadId);
+        this.onUpdate();
+      } else if (this.state.selectedSurfaceId) {
         this.history.save();
         this.state.removeSurface(this.state.selectedSurfaceId);
         this.onUpdate();
@@ -221,11 +229,23 @@ export class ToolManager {
     const world = this._getWorldPos(e);
     const tolerance = 8 / this.c.camera.scale;
 
-    // Surface hit first
+    // Load hit first
+    const load = this.state.findLoadAt(world.x, world.y);
+    if (load) {
+      this.state.selectedLoadId = load.id;
+      this.state.selectedSurfaceId = null;
+      this.state.selectedMemberId = null;
+      this._dragTarget = null;
+      this.onUpdate();
+      return;
+    }
+
+    // Surface hit
     const surface = this.state.findSurfaceAt(world.x, world.y);
     if (surface) {
       this.state.selectedSurfaceId = surface.id;
       this.state.selectedMemberId = null;
+      this.state.selectedLoadId = null;
       this._dragTarget = null;
       this.onUpdate();
       return;
@@ -240,6 +260,7 @@ export class ToolManager {
       if (member) {
         this.state.selectedMemberId = member.id;
         this.state.selectedSurfaceId = null;
+        this.state.selectedLoadId = null;
         this._dragTarget = { type: 'node', id: node.id };
         this._isDragging = false;
         this._dragStartPos = { x: world.x, y: world.y };
@@ -253,6 +274,7 @@ export class ToolManager {
     if (member) {
       this.state.selectedMemberId = member.id;
       this.state.selectedSurfaceId = null;
+      this.state.selectedLoadId = null;
       const n1 = this.state.getNode(member.startNodeId);
       const n2 = this.state.getNode(member.endNodeId);
       this._dragTarget = {
@@ -578,6 +600,69 @@ export class ToolManager {
     this._surfacePolyline = [];
     this._surfaceStart = null;
     this.c.preview = null;
+    this.onUpdate();
+  }
+
+  // --- Load Tool ---
+
+  _loadDown(e) {
+    const snapped = this._getSnappedPos(e);
+    const type = this.state.loadDraftType;
+
+    if (type === 'pointLoad') {
+      this.history.save();
+      const load = this.state.addLoad('pointLoad', {
+        x1: snapped.x, y1: snapped.y,
+        levelId: this.state.activeLayerId || 'L0',
+      });
+      this.state.selectedLoadId = load.id;
+      this.state.selectedMemberId = null;
+      this.state.selectedSurfaceId = null;
+      this.c.preview = null;
+      this.onUpdate();
+      return;
+    }
+
+    // areaLoad / lineLoad: two-click
+    if (!this._loadStart) {
+      this._loadStart = { x: snapped.x, y: snapped.y };
+      return;
+    }
+
+    const start = this._loadStart;
+    const end = snapped;
+
+    if (type === 'areaLoad') {
+      if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
+    } else {
+      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
+    }
+
+    this.history.save();
+    const load = this.state.addLoad(type, {
+      x1: start.x, y1: start.y, x2: end.x, y2: end.y,
+      levelId: this.state.activeLayerId || 'L0',
+    });
+    this.state.selectedLoadId = load.id;
+    this.state.selectedMemberId = null;
+    this.state.selectedSurfaceId = null;
+    this._loadStart = null;
+    this.c.preview = null;
+    this.onUpdate();
+  }
+
+  _loadMove(e) {
+    if (!this._loadStart) return;
+    if (this.state.loadDraftType === 'pointLoad') return;
+
+    const snapped = this._getSnappedPos(e);
+    this.c.preview = {
+      startX: this._loadStart.x,
+      startY: this._loadStart.y,
+      endX: snapped.x,
+      endY: snapped.y,
+      mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
+    };
     this.onUpdate();
   }
 

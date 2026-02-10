@@ -20,23 +20,27 @@ export class AppState {
     this.nodes = [];
     this.members = [];
     this.surfaces = [];
+    this.loads = [];
 
     // Runtime state (not serialized)
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
-    this.currentTool = 'member';
+    this.selectedLoadId = null;
+    this.currentTool = 'select';
     this.activeLayerId = 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';
     this.surfaceDraftTopLayerId = 'L1';
+    this.loadDraftType = 'areaLoad';
 
     // Counters for ID generation
     this._nodeCounter = 0;
     this._memberCounter = 0;
     this._surfaceCounter = 0;
     this._levelCounter = 1;
+    this._loadCounter = 0;
   }
 
   // --- Nodes ---
@@ -303,13 +307,14 @@ export class AppState {
   getLevelUsage(id) {
     const members = this.members.filter(m => m.levelId === id || m.topLevelId === id);
     const surfaces = this.surfaces.filter(s => s.levelId === id || s.topLevelId === id);
-    return { members, surfaces };
+    const loads = this.loads.filter(l => l.levelId === id);
+    return { members, surfaces, loads };
   }
 
   removeLevel(id) {
     if (this.levels.length <= 1) return false;
-    const { members, surfaces } = this.getLevelUsage(id);
-    if (members.length > 0 || surfaces.length > 0) return false;
+    const { members, surfaces, loads } = this.getLevelUsage(id);
+    if (members.length > 0 || surfaces.length > 0 || loads.length > 0) return false;
     this.levels = this.levels.filter(l => l.id !== id);
     if (this.activeLayerId === id) {
       this.activeLayerId = this.levels[0].id;
@@ -320,9 +325,80 @@ export class AppState {
     return true;
   }
 
+  // --- Loads ---
+
+  nextLoadId() {
+    this._loadCounter++;
+    return `LD${this._loadCounter}`;
+  }
+
+  addLoad(type, props = {}) {
+    const id = this.nextLoadId();
+    const base = {
+      id,
+      type,
+      levelId: props.levelId || this.activeLayerId || 'L0',
+    };
+    if (type === 'areaLoad') {
+      Object.assign(base, {
+        x1: Math.min(props.x1, props.x2), y1: Math.min(props.y1, props.y2),
+        x2: Math.max(props.x1, props.x2), y2: Math.max(props.y1, props.y2),
+        value: props.value || 0,
+        color: props.color || '#e57373',
+      });
+    } else if (type === 'lineLoad') {
+      Object.assign(base, {
+        x1: props.x1, y1: props.y1, x2: props.x2, y2: props.y2,
+        value: props.value || 0,
+        color: props.color || '#ffb74d',
+      });
+    } else if (type === 'pointLoad') {
+      Object.assign(base, {
+        x1: props.x1, y1: props.y1,
+        fx: props.fx || 0, fy: props.fy || 0, fz: props.fz || 0,
+        mx: props.mx || 0, my: props.my || 0, mz: props.mz || 0,
+        color: props.color || '#ba68c8',
+      });
+    }
+    this.loads.push(base);
+    return base;
+  }
+
+  getLoad(id) {
+    return this.loads.find(l => l.id === id);
+  }
+
+  updateLoad(id, props) {
+    const load = this.getLoad(id);
+    if (load) Object.assign(load, props);
+    return load;
+  }
+
+  removeLoad(id) {
+    this.loads = this.loads.filter(l => l.id !== id);
+    if (this.selectedLoadId === id) {
+      this.selectedLoadId = null;
+    }
+  }
+
+  findLoadAt(x, y) {
+    for (let i = this.loads.length - 1; i >= 0; i--) {
+      const ld = this.loads[i];
+      if (ld.type === 'areaLoad') {
+        if (x >= ld.x1 && x <= ld.x2 && y >= ld.y1 && y <= ld.y2) return ld;
+      } else if (ld.type === 'lineLoad') {
+        if (pointToSegmentDist(x, y, ld.x1, ld.y1, ld.x2, ld.y2) < 300) return ld;
+      } else if (ld.type === 'pointLoad') {
+        if (Math.hypot(x - ld.x1, y - ld.y1) < 300) return ld;
+      }
+    }
+    return null;
+  }
+
   clearSelection() {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
+    this.selectedLoadId = null;
   }
 
   // --- Serialization ---
@@ -342,6 +418,7 @@ export class AppState {
         ...s,
         points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
       })),
+      loads: this.loads.map(l => ({ ...l })),
     };
   }
 
@@ -369,21 +446,25 @@ export class AppState {
       shape: s.shape || 'rect',
       points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
     }));
+    this.loads = (data.loads || []).map(l => ({ ...l }));
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
-    this.currentTool = 'member';
+    this.selectedLoadId = null;
+    this.currentTool = 'select';
     this.activeLayerId = this.levels[0]?.id || 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';
     this.surfaceDraftTopLayerId = this.levels[1]?.id || this.activeLayerId;
+    this.loadDraftType = 'areaLoad';
 
     // Restore counters
     this._nodeCounter = maxIdNum(this.nodes);
     this._memberCounter = maxIdNum(this.members);
     this._surfaceCounter = maxIdNum(this.surfaces);
     this._levelCounter = maxIdNum(this.levels);
+    this._loadCounter = maxIdNumPrefix(this.loads, 'LD');
   }
 
   // Deep clone for undo/redo snapshots
@@ -413,6 +494,17 @@ function maxIdNum(items) {
   for (const item of items) {
     const n = parseInt(item.id.slice(1), 10);
     if (n > max) max = n;
+  }
+  return max;
+}
+
+function maxIdNumPrefix(items, prefix) {
+  let max = 0;
+  for (const item of items) {
+    if (item.id.startsWith(prefix)) {
+      const n = parseInt(item.id.slice(prefix.length), 10);
+      if (n > max) max = n;
+    }
   }
   return max;
 }

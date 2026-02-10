@@ -15,13 +15,14 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 線材（梁・柱・ブレース）の作成・選択・移動・削除
 - 面材（床 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
 - 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
+- 荷重（面荷重 / 線荷重 / 点荷重）の作成・選択・編集・削除
 - ノード（端点）のドラッグによる形状変更
 - パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
 - 原点と軸方向を左下に常時表示（配置の基準）
 - レイヤー（Zレベル）管理: 名前・高さの編集、追加・削除（z値ソート表示、重複禁止、使用中レイヤー削除不可）
-- ツール選択コンボボックスで選択 / 線材 / 面材 / 荷重を切替
-- プロパティパネルで線材/面材属性を編集（種別・断面寸法・レイヤー・色・荷重方向）
+- ツール選択コンボボックスで要素 / 線材 / 面材 / 荷重を切替
+- プロパティパネルで線材/面材/荷重属性を編集（種別・断面寸法・レイヤー・座標・荷重値・色）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
 - 壁要素は梁線と重なりにくいよう平面上でオフセット表示
 - Undo / Redo
@@ -29,6 +30,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 ### 3D Viewer
 - 線材を断面寸法（b x h）を反映した直方体として3D表示
 - 面材（床スラブを水平面、壁を鉛直面）として3D表示
+- 荷重（面荷重=赤スラブ、線荷重=オレンジ線、点荷重=紫球体）を3D表示
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
 
@@ -49,12 +51,13 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 | Key | Action |
 |-----|--------|
-| `V` | Select tool |
-| `M` | Line tool (線材) |
-| `F` | Surface tool (面材) |
+| `V` | Element tool - 要素（選択・編集・削除） |
+| `M` | Line tool - 線材 |
+| `F` | Surface tool - 面材 |
+| `L` | Load tool - 荷重 |
 | `Enter` (Surface Polyline) | Close polyline to polygon |
 | `Esc` | Cancel / Deselect / Close modal |
-| `Delete` | Delete selected line/surface |
+| `Delete` | Delete selected element |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Right Drag` / `Middle Drag` / `Space + Drag` | Pan |
@@ -79,11 +82,11 @@ Frame2D-CAD/
 ├── THIRD_PARTY_LICENSES.md  # Third-party license details
 ├── js/
 │   ├── app.js          # App init / Module wiring / Theme / Lang / Help
-│   ├── state.js        # Data model (nodes, members, surfaces, layers) / CRUD / JSON serialization
+│   ├── state.js        # Data model (nodes, members, surfaces, loads, layers) / CRUD / JSON serialization
 │   ├── history.js      # Undo/Redo (snapshot, max 50)
 │   ├── grid.js         # Grid drawing / Snap calculation
 │   ├── canvas2d.js     # 2D canvas (pan/zoom camera, rendering)
-│   ├── tools.js        # Select / Member tools / Keyboard shortcuts
+│   ├── tools.js        # Select / Member / Surface / Load tools / Keyboard shortcuts
 │   ├── viewer3d.js     # 3D scene (three.js, BoxGeometry, OrbitControls)
 │   ├── ui.js           # Toolbar / Property panel / Status bar / i18n apply
 │   ├── io.js           # JSON export/import
@@ -104,7 +107,7 @@ app.js ─┬─ state.js      Data model (AppState)
         └─ i18n.js                   Language dictionary
 ```
 
-- **state.js** がノード・線材・面材・レベルなど全データを保持する中心モジュール
+- **state.js** がノード・線材・面材・荷重・レベルなど全データを保持する中心モジュール
 - **canvas2d.js** は Canvas 2D API による描画のみを担当し、入力処理は **tools.js** に委譲
 - **viewer3d.js** は2Dデータを mm→m 変換して three.js シーンに描画
 - **i18n.js** が全UIテキストの日本語/英語辞書を管理し、`t(key)` で取得
@@ -178,6 +181,33 @@ app.js ─┬─ state.js      Data model (AppState)
         { "x": 6000, "y": 5000 },
         { "x": 0, "y": 5000 }
       ]
+    }
+  ],
+  "loads": [
+    {
+      "id": "LD1",
+      "type": "areaLoad",
+      "levelId": "L1",
+      "x1": 0, "y1": 0, "x2": 5000, "y2": 4000,
+      "value": 3000,
+      "color": "#e57373"
+    },
+    {
+      "id": "LD2",
+      "type": "lineLoad",
+      "levelId": "L0",
+      "x1": 0, "y1": 0, "x2": 5000, "y2": 0,
+      "value": 1500,
+      "color": "#ffb74d"
+    },
+    {
+      "id": "LD3",
+      "type": "pointLoad",
+      "levelId": "L0",
+      "x1": 2500, "y1": 2000,
+      "fx": 0, "fy": 0, "fz": -10000,
+      "mx": 0, "my": 0, "mz": 0,
+      "color": "#ba68c8"
     }
   ]
 }

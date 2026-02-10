@@ -89,6 +89,7 @@ export class Canvas2D {
     drawGrid(ctx, this.camera, this.state.settings.gridSize, w, h);
 
     this._drawSurfaces(ctx, selectedColor);
+    this._drawLoads(ctx, selectedColor);
 
     // Members
     for (const m of this.state.members) {
@@ -324,6 +325,152 @@ export class Canvas2D {
     ctx.closePath();
     ctx.stroke();
 
+    ctx.restore();
+  }
+
+  _drawLoads(ctx, selectedColor) {
+    for (const ld of this.state.loads) {
+      const isSelected = ld.id === this.state.selectedLoadId;
+      if (ld.type === 'areaLoad') {
+        this._drawAreaLoad(ctx, ld, isSelected, selectedColor);
+      } else if (ld.type === 'lineLoad') {
+        this._drawLineLoad(ctx, ld, isSelected, selectedColor);
+      } else if (ld.type === 'pointLoad') {
+        this._drawPointLoad(ctx, ld, isSelected, selectedColor);
+      }
+    }
+  }
+
+  _drawAreaLoad(ctx, ld, isSelected, selectedColor) {
+    const p1 = this.worldToScreen(ld.x1, ld.y1);
+    const p2 = this.worldToScreen(ld.x2, ld.y2);
+    const x = Math.min(p1.x, p2.x), y = Math.min(p1.y, p2.y);
+    const w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
+    const color = isSelected ? selectedColor : (ld.color || '#e57373');
+
+    ctx.save();
+    ctx.fillStyle = toRgba(color, 0.18);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.fill();
+    ctx.stroke();
+
+    // Down arrow at center
+    if (w > 20 && h > 20) {
+      const cx = x + w / 2, cy = y + h / 2;
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 10);
+      ctx.lineTo(cx, cy + 10);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 10);
+      ctx.lineTo(cx - 4, cy + 4);
+      ctx.lineTo(cx + 4, cy + 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Value text
+    if (ld.value !== 0 && w > 30) {
+      ctx.fillStyle = color;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${ld.value} N/m²`, x + w / 2, y + h / 2 + 22);
+    }
+    ctx.restore();
+  }
+
+  _drawLineLoad(ctx, ld, isSelected, selectedColor) {
+    const p1 = this.worldToScreen(ld.x1, ld.y1);
+    const p2 = this.worldToScreen(ld.x2, ld.y2);
+    const color = isSelected ? selectedColor : (ld.color || '#ffb74d');
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 4 : 3;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+
+    // Distributed arrows along the line
+    if (len > 20) {
+      const count = Math.max(2, Math.floor(len / 30));
+      ctx.fillStyle = color;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= count; i++) {
+        const t = i / count;
+        const ax = p1.x + (p2.x - p1.x) * t;
+        const ay = p1.y + (p2.y - p1.y) * t;
+        // Small down arrow
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax, ay + 8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax, ay + 8);
+        ctx.lineTo(ax - 3, ay + 4);
+        ctx.lineTo(ax + 3, ay + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Value text at midpoint
+    if (ld.value !== 0 && len > 30) {
+      ctx.fillStyle = color;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${ld.value} N/m`, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2 + 20);
+    }
+    ctx.restore();
+  }
+
+  _drawPointLoad(ctx, ld, isSelected, selectedColor) {
+    const p = this.worldToScreen(ld.x1, ld.y1);
+    const color = isSelected ? selectedColor : (ld.color || '#ba68c8');
+    const r = 8;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+
+    // Cross mark
+    ctx.beginPath();
+    ctx.moveTo(p.x - r, p.y);
+    ctx.lineTo(p.x + r, p.y);
+    ctx.moveTo(p.x, p.y - r);
+    ctx.lineTo(p.x, p.y + r);
+    ctx.stroke();
+
+    // Circle
+    ctx.fillStyle = toRgba(color, 0.3);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Force arrow if fz != 0 (down arrow for positive)
+    if (ld.fz !== 0) {
+      const dir = ld.fz > 0 ? 1 : -1;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + dir * (r + 2));
+      ctx.lineTo(p.x, p.y + dir * (r + 14));
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y + dir * (r + 14));
+      ctx.lineTo(p.x - 4, p.y + dir * (r + 8));
+      ctx.lineTo(p.x + 4, p.y + dir * (r + 8));
+      ctx.closePath();
+      ctx.fill();
+    }
     ctx.restore();
   }
 

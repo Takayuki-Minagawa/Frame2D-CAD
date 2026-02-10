@@ -5,6 +5,7 @@ const dict = {
     // Toolbar
     tools: 'ツール',
     select: '選択',
+    selectTool: '要素',
     member: '線材',
     surface: '面材',
     load: '荷重',
@@ -47,7 +48,7 @@ const dict = {
     // Status bar
     snapOn: 'スナップ: ON',
     snapOff: 'スナップ: OFF',
-    toolSelect: 'ツール: 選択',
+    toolSelect: 'ツール: 要素',
     toolMember: 'ツール: 線材',
     toolSurface: 'ツール: 面材',
     toolLoad: 'ツール: 荷重',
@@ -79,6 +80,15 @@ const dict = {
     rc: 'RC',
     wood: '木造',
 
+    // Load types
+    draftLoadType: '荷重種別',
+    areaLoad: '面荷重',
+    lineLoad: '線荷重',
+    pointLoad: '点荷重',
+    loadValue: '荷重値',
+    loadUnit_area: 'N/m²',
+    loadUnit_line: 'N/m',
+
     // Import error
     importFailed: '読込失敗: ',
 
@@ -90,9 +100,10 @@ const dict = {
 <table>
   <tr><td><b>線材作成</b></td><td>「線材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
   <tr><td><b>面材作成</b></td><td>「面材」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
-  <tr><td><b>選択</b></td><td>「選択」ツール(Vキー)で線材またはノードをクリック</td></tr>
+  <tr><td><b>荷重作成</b></td><td>「荷重」ツール(Lキー)。面荷重は矩形2点、線荷重は線分2点、点荷重は1点クリック</td></tr>
+  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重をクリック</td></tr>
   <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ</td></tr>
-  <tr><td><b>削除</b></td><td>線材または面材を選択してDeleteキー</td></tr>
+  <tr><td><b>削除</b></td><td>要素を選択してDeleteキー</td></tr>
 </table>
 
 <h3>画面操作</h3>
@@ -105,25 +116,24 @@ const dict = {
 
 <h3>キーボードショートカット</h3>
 <table>
-  <tr><td><kbd>V</kbd></td><td>選択ツール</td></tr>
+  <tr><td><kbd>V</kbd></td><td>要素ツール（選択・編集・削除）</td></tr>
   <tr><td><kbd>M</kbd></td><td>線材ツール</td></tr>
   <tr><td><kbd>F</kbd></td><td>面材ツール</td></tr>
+  <tr><td><kbd>L</kbd></td><td>荷重ツール</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>面材ポリラインを閉じて確定</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除 / モーダルを閉じる</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>選択線材/面材を削除</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>選択要素を削除</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>元に戻す</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>やり直し</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>角度制限（0/45/90°）</td></tr>
 </table>
 
 <h3>プロパティパネル</h3>
-<p>線材/面材を選択すると右パネルで以下を編集できます:</p>
+<p>要素を選択すると右パネルで以下を編集できます:</p>
 <ul>
-  <li><b>種別</b> - 梁 / 柱 / 水平ブレース / 垂直ブレース</li>
-  <li><b>断面寸法</b> - 幅b, 高さh (mm)</li>
-  <li><b>レイヤー</b> - GL/NFLなどの高さ管理 (z値)</li>
-  <li><b>材料</b> - 鉄骨 / RC / 木造</li>
-  <li><b>色</b> - 表示色</li>
+  <li><b>線材</b> - 種別 / 断面(b,h) / レイヤー / 材料 / 色</li>
+  <li><b>面材</b> - 種別 / レイヤー / 荷重方向 / 色</li>
+  <li><b>荷重</b> - 種別 / 座標 / 荷重値(面・線) / 力・モーメント(点) / 色</li>
 </ul>
 <p>床スラブは荷重方向（X/Y/2方向）を矢印で表示します。壁要素は平面上で少しオフセットして表示します。</p>
 
@@ -153,6 +163,7 @@ const dict = {
     // Toolbar
     tools: 'Tools',
     select: 'Select',
+    selectTool: 'Element',
     member: 'Line',
     surface: 'Surface',
     load: 'Load',
@@ -195,7 +206,7 @@ const dict = {
     // Status bar
     snapOn: 'Snap: ON',
     snapOff: 'Snap: OFF',
-    toolSelect: 'Tool: Select',
+    toolSelect: 'Tool: Element',
     toolMember: 'Tool: Line',
     toolSurface: 'Tool: Surface',
     toolLoad: 'Tool: Load',
@@ -227,6 +238,15 @@ const dict = {
     rc: 'RC',
     wood: 'Wood',
 
+    // Load types
+    draftLoadType: 'Load Type',
+    areaLoad: 'Area Load',
+    lineLoad: 'Line Load',
+    pointLoad: 'Point Load',
+    loadValue: 'Load Value',
+    loadUnit_area: 'N/m²',
+    loadUnit_line: 'N/m',
+
     // Import error
     importFailed: 'Import failed: ',
 
@@ -238,9 +258,10 @@ const dict = {
 <table>
   <tr><td><b>Create line</b></td><td>Select "Line" tool (M key), click start point → click end point</td></tr>
   <tr><td><b>Create surface</b></td><td>Use "Surface" (F). Rectangle: 2 diagonal points. Polyline: click points, then click first point or Enter to close</td></tr>
-  <tr><td><b>Select</b></td><td>Use "Select" tool (V key), click a line element or node</td></tr>
+  <tr><td><b>Create load</b></td><td>Use "Load" (L). Area load: 2-point rectangle. Line load: 2-point line. Point load: single click</td></tr>
+  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load element</td></tr>
   <tr><td><b>Move</b></td><td>After selecting, drag a node or line element</td></tr>
-  <tr><td><b>Delete</b></td><td>Select a line element or surface and press Delete key</td></tr>
+  <tr><td><b>Delete</b></td><td>Select an element and press Delete key</td></tr>
 </table>
 
 <h3>View Controls</h3>
@@ -253,25 +274,24 @@ const dict = {
 
 <h3>Keyboard Shortcuts</h3>
 <table>
-  <tr><td><kbd>V</kbd></td><td>Select tool</td></tr>
+  <tr><td><kbd>V</kbd></td><td>Element tool (select / edit / delete)</td></tr>
   <tr><td><kbd>M</kbd></td><td>Line tool</td></tr>
   <tr><td><kbd>F</kbd></td><td>Surface tool</td></tr>
+  <tr><td><kbd>L</kbd></td><td>Load tool</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>Close and confirm surface polyline</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect / Close modal</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>Delete selected line/surface</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>Delete selected element</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>Redo</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>Angle constraint (0/45/90°)</td></tr>
 </table>
 
 <h3>Property Panel</h3>
-<p>Select a line element/surface to edit in the right panel:</p>
+<p>Select an element to edit in the right panel:</p>
 <ul>
-  <li><b>Type</b> - Beam / Column / Horizontal Brace / Vertical Brace</li>
-  <li><b>Section</b> - Width b, Height h (mm)</li>
-  <li><b>Layer</b> - Z-level by name and elevation (GL/NFL etc.)</li>
-  <li><b>Material</b> - Steel / RC / Wood</li>
-  <li><b>Color</b> - Display color</li>
+  <li><b>Line</b> - Type / Section (b,h) / Layer / Material / Color</li>
+  <li><b>Surface</b> - Type / Layer / Load direction / Color</li>
+  <li><b>Load</b> - Type / Coordinates / Value (area/line) / Force &amp; Moment (point) / Color</li>
 </ul>
 <p>Floor slabs can show load direction arrows (X/Y/Two-way). Wall surfaces are shown with a slight visual offset in plan.</p>
 
