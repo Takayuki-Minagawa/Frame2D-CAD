@@ -97,6 +97,22 @@ body {
   text-align: left;
   font-size: 13px;
 }
+
+.toolbar-sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+#toolbar-quick {
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+#toolbar-quick h2 {
+  margin-bottom: 6px;
+}
 .tool-btn:hover, #btn-export:hover, #btn-import-trigger:hover,
 #btn-theme:hover, #btn-lang:hover, #btn-help:hover {
   background: rgba(137, 180, 250, 0.1);

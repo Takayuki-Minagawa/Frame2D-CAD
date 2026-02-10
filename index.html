@@ -3,21 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>LineFrame CAD - Ver.Beta01</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260210-1">
 </head>
 <body>
   <!-- Left Toolbar -->
   <aside id="toolbar">
-    <h2 data-i18n="tools">ツール</h2>
+    <div id="toolbar-quick" class="toolbar-sticky-top">
+      <h2 data-i18n="tools">ツール</h2>
+      <button id="btn-help">&#10067; <span data-i18n="help">ヘルプ</span></button>
+      <button id="btn-theme">&#9790; <span data-i18n="themeDark">ダーク</span></button>
+      <button id="btn-lang">&#127760; <span data-i18n="lang">EN</span></button>
+      <label class="grid-label">
+        <span data-i18n="activeLayer">レイヤー</span>
+        <select id="sel-active-layer"></select>
+      </label>
+      <hr>
+    </div>
     <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; <span data-i18n="select">選択</span></button>
     <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; <span data-i18n="member">部材</span></button>
     <button id="btn-surface" class="tool-btn" data-tool="surface" title="Surface (F)">&#9635; <span data-i18n="surface">面</span></button>
-    <label class="grid-label">
-      <span data-i18n="activeLayer">レイヤー</span>
-      <select id="sel-active-layer"></select>
-    </label>
     <label class="grid-label">
       <span data-i18n="draftMemberType">部材種別</span>
       <select id="sel-member-type">
@@ -70,10 +79,6 @@
     <button id="btn-export" title="Export JSON">&#128190; <span data-i18n="export">保存</span></button>
     <button id="btn-import-trigger" title="Import JSON">&#128194; <span data-i18n="import">読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
-    <hr>
-    <button id="btn-theme">&#9790; <span data-i18n="themeDark">ダーク</span></button>
-    <button id="btn-lang">&#127760; <span data-i18n="lang">EN</span></button>
-    <button id="btn-help">&#10067; <span data-i18n="help">ヘルプ</span></button>
   </aside>
 
   <!-- Main Area -->
@@ -127,6 +132,6 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=20260210-1"></script>
 </body>
 </html>
