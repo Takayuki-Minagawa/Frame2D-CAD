@@ -5,17 +5,19 @@ const dict = {
     // Toolbar
     tools: 'ツール',
     select: '選択',
-    member: '部材',
-    surface: '面',
+    member: '線材',
+    surface: '面材',
+    load: '荷重',
+    toolLabel: '選択',
     snap: 'スナップ',
     grid: 'グリッド',
     activeLayer: 'レイヤー',
-    draftMemberType: '部材種別',
-    draftSurfaceType: '面種別',
-    surfaceMode: '配置方法',
+    draftMemberType: '線材種別',
+    draftSurfaceType: '面材種別',
+    surfaceMode: '形状',
     rectMode: '矩形',
     polylineMode: 'ポリライン',
-    loadDirection: '荷重方向',
+    loadDirection: '支持方向',
     topLayer: '上端レイヤー',
     export: '保存',
     import: '読込',
@@ -32,9 +34,10 @@ const dict = {
     layerZ: '高さ (mm)',
     layerAdd: '追加',
     layerDelete: '削除',
-    layerInUse: 'このレイヤーは使用中です（部材: {m}、面: {s}）。先に要素を削除またはレイヤー変更してください。',
+    layerInUse: 'このレイヤーは使用中です（線材: {m}、面材: {s}）。先に要素を削除またはレイヤー変更してください。',
     layerCannotDeleteLast: '最低1つのレイヤーが必要です。',
     layerDuplicateZ: 'この高さ(z値)は既に使用されています。',
+    noLevelAbove: '現在のレイヤーより上にレイヤーがありません。レイヤー管理で追加してください。',
 
     // Tabs
     tab2d: '2D CAD',
@@ -44,8 +47,9 @@ const dict = {
     snapOn: 'スナップ: ON',
     snapOff: 'スナップ: OFF',
     toolSelect: 'ツール: 選択',
-    toolMember: 'ツール: 部材',
-    toolSurface: 'ツール: 面',
+    toolMember: 'ツール: 線材',
+    toolSurface: 'ツール: 面材',
+    toolLoad: 'ツール: 荷重',
 
     // Property panel
     properties: 'プロパティ',
@@ -67,6 +71,7 @@ const dict = {
     vbrace: '垂直ブレース',
     brace: 'ブレース',
     floor: '床',
+    exteriorWall: '外壁',
     wall: '壁',
     twoWay: '2方向',
     steel: '鉄骨',
@@ -82,11 +87,11 @@ const dict = {
     helpContent: `
 <h3>基本操作</h3>
 <table>
-  <tr><td><b>部材作成</b></td><td>「部材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
-  <tr><td><b>面作成</b></td><td>「面」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
-  <tr><td><b>選択</b></td><td>「選択」ツール(Vキー)で部材またはノードをクリック</td></tr>
-  <tr><td><b>移動</b></td><td>選択後、ノードまたは部材をドラッグ</td></tr>
-  <tr><td><b>削除</b></td><td>部材または面を選択してDeleteキー</td></tr>
+  <tr><td><b>線材作成</b></td><td>「線材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
+  <tr><td><b>面材作成</b></td><td>「面材」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
+  <tr><td><b>選択</b></td><td>「選択」ツール(Vキー)で線材またはノードをクリック</td></tr>
+  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ</td></tr>
+  <tr><td><b>削除</b></td><td>線材または面材を選択してDeleteキー</td></tr>
 </table>
 
 <h3>画面操作</h3>
@@ -100,18 +105,18 @@ const dict = {
 <h3>キーボードショートカット</h3>
 <table>
   <tr><td><kbd>V</kbd></td><td>選択ツール</td></tr>
-  <tr><td><kbd>M</kbd></td><td>部材ツール</td></tr>
-  <tr><td><kbd>F</kbd></td><td>面ツール</td></tr>
-  <tr><td><kbd>Enter</kbd></td><td>面ポリラインを閉じて確定</td></tr>
+  <tr><td><kbd>M</kbd></td><td>線材ツール</td></tr>
+  <tr><td><kbd>F</kbd></td><td>面材ツール</td></tr>
+  <tr><td><kbd>Enter</kbd></td><td>面材ポリラインを閉じて確定</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除 / モーダルを閉じる</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>選択部材/面を削除</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>選択線材/面材を削除</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>元に戻す</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>やり直し</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>角度制限（0/45/90°）</td></tr>
 </table>
 
 <h3>プロパティパネル</h3>
-<p>部材/面を選択すると右パネルで以下を編集できます:</p>
+<p>線材/面材を選択すると右パネルで以下を編集できます:</p>
 <ul>
   <li><b>種別</b> - 梁 / 柱 / 水平ブレース / 垂直ブレース</li>
   <li><b>断面寸法</b> - 幅b, 高さh (mm)</li>
@@ -147,17 +152,19 @@ const dict = {
     // Toolbar
     tools: 'Tools',
     select: 'Select',
-    member: 'Member',
+    member: 'Line',
     surface: 'Surface',
+    load: 'Load',
+    toolLabel: 'Selection',
     snap: 'Snap',
     grid: 'Grid',
     activeLayer: 'Layer',
-    draftMemberType: 'Member Type',
+    draftMemberType: 'Line Type',
     draftSurfaceType: 'Surface Type',
-    surfaceMode: 'Placement',
+    surfaceMode: 'Shape',
     rectMode: 'Rectangle',
     polylineMode: 'Polyline',
-    loadDirection: 'Load Dir',
+    loadDirection: 'Support Dir',
     topLayer: 'Top Layer',
     export: 'Export',
     import: 'Import',
@@ -174,9 +181,10 @@ const dict = {
     layerZ: 'Height (mm)',
     layerAdd: 'Add',
     layerDelete: 'Delete',
-    layerInUse: 'This layer is in use (members: {m}, surfaces: {s}). Remove or reassign them first.',
+    layerInUse: 'This layer is in use (lines: {m}, surfaces: {s}). Remove or reassign them first.',
     layerCannotDeleteLast: 'At least one layer is required.',
     layerDuplicateZ: 'This height (z value) is already in use.',
+    noLevelAbove: 'No layer above the current layer. Please add one in Layer Management.',
 
     // Tabs
     tab2d: '2D CAD',
@@ -186,8 +194,9 @@ const dict = {
     snapOn: 'Snap: ON',
     snapOff: 'Snap: OFF',
     toolSelect: 'Tool: Select',
-    toolMember: 'Tool: Member',
+    toolMember: 'Tool: Line',
     toolSurface: 'Tool: Surface',
+    toolLoad: 'Tool: Load',
 
     // Property panel
     properties: 'Properties',
@@ -209,6 +218,7 @@ const dict = {
     vbrace: 'Vertical Brace',
     brace: 'Brace',
     floor: 'Floor',
+    exteriorWall: 'Exterior Wall',
     wall: 'Wall',
     twoWay: 'Two-way',
     steel: 'Steel',
@@ -224,11 +234,11 @@ const dict = {
     helpContent: `
 <h3>Basic Operations</h3>
 <table>
-  <tr><td><b>Create member</b></td><td>Select "Member" tool (M key), click start point → click end point</td></tr>
+  <tr><td><b>Create line</b></td><td>Select "Line" tool (M key), click start point → click end point</td></tr>
   <tr><td><b>Create surface</b></td><td>Use "Surface" (F). Rectangle: 2 diagonal points. Polyline: click points, then click first point or Enter to close</td></tr>
-  <tr><td><b>Select</b></td><td>Use "Select" tool (V key), click a member or node</td></tr>
-  <tr><td><b>Move</b></td><td>After selecting, drag a node or member</td></tr>
-  <tr><td><b>Delete</b></td><td>Select a member or surface and press Delete key</td></tr>
+  <tr><td><b>Select</b></td><td>Use "Select" tool (V key), click a line element or node</td></tr>
+  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element</td></tr>
+  <tr><td><b>Delete</b></td><td>Select a line element or surface and press Delete key</td></tr>
 </table>
 
 <h3>View Controls</h3>
@@ -242,18 +252,18 @@ const dict = {
 <h3>Keyboard Shortcuts</h3>
 <table>
   <tr><td><kbd>V</kbd></td><td>Select tool</td></tr>
-  <tr><td><kbd>M</kbd></td><td>Member tool</td></tr>
+  <tr><td><kbd>M</kbd></td><td>Line tool</td></tr>
   <tr><td><kbd>F</kbd></td><td>Surface tool</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>Close and confirm surface polyline</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect / Close modal</td></tr>
-  <tr><td><kbd>Delete</kbd></td><td>Delete selected member/surface</td></tr>
+  <tr><td><kbd>Delete</kbd></td><td>Delete selected line/surface</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>Redo</td></tr>
   <tr><td><kbd>Shift</kbd></td><td>Angle constraint (0/45/90°)</td></tr>
 </table>
 
 <h3>Property Panel</h3>
-<p>Select a member/surface to edit in the right panel:</p>
+<p>Select a line element/surface to edit in the right panel:</p>
 <ul>
   <li><b>Type</b> - Beam / Column / Horizontal Brace / Vertical Brace</li>
   <li><b>Section</b> - Width b, Height h (mm)</li>

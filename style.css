@@ -85,7 +85,7 @@ body {
   margin: 4px 0;
 }
 
-.tool-btn, #btn-export, #btn-import-trigger, #btn-settings {
+#btn-export, #btn-import-trigger, #btn-settings {
   display: block;
   width: 100%;
   padding: 7px 10px;
@@ -113,22 +113,22 @@ body {
 #toolbar-quick h2 {
   margin-bottom: 6px;
 }
-.tool-btn:hover, #btn-export:hover, #btn-import-trigger:hover,
+#btn-export:hover, #btn-import-trigger:hover,
 #btn-settings:hover {
   background: rgba(137, 180, 250, 0.1);
 }
-[data-theme="light"] .tool-btn:hover,
 [data-theme="light"] #btn-export:hover,
 [data-theme="light"] #btn-import-trigger:hover,
 [data-theme="light"] #btn-settings:hover {
   background: rgba(37, 99, 235, 0.08);
 }
-.tool-btn.active {
-  background: rgba(137, 180, 250, 0.2);
-  border-color: var(--accent);
+
+/* Tool sub-options: hidden by default, shown when relevant tool is active */
+.tool-opts {
+  display: none;
 }
-[data-theme="light"] .tool-btn.active {
-  background: rgba(37, 99, 235, 0.12);
+.tool-opts.visible {
+  display: block;
 }
 
 .toggle-label, .grid-label {

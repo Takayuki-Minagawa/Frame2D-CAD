@@ -104,6 +104,11 @@ export class Viewer3D {
         continue;
       }
 
+      if (s.shape === 'line') {
+        this._addWallLine3D(s, base, top);
+        continue;
+      }
+
       const xSize = Math.max(1, (s.x2 - s.x1) / 1000);
       const zSize = Math.max(1, (s.y2 - s.y1) / 1000);
       const cx = (s.x1 + s.x2) / 2000;
@@ -113,7 +118,8 @@ export class Viewer3D {
       let ySize;
       let matColor = s.color || '#67a9cf';
 
-      if (s.type === 'wall') {
+      const isWallType = s.type === 'wall' || s.type === 'exteriorWall';
+      if (isWallType) {
         ySize = Math.max(0.1, Math.abs(top - base) / 1000);
         yCenter = (Math.min(base, top) / 1000) + ySize / 2;
         matColor = s.color || '#b57a6b';
@@ -126,7 +132,7 @@ export class Viewer3D {
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(matColor),
         transparent: true,
-        opacity: s.type === 'wall' ? 0.35 : 0.45,
+        opacity: isWallType ? 0.35 : 0.45,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(cx, yCenter, cz);
@@ -142,8 +148,15 @@ export class Viewer3D {
     // Members
     for (const m of this.state.members) {
       const n1 = this.state.getNode(m.startNodeId);
+      if (!n1) continue;
+
+      if (m.type === 'column') {
+        this._addColumn3D(m, n1);
+        continue;
+      }
+
       const n2 = this.state.getNode(m.endNodeId);
-      if (!n1 || !n2) continue;
+      if (!n2) continue;
 
       const level = this.state.levels.find(l => l.id === m.levelId);
       const y = (level ? level.z : 0) / 1000;
@@ -205,12 +218,81 @@ export class Viewer3D {
     }
   }
 
+  _addWallLine3D(surface, base, top) {
+    const height = Math.max(0.1, Math.abs(top - base) / 1000);
+    const yBase = Math.min(base, top) / 1000;
+
+    const start = new THREE.Vector3(surface.x1 / 1000, 0, -surface.y1 / 1000);
+    const end = new THREE.Vector3(surface.x2 / 1000, 0, -surface.y2 / 1000);
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    if (length < 0.001) return;
+
+    const thickness = 0.05;
+    const geometry = new THREE.BoxGeometry(length, height, thickness);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(surface.color || '#b57a6b'),
+      transparent: true,
+      opacity: 0.35,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+
+    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    mid.y = yBase + height / 2;
+    mesh.position.copy(mid);
+
+    const angle = Math.atan2(direction.z, direction.x);
+    mesh.rotation.y = -angle;
+
+    this.surfaceGroup.add(mesh);
+
+    const edges = new THREE.EdgesGeometry(geometry);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+    const lineSegments = new THREE.LineSegments(edges, lineMat);
+    lineSegments.position.copy(mesh.position);
+    lineSegments.rotation.copy(mesh.rotation);
+    this.surfaceGroup.add(lineSegments);
+  }
+
+  _addColumn3D(member, node) {
+    const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
+    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
+    if (!bottomLevel || !topLevel) return;
+
+    const bottomZ = bottomLevel.z / 1000;
+    const topZ = topLevel.z / 1000;
+    const height = Math.abs(topZ - bottomZ);
+    if (height < 0.001) return;
+
+    const b = (member.section?.b || 200) / 1000;
+    const h = (member.section?.h || 200) / 1000;
+
+    const geometry = new THREE.BoxGeometry(b, height, h);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(member.color || '#666666'),
+      wireframe: this.showWireframe,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    const midY = (bottomZ + topZ) / 2;
+    mesh.position.set(node.x / 1000, midY, -node.y / 1000);
+    this.memberGroup.add(mesh);
+
+    if (!this.showWireframe) {
+      const edges = new THREE.EdgesGeometry(geometry);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+      const lineSegments = new THREE.LineSegments(edges, lineMat);
+      lineSegments.position.copy(mesh.position);
+      this.memberGroup.add(lineSegments);
+    }
+  }
+
   _addPolygonSurface3D(surface, base, top) {
     const points = surface.points.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
     const shape = new THREE.Shape(points);
-    const color = new THREE.Color(surface.color || (surface.type === 'wall' ? '#b57a6b' : '#67a9cf'));
+    const isWallType = surface.type === 'wall' || surface.type === 'exteriorWall';
+    const color = new THREE.Color(surface.color || (isWallType ? '#b57a6b' : '#67a9cf'));
 
-    if (surface.type === 'wall') {
+    if (isWallType) {
       const height = Math.max(0.1, Math.abs(top - base) / 1000);
       const yBase = Math.min(base, top) / 1000;
       const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });

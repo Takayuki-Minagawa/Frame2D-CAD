@@ -1,7 +1,7 @@
 # LineFrame CAD (Ver.Beta01)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
-建築の柱・梁・ブレースなどの線材（部材）に加えて、床・壁の面要素を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
+建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
 
 **GitHub Pages** でそのまま動作します（バックエンド不要）。
 
@@ -12,22 +12,23 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 ## Features
 
 ### 2D CAD
-- 部材（線分）の作成・選択・移動・削除
-- 面要素（床 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
+- 線材（梁・柱・ブレース）の作成・選択・移動・削除
+- 面材（床 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
 - 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
 - ノード（端点）のドラッグによる形状変更
 - パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
-- 原点と軸方向を左下に常時表示（部材配置の基準）
+- 原点と軸方向を左下に常時表示（配置の基準）
 - レイヤー（Zレベル）管理: 名前・高さの編集、追加・削除（z値ソート表示、重複禁止、使用中レイヤー削除不可）
-- プロパティパネルで部材/面属性を編集（種別・断面寸法・レイヤー・色・荷重方向）
+- ツール選択コンボボックスで選択 / 線材 / 面材 / 荷重を切替
+- プロパティパネルで線材/面材属性を編集（種別・断面寸法・レイヤー・色・荷重方向）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
 - 壁要素は梁線と重なりにくいよう平面上でオフセット表示
 - Undo / Redo
 
 ### 3D Viewer
-- 部材を断面寸法（b x h）を反映した直方体として3D表示
-- 床スラブを水平面、壁要素を鉛直面として3D表示
+- 線材を断面寸法（b x h）を反映した直方体として3D表示
+- 面材（床スラブを水平面、壁を鉛直面）として3D表示
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
 
@@ -49,15 +50,15 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 | Key | Action |
 |-----|--------|
 | `V` | Select tool |
-| `M` | Member tool |
-| `F` | Surface tool |
+| `M` | Line tool (線材) |
+| `F` | Surface tool (面材) |
 | `Enter` (Surface Polyline) | Close polyline to polygon |
 | `Esc` | Cancel / Deselect / Close modal |
-| `Delete` | Delete selected member/surface |
+| `Delete` | Delete selected line/surface |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Right Drag` / `Middle Drag` / `Space + Drag` | Pan |
-| `Shift` (Member tool) | Angle constraint (0/45/90) |
+| `Shift` (Line tool) | Angle constraint (0/45/90) |
 
 ## Tech Stack
 
@@ -103,7 +104,7 @@ app.js ─┬─ state.js      Data model (AppState)
         └─ i18n.js                   Language dictionary
 ```
 
-- **state.js** がノード・部材・レベルなど全データを保持する中心モジュール
+- **state.js** がノード・線材・面材・レベルなど全データを保持する中心モジュール
 - **canvas2d.js** は Canvas 2D API による描画のみを担当し、入力処理は **tools.js** に委譲
 - **viewer3d.js** は2Dデータを mm→m 変換して three.js シーンに描画
 - **i18n.js** が全UIテキストの日本語/英語辞書を管理し、`t(key)` で取得

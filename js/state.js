@@ -24,7 +24,7 @@ export class AppState {
     // Runtime state (not serialized)
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
-    this.currentTool = 'select';
+    this.currentTool = 'member';
     this.activeLayerId = 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';
@@ -98,6 +98,7 @@ export class AppState {
       levelId: options.levelId || this.activeLayerId || 'L0',
       material: options.material || 'steel',
       color: options.color || '#666666',
+      topLevelId: options.topLevelId || null,
     };
     this.members.push(member);
     return member;
@@ -165,17 +166,34 @@ export class AppState {
     const id = this.nextSurfaceId();
     const surface = {
       id,
-      type: options.type || 'floor', // floor | wall
+      type: options.type || 'floor', // floor | wall | exteriorWall
       levelId: options.levelId || this.activeLayerId || 'L0',
       topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
       loadDirection: options.loadDirection || 'twoWay', // x | y | twoWay
-      color: options.color || (options.type === 'wall' ? '#b57a6b' : '#67a9cf'),
+      color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
       x1: Math.min(x1, x2),
       y1: Math.min(y1, y2),
       x2: Math.max(x1, x2),
       y2: Math.max(y1, y2),
       points: null,
       shape: 'rect',
+    };
+    this.surfaces.push(surface);
+    return surface;
+  }
+
+  addSurfaceLine(x1, y1, x2, y2, options = {}) {
+    const id = this.nextSurfaceId();
+    const surface = {
+      id,
+      type: options.type || 'wall',
+      levelId: options.levelId || this.activeLayerId || 'L0',
+      topLevelId: options.topLevelId || 'L1',
+      loadDirection: 'twoWay',
+      color: options.color || '#b57a6b',
+      x1, y1, x2, y2,
+      points: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
+      shape: 'line',
     };
     this.surfaces.push(surface);
     return surface;
@@ -192,7 +210,7 @@ export class AppState {
       levelId: options.levelId || this.activeLayerId || 'L0',
       topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
       loadDirection: options.loadDirection || 'twoWay',
-      color: options.color || (options.type === 'wall' ? '#b57a6b' : '#67a9cf'),
+      color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
       x1: Math.min(...xs),
       y1: Math.min(...ys),
       x2: Math.max(...xs),
@@ -225,20 +243,31 @@ export class AppState {
     const wallOffset = this.settings.wallDisplayOffset || 120;
     for (let i = this.surfaces.length - 1; i >= 0; i--) {
       const s = this.surfaces[i];
+      const isWallType = s.type === 'wall' || s.type === 'exteriorWall';
+      if (s.shape === 'line') {
+        const lx1 = s.x1 + wallOffset;
+        const ly1 = s.y1 + wallOffset;
+        const lx2 = s.x2 + wallOffset;
+        const ly2 = s.y2 + wallOffset;
+        if (pointToSegmentDist(x, y, lx1, ly1, lx2, ly2) < 300) {
+          return s;
+        }
+        continue;
+      }
       if (s.shape === 'polygon' && Array.isArray(s.points)) {
         const pts = s.points.map(p => ({
-          x: p.x + (s.type === 'wall' ? wallOffset : 0),
-          y: p.y + (s.type === 'wall' ? wallOffset : 0),
+          x: p.x + (isWallType ? wallOffset : 0),
+          y: p.y + (isWallType ? wallOffset : 0),
         }));
         if (pointInPolygon(x, y, pts)) {
           return s;
         }
         continue;
       }
-      const x1 = s.type === 'wall' ? s.x1 + wallOffset : s.x1;
-      const y1 = s.type === 'wall' ? s.y1 + wallOffset : s.y1;
-      const x2 = s.type === 'wall' ? s.x2 + wallOffset : s.x2;
-      const y2 = s.type === 'wall' ? s.y2 + wallOffset : s.y2;
+      const x1 = isWallType ? s.x1 + wallOffset : s.x1;
+      const y1 = isWallType ? s.y1 + wallOffset : s.y1;
+      const x2 = isWallType ? s.x2 + wallOffset : s.x2;
+      const y2 = isWallType ? s.y2 + wallOffset : s.y2;
       if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
         return s;
       }
@@ -267,7 +296,7 @@ export class AppState {
   }
 
   getLevelUsage(id) {
-    const members = this.members.filter(m => m.levelId === id);
+    const members = this.members.filter(m => m.levelId === id || m.topLevelId === id);
     const surfaces = this.surfaces.filter(s => s.levelId === id || s.topLevelId === id);
     return { members, surfaces };
   }
@@ -328,6 +357,7 @@ export class AppState {
     this.members = data.members.map(m => ({
       ...m,
       section: { ...m.section },
+      topLevelId: m.topLevelId || null,
     }));
     this.surfaces = (data.surfaces || []).map(s => ({
       ...s,
@@ -336,7 +366,7 @@ export class AppState {
     }));
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
-    this.currentTool = 'select';
+    this.currentTool = 'member';
     this.activeLayerId = this.levels[0]?.id || 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';

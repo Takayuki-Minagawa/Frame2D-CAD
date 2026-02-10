@@ -95,10 +95,15 @@ export class Canvas2D {
       const n2 = this.state.getNode(m.endNodeId);
       if (!n1 || !n2) continue;
 
+      const isSelected = m.id === this.state.selectedMemberId;
+
+      if (m.type === 'column') {
+        this._drawColumn(ctx, m, n1, isSelected, selectedColor, memberDefault);
+        continue;
+      }
+
       const s1 = this.worldToScreen(n1.x, n1.y);
       const s2 = this.worldToScreen(n2.x, n2.y);
-
-      const isSelected = m.id === this.state.selectedMemberId;
 
       ctx.save();
       ctx.strokeStyle = isSelected ? selectedColor : (m.color || memberDefault);
@@ -164,11 +169,50 @@ export class Canvas2D {
     }
   }
 
+  _drawColumn(ctx, member, node, isSelected, selectedColor, memberDefault) {
+    const s = this.worldToScreen(node.x, node.y);
+    const r = Math.max(4, (member.section.b / 2) * this.camera.scale);
+    const color = isSelected ? selectedColor : (member.color || memberDefault);
+
+    ctx.save();
+    ctx.fillStyle = toRgba(color, 0.5);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(s.x - r, s.y);
+    ctx.lineTo(s.x + r, s.y);
+    ctx.moveTo(s.x, s.y - r);
+    ctx.lineTo(s.x, s.y + r);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawSurfaceLine(ctx, s, isSelected, selectedColor, wallOffset) {
+    const p1 = this.worldToScreen(s.x1 + wallOffset, s.y1 + wallOffset);
+    const p2 = this.worldToScreen(s.x2 + wallOffset, s.y2 + wallOffset);
+    const color = isSelected ? selectedColor : (s.color || '#b57a6b');
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   _drawSurfaces(ctx, selectedColor) {
     const wallOffset = this.state.settings.wallDisplayOffset || 120;
 
     for (const s of this.state.surfaces) {
-      const isWall = s.type === 'wall';
+      const isWall = s.type === 'wall' || s.type === 'exteriorWall';
       const isSelected = s.id === this.state.selectedSurfaceId;
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);
 
@@ -178,6 +222,11 @@ export class Canvas2D {
           y: p.y + (isWall ? wallOffset : 0),
         }));
         this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
+        continue;
+      }
+
+      if (s.shape === 'line') {
+        this._drawSurfaceLine(ctx, s, isSelected, selectedColor, wallOffset);
         continue;
       }
 
@@ -262,10 +311,20 @@ export class Canvas2D {
 
     const angle = Math.atan2(y2 - y1, x2 - x1);
     const size = 7;
+
+    // 終点矢印
     ctx.beginPath();
     ctx.moveTo(x2, y2);
     ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 7), y2 - size * Math.sin(angle - Math.PI / 7));
     ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 7), y2 - size * Math.sin(angle + Math.PI / 7));
+    ctx.closePath();
+    ctx.fill();
+
+    // 始点矢印
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 + size * Math.cos(angle - Math.PI / 7), y1 + size * Math.sin(angle - Math.PI / 7));
+    ctx.lineTo(x1 + size * Math.cos(angle + Math.PI / 7), y1 + size * Math.sin(angle + Math.PI / 7));
     ctx.closePath();
     ctx.fill();
   }

@@ -21,46 +21,56 @@
         <select id="sel-active-layer"></select>
         <button id="btn-layer-manage" class="layer-manage-btn" title="Layer Management">&#9881;</button>
       </div>
+      <span class="layer-label" data-i18n="toolLabel">選択</span>
+      <div class="layer-controls">
+        <select id="sel-tool">
+          <option value="member" data-i18n="member">線材</option>
+          <option value="surface" data-i18n="surface">面材</option>
+          <option value="load" data-i18n="load">荷重</option>
+        </select>
+      </div>
       <hr>
     </div>
-    <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; <span data-i18n="select">選択</span></button>
-    <button id="btn-member" class="tool-btn" data-tool="member" title="Member (M)">&#9474; <span data-i18n="member">部材</span></button>
-    <button id="btn-surface" class="tool-btn" data-tool="surface" title="Surface (F)">&#9635; <span data-i18n="surface">面</span></button>
-    <label class="grid-label">
-      <span data-i18n="draftMemberType">部材種別</span>
-      <select id="sel-member-type">
-        <option value="beam" data-i18n="beam">梁</option>
-        <option value="column" data-i18n="column">柱</option>
-        <option value="hbrace" data-i18n="hbrace">水平ブレース</option>
-        <option value="vbrace" data-i18n="vbrace">垂直ブレース</option>
-      </select>
-    </label>
-    <label class="grid-label">
-      <span data-i18n="draftSurfaceType">面種別</span>
-      <select id="sel-surface-type">
-        <option value="floor" data-i18n="floor">床</option>
-        <option value="wall" data-i18n="wall">壁</option>
-      </select>
-    </label>
-    <label class="grid-label">
-      <span data-i18n="surfaceMode">配置方法</span>
-      <select id="sel-surface-mode">
-        <option value="rect" data-i18n="rectMode">矩形</option>
-        <option value="polyline" data-i18n="polylineMode">ポリライン</option>
-      </select>
-    </label>
-    <label class="grid-label">
-      <span data-i18n="loadDirection">荷重方向</span>
-      <select id="sel-load-direction">
-        <option value="x">X</option>
-        <option value="y">Y</option>
-        <option value="twoWay" data-i18n="twoWay">2方向</option>
-      </select>
-    </label>
-    <label class="grid-label">
-      <span data-i18n="topLayer">上端レイヤー</span>
-      <select id="sel-top-layer"></select>
-    </label>
+    <div id="tool-opts-member" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftMemberType">線材種別</span>
+        <select id="sel-member-type">
+          <option value="beam" data-i18n="beam">梁</option>
+          <option value="column" data-i18n="column">柱</option>
+          <option value="hbrace" data-i18n="hbrace">水平ブレース</option>
+          <option value="vbrace" data-i18n="vbrace">垂直ブレース</option>
+        </select>
+      </label>
+    </div>
+    <div id="tool-opts-surface" class="tool-opts">
+      <label class="grid-label">
+        <span data-i18n="draftSurfaceType">面材種別</span>
+        <select id="sel-surface-type">
+          <option value="floor" data-i18n="floor">床</option>
+          <option value="exteriorWall" data-i18n="exteriorWall">外壁</option>
+          <option value="wall" data-i18n="wall">壁</option>
+        </select>
+      </label>
+      <label id="label-surface-mode" class="grid-label">
+        <span data-i18n="surfaceMode">配置方法</span>
+        <select id="sel-surface-mode">
+          <option value="rect" data-i18n="rectMode">矩形</option>
+          <option value="polyline" data-i18n="polylineMode">ポリライン</option>
+        </select>
+      </label>
+      <label id="label-load-direction" class="grid-label">
+        <span data-i18n="loadDirection">荷重方向</span>
+        <select id="sel-load-direction">
+          <option value="x">X</option>
+          <option value="y">Y</option>
+          <option value="twoWay" data-i18n="twoWay">2方向</option>
+        </select>
+      </label>
+      <label id="label-top-layer" class="grid-label">
+        <span data-i18n="topLayer">上端レイヤー</span>
+        <select id="sel-top-layer"></select>
+      </label>
+    </div>
     <hr>
     <label class="toggle-label">
       <input type="checkbox" id="chk-snap" checked>
@@ -99,7 +109,7 @@
       <span id="status-coords">X: 0  Y: 0</span>
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
-      <span id="status-tool" data-i18n="toolSelect">ツール: 選択</span>
+      <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
       <span id="status-version">Ver.Beta01</span>
     </footer>
   </main>

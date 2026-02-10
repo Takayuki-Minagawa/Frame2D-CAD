@@ -349,5 +349,8 @@ window.addEventListener('keydown', (e) => {
 
 // --- Start ---
 
+// Expose for testing/debugging
+window._app = { state, history, canvas2d, ui };
+
 renderLoop();
 update();

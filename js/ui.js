@@ -12,14 +12,11 @@ export class UI {
   }
 
   _setupToolbar() {
-    // Tool buttons
-    document.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tool = btn.dataset.tool;
-        this.state.currentTool = tool;
-        this._updateToolButtons();
-        this.callbacks.onToolChange?.(tool);
-      });
+    // Tool selector combobox
+    document.getElementById('sel-tool').addEventListener('change', e => {
+      this.state.currentTool = e.target.value;
+      this._updateToolUI();
+      this.callbacks.onToolChange?.(this.state.currentTool);
     });
 
     // Snap toggle
@@ -49,6 +46,7 @@ export class UI {
     // Surface defaults
     document.getElementById('sel-surface-type').addEventListener('change', e => {
       this.state.surfaceDraftType = e.target.value;
+      this._updateSurfaceSubOptions();
     });
     document.getElementById('sel-surface-mode').addEventListener('change', e => {
       this.state.surfaceDraftMode = e.target.value;
@@ -72,25 +70,50 @@ export class UI {
       } else {
         return;
       }
-      this._updateToolButtons();
+      this._updateToolUI();
       this.callbacks.onToolChange?.(this.state.currentTool);
     });
+
+    // Initial tool options visibility
+    this._updateToolOptions();
   }
 
-  _updateToolButtons() {
-    document.querySelectorAll('.tool-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tool === this.state.currentTool);
-    });
+  _updateToolUI() {
+    const selTool = document.getElementById('sel-tool');
+    if (selTool) selTool.value = this.state.currentTool;
+
     const toolStatus = document.getElementById('status-tool');
     if (toolStatus) {
-      if (this.state.currentTool === 'surface') {
-        toolStatus.textContent = t('toolSurface');
-      } else if (this.state.currentTool === 'member') {
-        toolStatus.textContent = t('toolMember');
-      } else {
-        toolStatus.textContent = t('toolSelect');
-      }
+      const statusKeys = {
+        select: 'toolSelect',
+        member: 'toolMember',
+        surface: 'toolSurface',
+        load: 'toolLoad',
+      };
+      toolStatus.textContent = t(statusKeys[this.state.currentTool] || 'toolSelect');
     }
+
+    this._updateToolOptions();
+  }
+
+  _updateToolOptions() {
+    const tool = this.state.currentTool;
+    const memberOpts = document.getElementById('tool-opts-member');
+    const surfaceOpts = document.getElementById('tool-opts-surface');
+    if (memberOpts) memberOpts.classList.toggle('visible', tool === 'member');
+    if (surfaceOpts) surfaceOpts.classList.toggle('visible', tool === 'surface');
+    this._updateSurfaceSubOptions();
+  }
+
+  _updateSurfaceSubOptions() {
+    const type = this.state.surfaceDraftType;
+    const isFloor = type === 'floor';
+    const modeLabel = document.getElementById('label-surface-mode');
+    const loadDirLabel = document.getElementById('label-load-direction');
+    const topLayerLabel = document.getElementById('label-top-layer');
+    if (modeLabel) modeLabel.style.display = isFloor ? '' : 'none';
+    if (loadDirLabel) loadDirLabel.style.display = isFloor ? '' : 'none';
+    if (topLayerLabel) topLayerLabel.style.display = 'none';
   }
 
   refreshLayerSelectors() {
@@ -136,12 +159,26 @@ export class UI {
       return;
     }
 
+    const isColumn = member.type === 'column';
     const n1 = this.state.getNode(member.startNodeId);
     const n2 = this.state.getNode(member.endNodeId);
-    const length = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y)) : '?';
+
+    let lengthDisplay;
+    if (isColumn) {
+      const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
+      const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
+      lengthDisplay = (bottomLevel && topLevel) ? `${Math.abs(topLevel.z - bottomLevel.z)} mm` : '?';
+    } else {
+      const len = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y)) : '?';
+      lengthDisplay = `${len} mm`;
+    }
 
     const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
       `<option value="${l.id}" ${l.id === member.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
+    ).join('');
+
+    const topLevelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
+      `<option value="${l.id}" ${l.id === member.topLevelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
 
     container.innerHTML = `
@@ -163,6 +200,12 @@ export class UI {
         <label>${t('propLayer')}</label>
         <select id="prop-level">${levelOptions}</select>
       </div>
+      ${isColumn ? `
+      <div class="prop-group">
+        <label>${t('topLayer')}</label>
+        <select id="prop-top-level">${topLevelOptions}</select>
+      </div>
+      ` : ''}
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('propWidthB')}</label>
@@ -187,7 +230,7 @@ export class UI {
       </div>
       <div class="prop-group">
         <label>${t('propLength')}</label>
-        <input type="text" value="${length} mm" disabled>
+        <input type="text" value="${lengthDisplay}" disabled>
       </div>
     `;
 
@@ -207,6 +250,7 @@ export class UI {
 
     bind('prop-type', 'type');
     bind('prop-level', 'levelId');
+    if (isColumn) bind('prop-top-level', 'topLevelId');
     bind('prop-b', 'b', parseFloat);
     bind('prop-h', 'h', parseFloat);
     bind('prop-material', 'material');
@@ -239,6 +283,7 @@ export class UI {
         <label>${t('propType')}</label>
         <select id="prop-surface-type">
           <option value="floor" ${surface.type === 'floor' ? 'selected' : ''}>${t('floor')}</option>
+          <option value="exteriorWall" ${surface.type === 'exteriorWall' ? 'selected' : ''}>${t('exteriorWall')}</option>
           <option value="wall" ${surface.type === 'wall' ? 'selected' : ''}>${t('wall')}</option>
         </select>
       </div>
@@ -246,10 +291,7 @@ export class UI {
         <label>${t('propLayer')}</label>
         <select id="prop-surface-level">${levelOptions}</select>
       </div>
-      <div class="prop-group">
-        <label>${t('topLayer')}</label>
-        <select id="prop-surface-top-level">${topLevelOptions}</select>
-      </div>
+      ${surface.type === 'floor' ? `
       <div class="prop-group">
         <label>${t('loadDirection')}</label>
         <select id="prop-load-direction">
@@ -258,6 +300,7 @@ export class UI {
           <option value="twoWay" ${surface.loadDirection === 'twoWay' ? 'selected' : ''}>${t('twoWay')}</option>
         </select>
       </div>
+      ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
         <input type="color" id="prop-surface-color" value="${surface.color}">
@@ -304,7 +347,7 @@ export class UI {
       el.textContent = t(key);
     });
     this.refreshLayerSelectors();
-    this._updateToolButtons();
+    this._updateToolUI();
     this.updateStatusBar();
     this.updatePropertyPanel();
   }
