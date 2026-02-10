@@ -1,6 +1,7 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
+import { offsetPolygonOutward } from './state.js';
 
 export class Canvas2D {
   constructor(canvasEl, state) {
@@ -217,11 +218,16 @@ export class Canvas2D {
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);
 
       if (isPolygon) {
+        const offset = isWall ? wallOffset : 0;
         const points = s.points.map(p => ({
-          x: p.x + (isWall ? wallOffset : 0),
-          y: p.y + (isWall ? wallOffset : 0),
+          x: p.x + offset,
+          y: p.y + offset,
         }));
-        this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
+        if (s.type === 'exteriorWall') {
+          this._drawExteriorWallEdges(ctx, points, s, isSelected, selectedColor);
+        } else {
+          this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
+        }
         continue;
       }
 
@@ -281,6 +287,44 @@ export class Canvas2D {
       const bounds = polygonBounds(screenPoints);
       this._drawLoadArrow(ctx, bounds.x, bounds.y, bounds.w, bounds.h, s.loadDirection);
     }
+  }
+
+  _drawExteriorWallEdges(ctx, points, s, isSelected, selectedColor) {
+    if (points.length < 2) return;
+
+    const offset = this.state.settings.wallDisplayOffset || 120;
+    const oPts = offsetPolygonOutward(points, offset);
+    const screenOff = oPts.map(p => this.worldToScreen(p.x, p.y));
+    const screenOrig = points.map(p => this.worldToScreen(p.x, p.y));
+
+    ctx.save();
+
+    // Thick semi-transparent gray closed polygon (outward offset)
+    ctx.strokeStyle = isSelected ? selectedColor : 'rgba(140,140,140,0.5)';
+    ctx.lineWidth = isSelected ? 7 : 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(screenOff[0].x, screenOff[0].y);
+    for (let i = 1; i < screenOff.length; i++) {
+      ctx.lineTo(screenOff[i].x, screenOff[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Thin dashed line at original polygon position
+    ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#888888');
+    ctx.lineWidth = isSelected ? 2 : 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(screenOrig[0].x, screenOrig[0].y);
+    for (let i = 1; i < screenOrig.length; i++) {
+      ctx.lineTo(screenOrig[i].x, screenOrig[i].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   _drawLoadArrow(ctx, x, y, w, h, dir) {

@@ -38,6 +38,7 @@ const dict = {
     layerCannotDeleteLast: '最低1つのレイヤーが必要です。',
     layerDuplicateZ: 'この高さ(z値)は既に使用されています。',
     noLevelAbove: '現在のレイヤーより上にレイヤーがありません。レイヤー管理で追加してください。',
+    exteriorWallConfirmReplace: 'このレイヤーには既に外壁線があります。既存の外壁線を削除して新しく入力しますか？',
 
     // Tabs
     tab2d: '2D CAD',
@@ -185,6 +186,7 @@ const dict = {
     layerCannotDeleteLast: 'At least one layer is required.',
     layerDuplicateZ: 'This height (z value) is already in use.',
     noLevelAbove: 'No layer above the current layer. Please add one in Layer Management.',
+    exteriorWallConfirmReplace: 'An exterior wall line already exists on this layer. Delete it and start new input?',
 
     // Tabs
     tab2d: '2D CAD',

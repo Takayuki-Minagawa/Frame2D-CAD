@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { offsetPolygonOutward } from './state.js';
 
 export class Viewer3D {
   constructor(containerEl, state) {
@@ -100,7 +101,11 @@ export class Viewer3D {
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points) && s.points.length >= 3;
 
       if (isPolygon) {
-        this._addPolygonSurface3D(s, base, top);
+        if (s.type === 'exteriorWall') {
+          this._addExteriorWallEdges3D(s, base, top);
+        } else {
+          this._addPolygonSurface3D(s, base, top);
+        }
         continue;
       }
 
@@ -310,6 +315,51 @@ export class Viewer3D {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = base / 1000 + 0.06;
     this.surfaceGroup.add(mesh);
+  }
+
+  _addExteriorWallEdges3D(surface, base, top) {
+    const points = surface.points;
+    if (!points || points.length < 2) return;
+
+    const height = Math.max(0.1, Math.abs(top - base) / 1000);
+    const yBase = Math.min(base, top) / 1000;
+    const thickness = 0.05;
+    const wallOffset = this.state.settings?.wallDisplayOffset || 120;
+    const oPts = offsetPolygonOutward(points, wallOffset);
+
+    for (let i = 0; i < oPts.length; i++) {
+      const a = oPts[i], b = oPts[(i + 1) % oPts.length];
+
+      const start = new THREE.Vector3(a.x / 1000, 0, -a.y / 1000);
+      const end = new THREE.Vector3(b.x / 1000, 0, -b.y / 1000);
+      const direction = new THREE.Vector3().subVectors(end, start);
+      const edgeLen = direction.length();
+      if (edgeLen < 0.001) continue;
+
+      const geometry = new THREE.BoxGeometry(edgeLen, height, thickness);
+      const material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(surface.color || '#888888'),
+        transparent: true,
+        opacity: 0.35,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+
+      const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+      mid.y = yBase + height / 2;
+      mesh.position.copy(mid);
+
+      const angle = Math.atan2(direction.z, direction.x);
+      mesh.rotation.y = -angle;
+
+      this.surfaceGroup.add(mesh);
+
+      const edges = new THREE.EdgesGeometry(geometry);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+      const lineSegments = new THREE.LineSegments(edges, lineMat);
+      lineSegments.position.copy(mesh.position);
+      lineSegments.rotation.copy(mesh.rotation);
+      this.surfaceGroup.add(lineSegments);
+    }
   }
 
   animate() {

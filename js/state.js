@@ -255,6 +255,11 @@ export class AppState {
         continue;
       }
       if (s.shape === 'polygon' && Array.isArray(s.points)) {
+        if (s.type === 'exteriorWall') {
+          // Hit test against outward-offset edges
+          if (hitExteriorWallEdges(x, y, s.points, wallOffset, 300)) return s;
+          continue;
+        }
         const pts = s.points.map(p => ({
           x: p.x + (isWallType ? wallOffset : 0),
           y: p.y + (isWallType ? wallOffset : 0),
@@ -410,6 +415,63 @@ function maxIdNum(items) {
     if (n > max) max = n;
   }
   return max;
+}
+
+// Compute outward-offset polygon with properly connected corners.
+// Uses winding order (signed area) to determine consistent outward normals,
+// which works correctly for both convex and concave polygons.
+export function offsetPolygonOutward(points, offset) {
+  const n = points.length;
+  if (n < 2) return points.map(p => ({ x: p.x, y: p.y }));
+
+  // Signed area (Y-down): positive = CW on screen, negative = CCW on screen
+  let signedArea2 = 0;
+  for (let i = 0; i < n; i++) {
+    const p1 = points[i], p2 = points[(i + 1) % n];
+    signedArea2 += p1.x * p2.y - p2.x * p1.y;
+  }
+
+  // Outward normal per edge based on winding
+  const normals = [];
+  for (let i = 0; i < n; i++) {
+    const p1 = points[i], p2 = points[(i + 1) % n];
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.001) { normals.push({ x: 0, y: 0 }); continue; }
+    // CW on screen (signedArea2 > 0): outward = (dy, -dx)
+    // CCW on screen (signedArea2 < 0): outward = (-dy, dx)
+    const nx = signedArea2 >= 0 ? dy / len : -dy / len;
+    const ny = signedArea2 >= 0 ? -dx / len : dx / len;
+    normals.push({ x: nx, y: ny });
+  }
+
+  // Intersect adjacent offset edges to get clean corners
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    const prev = (i - 1 + n) % n;
+    const pA = { x: points[prev].x + normals[prev].x * offset, y: points[prev].y + normals[prev].y * offset };
+    const dA = { x: points[i].x - points[prev].x, y: points[i].y - points[prev].y };
+    const pB = { x: points[i].x + normals[i].x * offset, y: points[i].y + normals[i].y * offset };
+    const dB = { x: points[(i + 1) % n].x - points[i].x, y: points[(i + 1) % n].y - points[i].y };
+
+    const cross = dA.x * dB.y - dA.y * dB.x;
+    if (Math.abs(cross) < 1e-9) {
+      result.push(pB);
+    } else {
+      const t = ((pB.x - pA.x) * dB.y - (pB.y - pA.y) * dB.x) / cross;
+      result.push({ x: pA.x + t * dA.x, y: pA.y + t * dA.y });
+    }
+  }
+  return result;
+}
+
+function hitExteriorWallEdges(px, py, points, offset, tolerance) {
+  const oPts = offsetPolygonOutward(points, offset);
+  for (let i = 0; i < oPts.length; i++) {
+    const a = oPts[i], b = oPts[(i + 1) % oPts.length];
+    if (pointToSegmentDist(px, py, a.x, a.y, b.x, b.y) < tolerance) return true;
+  }
+  return false;
 }
 
 function pointInPolygon(px, py, points) {

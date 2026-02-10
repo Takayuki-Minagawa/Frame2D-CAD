@@ -499,6 +499,18 @@ export class ToolManager {
 
   _surfacePolylineDown(snapped) {
     if (this._surfacePolyline.length === 0) {
+      // exteriorWall: 入力開始時に既存チェック
+      if (this.state.surfaceDraftType === 'exteriorWall') {
+        const levelId = this.state.activeLayerId || 'L0';
+        const existing = this.state.surfaces.find(
+          s => s.type === 'exteriorWall' && s.levelId === levelId
+        );
+        if (existing) {
+          if (!confirm(t('exteriorWallConfirmReplace'))) return;
+          this.history.save();
+          this.state.removeSurface(existing.id);
+        }
+      }
       this._surfacePolyline.push({ x: snapped.x, y: snapped.y });
       this.state.clearSelection();
       this.onUpdate();
@@ -552,6 +564,7 @@ export class ToolManager {
     }
 
     this.history.save();
+
     const surface = this.state.addSurfacePolygon(this._surfacePolyline, {
       type: type || 'wall',
       levelId: this.state.activeLayerId || 'L0',

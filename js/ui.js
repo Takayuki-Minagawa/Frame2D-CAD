@@ -271,6 +271,7 @@ export class UI {
       `<option value="${l.id}" ${l.id === surface.topLevelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
 
+    const isExteriorWall = surface.type === 'exteriorWall';
     const area = Math.round(Math.abs((surface.x2 - surface.x1) * (surface.y2 - surface.y1)) / 1000000);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
 
@@ -305,6 +306,7 @@ export class UI {
         <label>${t('propColor')}</label>
         <input type="color" id="prop-surface-color" value="${surface.color}">
       </div>
+      ${!isExteriorWall ? `
       <div class="prop-group">
         <label>${t('propArea')}</label>
         <input type="text" value="${area} m²" disabled>
@@ -313,6 +315,7 @@ export class UI {
         <label>${t('propVertices')}</label>
         <input type="text" value="${vertices}" disabled>
       </div>
+      ` : ''}
     `;
 
     const bind = (id, key) => {
