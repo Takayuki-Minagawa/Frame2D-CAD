@@ -212,11 +212,133 @@ helpModal.addEventListener('click', (e) => {
   if (e.target === helpModal) hideHelpModal();
 });
 
+// --- Layer Management Modal ---
+
+const layerModal = document.getElementById('layer-modal');
+const layerListEl = document.getElementById('layer-list');
+
+function renderLayerList() {
+  layerListEl.innerHTML = '';
+
+  // Header row
+  const header = document.createElement('div');
+  header.className = 'layer-header-row';
+  header.innerHTML = `
+    <span style="min-width:28px">ID</span>
+    <span style="flex:1" data-i18n="layerName">${t('layerName')}</span>
+    <span style="width:90px" data-i18n="layerZ">${t('layerZ')}</span>
+    <span style="width:26px"></span>
+  `;
+  layerListEl.appendChild(header);
+
+  const sortedLevels = [...state.levels].sort((a, b) => a.z - b.z);
+  for (const level of sortedLevels) {
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    row.dataset.levelId = level.id;
+
+    const idLabel = document.createElement('span');
+    idLabel.className = 'layer-row-label';
+    idLabel.textContent = level.id;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = level.name;
+    nameInput.addEventListener('change', () => {
+      state.updateLevel(level.id, { name: nameInput.value });
+      ui.refreshLayerSelectors();
+      update();
+    });
+
+    const zInput = document.createElement('input');
+    zInput.type = 'number';
+    zInput.value = level.z;
+    zInput.step = '100';
+    zInput.addEventListener('change', () => {
+      const newZ = parseFloat(zInput.value) || 0;
+      const duplicate = state.levels.some(l => l.id !== level.id && l.z === newZ);
+      if (duplicate) {
+        alert(t('layerDuplicateZ'));
+        zInput.value = level.z;
+        return;
+      }
+      state.updateLevel(level.id, { z: newZ });
+      ui.refreshLayerSelectors();
+      renderLayerList();
+      update();
+    });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'layer-delete-btn';
+    delBtn.textContent = '\u00D7';
+    delBtn.title = t('layerDelete');
+    delBtn.addEventListener('click', () => {
+      if (state.levels.length <= 1) {
+        alert(t('layerCannotDeleteLast'));
+        return;
+      }
+      const usage = state.getLevelUsage(level.id);
+      const total = usage.members.length + usage.surfaces.length;
+      if (total > 0) {
+        alert(t('layerInUse').replace('{m}', usage.members.length).replace('{s}', usage.surfaces.length));
+        return;
+      }
+      state.removeLevel(level.id);
+      ui.refreshLayerSelectors();
+      renderLayerList();
+      update();
+    });
+
+    row.appendChild(idLabel);
+    row.appendChild(nameInput);
+    row.appendChild(zInput);
+    row.appendChild(delBtn);
+    layerListEl.appendChild(row);
+  }
+}
+
+function showLayerModal() {
+  renderLayerList();
+  layerModal.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  layerModal.classList.add('visible');
+}
+
+function hideLayerModal() {
+  layerModal.classList.remove('visible');
+}
+
+document.getElementById('btn-layer-manage').addEventListener('click', showLayerModal);
+document.getElementById('btn-layer-close').addEventListener('click', hideLayerModal);
+
+document.getElementById('btn-layer-add').addEventListener('click', () => {
+  let nextZ = state.levels.length > 0
+    ? Math.max(...state.levels.map(l => l.z)) + 2800
+    : 0;
+  // Ensure no duplicate z
+  while (state.levels.some(l => l.z === nextZ)) {
+    nextZ += 100;
+  }
+  const name = `${state.levels.length + 1}F`;
+  state.addLevel(name, nextZ);
+  ui.refreshLayerSelectors();
+  renderLayerList();
+  update();
+});
+
+layerModal.addEventListener('click', (e) => {
+  if (e.target === layerModal) hideLayerModal();
+});
+
 // Close modals on Escape
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (helpModal.classList.contains('visible')) {
       hideHelpModal();
+      e.stopPropagation();
+    } else if (layerModal.classList.contains('visible')) {
+      hideLayerModal();
       e.stopPropagation();
     } else if (settingsModal.classList.contains('visible')) {
       hideSettingsModal();

@@ -15,7 +15,7 @@ export class AppState {
     };
     this.levels = [
       { id: 'L0', name: 'GL', z: 0 },
-      { id: 'L1', name: '2F', z: 3500 },
+      { id: 'L1', name: '2F', z: 2800 },
     ];
     this.nodes = [];
     this.members = [];
@@ -36,6 +36,7 @@ export class AppState {
     this._nodeCounter = 0;
     this._memberCounter = 0;
     this._surfaceCounter = 0;
+    this._levelCounter = 1;
   }
 
   // --- Nodes ---
@@ -245,6 +246,46 @@ export class AppState {
     return null;
   }
 
+  // --- Levels ---
+
+  nextLevelId() {
+    this._levelCounter++;
+    return `L${this._levelCounter}`;
+  }
+
+  addLevel(name, z) {
+    const id = this.nextLevelId();
+    const level = { id, name, z };
+    this.levels.push(level);
+    return level;
+  }
+
+  updateLevel(id, props) {
+    const level = this.levels.find(l => l.id === id);
+    if (level) Object.assign(level, props);
+    return level;
+  }
+
+  getLevelUsage(id) {
+    const members = this.members.filter(m => m.levelId === id);
+    const surfaces = this.surfaces.filter(s => s.levelId === id || s.topLevelId === id);
+    return { members, surfaces };
+  }
+
+  removeLevel(id) {
+    if (this.levels.length <= 1) return false;
+    const { members, surfaces } = this.getLevelUsage(id);
+    if (members.length > 0 || surfaces.length > 0) return false;
+    this.levels = this.levels.filter(l => l.id !== id);
+    if (this.activeLayerId === id) {
+      this.activeLayerId = this.levels[0].id;
+    }
+    if (this.surfaceDraftTopLayerId === id) {
+      this.surfaceDraftTopLayerId = this.levels[this.levels.length - 1].id;
+    }
+    return true;
+  }
+
   clearSelection() {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
@@ -307,6 +348,7 @@ export class AppState {
     this._nodeCounter = maxIdNum(this.nodes);
     this._memberCounter = maxIdNum(this.members);
     this._surfaceCounter = maxIdNum(this.surfaces);
+    this._levelCounter = maxIdNum(this.levels);
   }
 
   // Deep clone for undo/redo snapshots

@@ -94,7 +94,8 @@ export class UI {
   }
 
   refreshLayerSelectors() {
-    const layerHtml = this.state.levels
+    const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
+    const layerHtml = sortedLevels
       .map(l => `<option value="${l.id}">${l.name} (z=${l.z})</option>`)
       .join('');
 
@@ -139,7 +140,7 @@ export class UI {
     const n2 = this.state.getNode(member.endNodeId);
     const length = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y)) : '?';
 
-    const levelOptions = this.state.levels.map(l =>
+    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
       `<option value="${l.id}" ${l.id === member.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
 
@@ -219,10 +220,10 @@ export class UI {
       return;
     }
 
-    const levelOptions = this.state.levels.map(l =>
+    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
       `<option value="${l.id}" ${l.id === surface.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
-    const topLevelOptions = this.state.levels.map(l =>
+    const topLevelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
       `<option value="${l.id}" ${l.id === surface.topLevelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
     ).join('');
 

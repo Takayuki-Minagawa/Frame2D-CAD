@@ -19,7 +19,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
 - 原点と軸方向を左下に常時表示（部材配置の基準）
-- レイヤー（Zレベル）管理: 名前（GL/NFL等）+ 数値高さ
+- レイヤー（Zレベル）管理: 名前・高さの編集、追加・削除（z値ソート表示、重複禁止、使用中レイヤー削除不可）
 - プロパティパネルで部材/面属性を編集（種別・断面寸法・レイヤー・色・荷重方向）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
 - 壁要素は梁線と重なりにくいよう平面上でオフセット表示
@@ -39,9 +39,10 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 ### UI
 
-- ダーク / ライトテーマ切替（設定はブラウザに保存）
-- 多言語対応：日本語（デフォルト） / 英語
-- 簡易マニュアル（ヘルプボタンでモーダル表示、多言語対応）
+- 設定モーダル（⚙ ボタン）: テーマ切替（ダーク/ライト）、言語切替（日本語/英語）、ヘルプ表示
+- レイヤー管理モーダル（⚙ ボタン）: レイヤーの追加・名前/高さ編集・削除
+- 簡易マニュアル（設定 → ヘルプボタンでモーダル表示、多言語対応）
+- 設定はブラウザ（localStorage）に保存
 
 ## Keyboard Shortcuts
 
@@ -51,7 +52,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 | `M` | Member tool |
 | `F` | Surface tool |
 | `Enter` (Surface Polyline) | Close polyline to polygon |
-| `Esc` | Cancel / Deselect |
+| `Esc` | Cancel / Deselect / Close modal |
 | `Delete` | Delete selected member/surface |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
@@ -125,7 +126,7 @@ app.js ─┬─ state.js      Data model (AppState)
   },
   "levels": [
     { "id": "L0", "name": "GL", "z": 0 },
-    { "id": "L1", "name": "2F", "z": 3500 }
+    { "id": "L1", "name": "2F", "z": 2800 }
   ],
   "nodes": [
     { "id": "N1", "x": 0, "y": 0, "z": 0 },

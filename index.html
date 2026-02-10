@@ -16,10 +16,11 @@
     <div id="toolbar-quick" class="toolbar-sticky-top">
       <h2 data-i18n="tools">ツール</h2>
       <button id="btn-settings">&#9881; <span data-i18n="settings">設定</span></button>
-      <label class="grid-label">
-        <span data-i18n="activeLayer">レイヤー</span>
+      <span class="layer-label" data-i18n="activeLayer">レイヤー</span>
+      <div class="layer-controls">
         <select id="sel-active-layer"></select>
-      </label>
+        <button id="btn-layer-manage" class="layer-manage-btn" title="Layer Management">&#9881;</button>
+      </div>
       <hr>
     </div>
     <button id="btn-select" class="tool-btn active" data-tool="select" title="Select (V)">&#9654; <span data-i18n="select">選択</span></button>
@@ -146,6 +147,20 @@
         </div>
         <hr>
         <button id="btn-open-help" class="settings-help-btn">&#10067; <span data-i18n="help">ヘルプ</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Layer Management Modal -->
+  <div id="layer-modal" class="modal-overlay">
+    <div class="modal-content modal-layer">
+      <div class="modal-header">
+        <h2 data-i18n="layerManage">レイヤー管理</h2>
+        <button id="btn-layer-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div id="layer-list"></div>
+        <button id="btn-layer-add" class="settings-help-btn">+ <span data-i18n="layerAdd">追加</span></button>
       </div>
     </div>
   </div>

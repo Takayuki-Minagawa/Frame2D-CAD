@@ -404,3 +404,111 @@ body {
 [data-theme="light"] .settings-help-btn:hover {
   background: rgba(37, 99, 235, 0.08);
 }
+
+/* Layer selector layout */
+.layer-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: block;
+  padding: 4px 0 2px;
+}
+.layer-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.layer-controls select {
+  flex: 1;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+/* Layer Management */
+.layer-manage-btn {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.layer-manage-btn:hover {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, 0.1);
+}
+[data-theme="light"] .layer-manage-btn:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+.modal-layer {
+  width: min(480px, 90vw);
+}
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.layer-row-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 28px;
+  text-align: center;
+}
+.layer-row input[type="text"],
+.layer-row input[type="number"] {
+  padding: 5px 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+}
+.layer-row input[type="text"] {
+  flex: 1;
+}
+.layer-row input[type="number"] {
+  width: 90px;
+}
+.layer-delete-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.layer-delete-btn:hover {
+  color: #f38ba8;
+  border-color: #f38ba8;
+  background: rgba(243, 139, 168, 0.1);
+}
+.layer-header-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 0 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+.layer-header-row span {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+}

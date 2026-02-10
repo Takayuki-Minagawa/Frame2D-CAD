@@ -27,6 +27,14 @@ const dict = {
     settingsTitle: '設定',
     themeLabel: 'テーマ',
     langLabel: '言語',
+    layerManage: 'レイヤー管理',
+    layerName: '名前',
+    layerZ: '高さ (mm)',
+    layerAdd: '追加',
+    layerDelete: '削除',
+    layerInUse: 'このレイヤーは使用中です（部材: {m}、面: {s}）。先に要素を削除またはレイヤー変更してください。',
+    layerCannotDeleteLast: '最低1つのレイヤーが必要です。',
+    layerDuplicateZ: 'この高さ(z値)は既に使用されています。',
 
     // Tabs
     tab2d: '2D CAD',
@@ -95,7 +103,7 @@ const dict = {
   <tr><td><kbd>M</kbd></td><td>部材ツール</td></tr>
   <tr><td><kbd>F</kbd></td><td>面ツール</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>面ポリラインを閉じて確定</td></tr>
-  <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除 / モーダルを閉じる</td></tr>
   <tr><td><kbd>Delete</kbd></td><td>選択部材/面を削除</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>元に戻す</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>やり直し</td></tr>
@@ -112,6 +120,23 @@ const dict = {
   <li><b>色</b> - 表示色</li>
 </ul>
 <p>床スラブは荷重方向（X/Y/2方向）を矢印で表示します。壁要素は平面上で少しオフセットして表示します。</p>
+
+<h3>設定</h3>
+<p>ツールバー上部の ⚙ 設定ボタンから設定モーダルを開きます。</p>
+<ul>
+  <li><b>テーマ</b> - ダーク / ライトを切替</li>
+  <li><b>言語</b> - 日本語 / English を切替</li>
+  <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
+</ul>
+
+<h3>レイヤー管理</h3>
+<p>レイヤー選択横の ⚙ ボタンからレイヤー管理モーダルを開きます。</p>
+<ul>
+  <li><b>追加</b> - 新しいレイヤーを追加（z値は自動計算）</li>
+  <li><b>編集</b> - レイヤー名とz値（高さ mm）を直接編集</li>
+  <li><b>削除</b> - 未使用レイヤーのみ削除可能</li>
+</ul>
+<p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
 <p>「保存」でJSONファイルをダウンロード、「読込」でJSONファイルを読み込みます。</p>
@@ -144,6 +169,14 @@ const dict = {
     settingsTitle: 'Settings',
     themeLabel: 'Theme',
     langLabel: 'Language',
+    layerManage: 'Layer Management',
+    layerName: 'Name',
+    layerZ: 'Height (mm)',
+    layerAdd: 'Add',
+    layerDelete: 'Delete',
+    layerInUse: 'This layer is in use (members: {m}, surfaces: {s}). Remove or reassign them first.',
+    layerCannotDeleteLast: 'At least one layer is required.',
+    layerDuplicateZ: 'This height (z value) is already in use.',
 
     // Tabs
     tab2d: '2D CAD',
@@ -212,7 +245,7 @@ const dict = {
   <tr><td><kbd>M</kbd></td><td>Member tool</td></tr>
   <tr><td><kbd>F</kbd></td><td>Surface tool</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>Close and confirm surface polyline</td></tr>
-  <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect</td></tr>
+  <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect / Close modal</td></tr>
   <tr><td><kbd>Delete</kbd></td><td>Delete selected member/surface</td></tr>
   <tr><td><kbd>Ctrl+Z</kbd></td><td>Undo</td></tr>
   <tr><td><kbd>Ctrl+Y</kbd></td><td>Redo</td></tr>
@@ -229,6 +262,23 @@ const dict = {
   <li><b>Color</b> - Display color</li>
 </ul>
 <p>Floor slabs can show load direction arrows (X/Y/Two-way). Wall surfaces are shown with a slight visual offset in plan.</p>
+
+<h3>Settings</h3>
+<p>Click the ⚙ Settings button at the top of the toolbar to open the settings modal.</p>
+<ul>
+  <li><b>Theme</b> - Switch between Dark / Light</li>
+  <li><b>Language</b> - Switch between Japanese / English</li>
+  <li><b>Help</b> - Opens this quick manual</li>
+</ul>
+
+<h3>Layer Management</h3>
+<p>Click the ⚙ button next to the layer selector to open the layer management modal.</p>
+<ul>
+  <li><b>Add</b> - Add a new layer (z value auto-calculated)</li>
+  <li><b>Edit</b> - Directly edit layer name and z value (height in mm)</li>
+  <li><b>Delete</b> - Only unused layers can be deleted</li>
+</ul>
+<p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
 <p>"Export" downloads a JSON file. "Import" loads a JSON file.</p>
