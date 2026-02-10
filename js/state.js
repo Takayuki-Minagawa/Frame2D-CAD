@@ -518,7 +518,7 @@ export function offsetPolygonOutward(points, offset) {
   const n = points.length;
   if (n < 2) return points.map(p => ({ x: p.x, y: p.y }));
 
-  // Signed area (Y-down): positive = CW on screen, negative = CCW on screen
+  // Signed area in world coordinates (Y-up): positive = CCW, negative = CW
   let signedArea2 = 0;
   for (let i = 0; i < n; i++) {
     const p1 = points[i], p2 = points[(i + 1) % n];
@@ -532,8 +532,8 @@ export function offsetPolygonOutward(points, offset) {
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const len = Math.hypot(dx, dy);
     if (len < 0.001) { normals.push({ x: 0, y: 0 }); continue; }
-    // CW on screen (signedArea2 > 0): outward = (dy, -dx)
-    // CCW on screen (signedArea2 < 0): outward = (-dy, dx)
+    // CCW (signedArea2 > 0): outward = (dy, -dx)
+    // CW  (signedArea2 < 0): outward = (-dy, dx)
     const nx = signedArea2 >= 0 ? dy / len : -dy / len;
     const ny = signedArea2 >= 0 ? -dx / len : dx / len;
     normals.push({ x: nx, y: ny });

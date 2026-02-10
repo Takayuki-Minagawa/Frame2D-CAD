@@ -16,6 +16,7 @@ export class Canvas2D {
       offsetY: 0,
       scale: 0.05, // pixels per mm (50px per 1000mm)
     };
+    this._cameraInitialized = false;
 
     // Temporary drawing state
     this.preview = null; // { ... , mode: 'line'|'rect'|'polyline' }
@@ -23,10 +24,6 @@ export class Canvas2D {
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.canvas.parentElement);
     this.resize();
-
-    // Center origin
-    this.camera.offsetX = this.canvas.width / 2;
-    this.camera.offsetY = this.canvas.height / 2;
   }
 
   resize() {
@@ -39,19 +36,30 @@ export class Canvas2D {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.logicalWidth = parent.clientWidth;
     this.logicalHeight = parent.clientHeight;
+
+    if (!this._cameraInitialized && this.logicalWidth > 0 && this.logicalHeight > 0) {
+      this._setInitialOriginNearBottomLeft();
+    }
+  }
+
+  _setInitialOriginNearBottomLeft() {
+    const margin = 80;
+    this.camera.offsetX = margin;
+    this.camera.offsetY = Math.max(margin, this.logicalHeight - margin);
+    this._cameraInitialized = true;
   }
 
   screenToWorld(sx, sy) {
     return {
       x: (sx - this.camera.offsetX) / this.camera.scale,
-      y: (sy - this.camera.offsetY) / this.camera.scale,
+      y: (this.camera.offsetY - sy) / this.camera.scale,
     };
   }
 
   worldToScreen(wx, wy) {
     return {
       x: wx * this.camera.scale + this.camera.offsetX,
-      y: wy * this.camera.scale + this.camera.offsetY,
+      y: this.camera.offsetY - wy * this.camera.scale,
     };
   }
 

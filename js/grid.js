@@ -10,15 +10,15 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
 
   // Calculate visible world bounds
   const worldLeft = -offsetX / scale;
-  const worldTop = -offsetY / scale;
   const worldRight = (canvasW - offsetX) / scale;
-  const worldBottom = (canvasH - offsetY) / scale;
+  const worldMinY = (offsetY - canvasH) / scale;
+  const worldMaxY = offsetY / scale;
 
   // Grid line range
   const startX = Math.floor(worldLeft / gridSize) * gridSize;
   const endX = Math.ceil(worldRight / gridSize) * gridSize;
-  const startY = Math.floor(worldTop / gridSize) * gridSize;
-  const endY = Math.ceil(worldBottom / gridSize) * gridSize;
+  const startY = Math.floor(worldMinY / gridSize) * gridSize;
+  const endY = Math.ceil(worldMaxY / gridSize) * gridSize;
 
   ctx.save();
   ctx.strokeStyle = cssVar('--grid-line');
@@ -35,7 +35,7 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
 
   // Horizontal lines
   for (let y = startY; y <= endY; y += gridSize) {
-    const sy = y * scale + offsetY;
+    const sy = offsetY - y * scale;
     ctx.beginPath();
     ctx.moveTo(0, sy);
     ctx.lineTo(canvasW, sy);

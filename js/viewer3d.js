@@ -13,6 +13,8 @@ export class Viewer3D {
     this.camera = null;
     this.renderer = null;
     this.controls = null;
+    this.ambientLight = null;
+    this.directionalLight = null;
     this.memberGroup = null;
     this.nodeGroup = null;
     this.surfaceGroup = null;
@@ -21,10 +23,12 @@ export class Viewer3D {
     this.showWireframe = false;
     this.showNodes = true;
     this.gridHelper = null;
+    this.originAxes = null;
 
     this._initialized = false;
     this._isAnimating = false;
     this._sceneDirty = true;
+    this._pendingInitialCamera = true;
   }
 
   init() {
@@ -35,8 +39,6 @@ export class Viewer3D {
     this.scene.background = new THREE.Color(0x1e1e2e);
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
-    this.camera.position.set(15, 15, 15);
-    this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -45,18 +47,20 @@ export class Viewer3D {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.1;
+    this.controls.enablePan = false;
+    this._setFallbackObliqueView();
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    this.scene.add(ambient);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-    directional.position.set(10, 20, 10);
-    this.scene.add(directional);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    this.scene.add(this.ambientLight);
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.directionalLight.position.set(10, 20, 10);
+    this.scene.add(this.directionalLight);
 
     this.gridHelper = new THREE.GridHelper(50, 50, 0x444466, 0x333355);
     this.scene.add(this.gridHelper);
 
-    const axes = new THREE.AxesHelper(5);
-    this.scene.add(axes);
+    this.originAxes = this._createOriginPlanAxes(1.2);
+    this.scene.add(this.originAxes);
 
     this.surfaceGroup = new THREE.Group();
     this.scene.add(this.surfaceGroup);
@@ -67,10 +71,119 @@ export class Viewer3D {
     this.loadGroup = new THREE.Group();
     this.scene.add(this.loadGroup);
 
+    this.applyTheme();
+
     this.resize();
 
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.container);
+  }
+
+  _setFallbackObliqueView() {
+    this._setInitialObliqueViewToTarget(new THREE.Vector3(0, 0, 0), 10);
+  }
+
+  _setInitialObliqueViewToTarget(target, span) {
+    const distance = Math.max(8, span * 2.2);
+    const dir = new THREE.Vector3(1, 0.8, 1).normalize();
+    const position = target.clone().addScaledVector(dir, distance);
+    this.camera.position.copy(position);
+    this.camera.up.set(0, 1, 0);
+    this.controls.target.copy(target);
+    this.camera.lookAt(target);
+    this.controls.update();
+  }
+
+  _computeContentBounds() {
+    const box = new THREE.Box3();
+    let hasContent = false;
+    for (const group of [this.surfaceGroup, this.memberGroup, this.nodeGroup, this.loadGroup]) {
+      if (!group || group.children.length === 0) continue;
+      const gbox = new THREE.Box3().setFromObject(group);
+      if (!Number.isFinite(gbox.min.x) || !Number.isFinite(gbox.max.x)) continue;
+      box.union(gbox);
+      hasContent = true;
+    }
+    return { box, hasContent };
+  }
+
+  _autoFrameObliqueView(bounds = null) {
+    const { box, hasContent } = bounds || this._computeContentBounds();
+    if (!hasContent) {
+      this._setFallbackObliqueView();
+      return;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const span = Math.max(size.x, size.y, size.z, 4);
+    this._setInitialObliqueViewToTarget(center, span);
+  }
+
+  _createOriginPlanAxes(length = 1.2) {
+    // 2D plan Y is mapped to -Z in the 3D scene.
+    const origin = new THREE.Vector3(0, 0, 0);
+    const headLength = Math.max(0.18, length * 0.28);
+    const headWidth = Math.max(0.1, length * 0.16);
+
+    const xArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0),
+      origin.clone(),
+      length,
+      0xff4d4d,
+      headLength,
+      headWidth
+    );
+    const yArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 0, -1),
+      origin.clone(),
+      length,
+      0x4dff88,
+      headLength,
+      headWidth
+    );
+    const zArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0),
+      origin.clone(),
+      length,
+      0x4da6ff,
+      headLength,
+      headWidth
+    );
+
+    for (const arrow of [xArrow, yArrow, zArrow]) {
+      arrow.line.material.depthTest = false;
+      arrow.line.material.depthWrite = false;
+      arrow.line.material.toneMapped = false;
+      arrow.cone.material.depthTest = false;
+      arrow.cone.material.depthWrite = false;
+      arrow.cone.material.toneMapped = false;
+      arrow.renderOrder = 999;
+    }
+
+    const group = new THREE.Group();
+    group.add(xArrow);
+    group.add(yArrow);
+    group.add(zArrow);
+    return group;
+  }
+
+  _positionOriginAxes(bounds = null) {
+    if (!this.originAxes) return;
+    const { box, hasContent } = bounds || this._computeContentBounds();
+    if (!hasContent) {
+      this.originAxes.position.set(-4, 0.4, 4);
+      return;
+    }
+
+    const size = box.getSize(new THREE.Vector3());
+    const planSpan = Math.max(size.x, size.z, 4);
+    const pad = Math.max(2.0, planSpan * 0.22);
+    const lift = Math.max(0.25, Math.min(1.0, size.y * 0.08));
+
+    // Place far away from the plan's lower-left corner for readability.
+    const x = box.min.x - pad;
+    const z = box.max.z + pad;
+    this.originAxes.position.set(x, box.min.y + lift, z);
   }
 
   resize() {
@@ -267,6 +380,14 @@ export class Viewer3D {
         mesh.position.set(ld.x1 / 1000, y, -ld.y1 / 1000);
         this.loadGroup.add(mesh);
       }
+    }
+
+    const bounds = this._computeContentBounds();
+    this._positionOriginAxes(bounds);
+
+    if (this._pendingInitialCamera) {
+      this._autoFrameObliqueView(bounds);
+      this._pendingInitialCamera = false;
     }
   }
 
@@ -466,6 +587,7 @@ export class Viewer3D {
   startRendering() {
     this.init();
     this.resize();
+    this._pendingInitialCamera = true;
     this.requestRebuild();
     if (this._isAnimating) return;
     this._isAnimating = true;
@@ -485,15 +607,44 @@ export class Viewer3D {
   applyTheme() {
     if (!this._initialized) return;
     const style = getComputedStyle(document.documentElement);
+    const theme = document.documentElement.dataset.theme || 'dark';
     const bg = style.getPropertyValue('--viewer-bg').trim();
     const g1 = style.getPropertyValue('--viewer-grid1').trim();
     const g2 = style.getPropertyValue('--viewer-grid2').trim();
     this.scene.background = new THREE.Color(bg);
+
+    if (this.renderer) {
+      this.renderer.toneMappingExposure = theme === 'light' ? 0.95 : 1.0;
+    }
+    if (this.ambientLight) {
+      this.ambientLight.intensity = theme === 'light' ? 0.72 : 0.5;
+    }
+    if (this.directionalLight) {
+      this.directionalLight.intensity = theme === 'light' ? 0.95 : 0.8;
+      this.directionalLight.position.set(
+        theme === 'light' ? 12 : 10,
+        theme === 'light' ? 22 : 20,
+        theme === 'light' ? 14 : 10
+      );
+    }
+
     if (this.gridHelper) {
       this.scene.remove(this.gridHelper);
-      this.gridHelper.dispose();
+      this.gridHelper.geometry?.dispose();
+      const mats = Array.isArray(this.gridHelper.material)
+        ? this.gridHelper.material
+        : [this.gridHelper.material];
+      for (const mat of mats) mat?.dispose?.();
     }
     this.gridHelper = new THREE.GridHelper(50, 50, new THREE.Color(g1), new THREE.Color(g2));
+    const gridMats = Array.isArray(this.gridHelper.material)
+      ? this.gridHelper.material
+      : [this.gridHelper.material];
+    for (const mat of gridMats) {
+      mat.transparent = true;
+      mat.opacity = theme === 'light' ? 0.72 : 0.48;
+      mat.depthWrite = false;
+    }
     this.scene.add(this.gridHelper);
   }
 }
