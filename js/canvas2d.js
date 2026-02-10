@@ -16,8 +16,8 @@ export class Canvas2D {
       scale: 0.05, // pixels per mm (50px per 1000mm)
     };
 
-    // Temporary drawing state (for member tool preview)
-    this.preview = null; // { startX, startY, endX, endY }
+    // Temporary drawing state
+    this.preview = null; // { ... , mode: 'line'|'rect'|'polyline' }
 
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.canvas.parentElement);
@@ -40,7 +40,6 @@ export class Canvas2D {
     this.logicalHeight = parent.clientHeight;
   }
 
-  // Convert screen coords to world coords
   screenToWorld(sx, sy) {
     return {
       x: (sx - this.camera.offsetX) / this.camera.scale,
@@ -48,7 +47,6 @@ export class Canvas2D {
     };
   }
 
-  // Convert world coords to screen coords
   worldToScreen(wx, wy) {
     return {
       x: wx * this.camera.scale + this.camera.offsetX,
@@ -56,7 +54,6 @@ export class Canvas2D {
     };
   }
 
-  // Zoom centered on screen point
   zoom(delta, sx, sy) {
     const factor = delta > 0 ? 0.9 : 1.1;
     const newScale = Math.max(0.005, Math.min(1, this.camera.scale * factor));
@@ -80,18 +77,17 @@ export class Canvas2D {
     const w = this.logicalWidth;
     const h = this.logicalHeight;
 
-    // Clear with theme background
     ctx.fillStyle = this._cssVar('--canvas-bg');
     ctx.fillRect(0, 0, w, h);
 
-    // Theme colors
     const nodeColor = this._cssVar('--node-color');
     const selectedColor = this._cssVar('--node-selected');
     const previewColor = this._cssVar('--preview-color');
     const memberDefault = this._cssVar('--member-default');
 
-    // Grid
     drawGrid(ctx, this.camera, this.state.settings.gridSize, w, h);
+
+    this._drawSurfaces(ctx, selectedColor);
 
     // Members
     for (const m of this.state.members) {
@@ -107,6 +103,9 @@ export class Canvas2D {
       ctx.save();
       ctx.strokeStyle = isSelected ? selectedColor : (m.color || memberDefault);
       ctx.lineWidth = isSelected ? 3 : 2;
+      if (m.type === 'brace' || m.type === 'hbrace' || m.type === 'vbrace') {
+        ctx.setLineDash([7, 4]);
+      }
       ctx.beginPath();
       ctx.moveTo(s1.x, s1.y);
       ctx.lineTo(s2.x, s2.y);
@@ -131,19 +130,166 @@ export class Canvas2D {
       ctx.restore();
     }
 
-    // Preview line (member tool)
+    // Preview
     if (this.preview) {
-      const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
-      const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
       ctx.save();
       ctx.strokeStyle = previewColor;
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
+      if (this.preview.mode === 'rect') {
+        const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
+        const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
+        const x = Math.min(s1.x, s2.x);
+        const y = Math.min(s1.y, s2.y);
+        const ww = Math.abs(s2.x - s1.x);
+        const hh = Math.abs(s2.y - s1.y);
+        ctx.rect(x, y, ww, hh);
+      } else if (this.preview.mode === 'polyline' && Array.isArray(this.preview.points)) {
+        const pts = this.preview.points.map(p => this.worldToScreen(p.x, p.y));
+        if (pts.length > 0) {
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(pts[i].x, pts[i].y);
+          }
+        }
+      } else {
+        const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
+        const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
+        ctx.moveTo(s1.x, s1.y);
+        ctx.lineTo(s2.x, s2.y);
+      }
       ctx.stroke();
       ctx.restore();
     }
   }
+
+  _drawSurfaces(ctx, selectedColor) {
+    const wallOffset = this.state.settings.wallDisplayOffset || 120;
+
+    for (const s of this.state.surfaces) {
+      const isWall = s.type === 'wall';
+      const isSelected = s.id === this.state.selectedSurfaceId;
+      const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);
+
+      if (isPolygon) {
+        const points = s.points.map(p => ({
+          x: p.x + (isWall ? wallOffset : 0),
+          y: p.y + (isWall ? wallOffset : 0),
+        }));
+        this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
+        continue;
+      }
+
+      const x1 = isWall ? s.x1 + wallOffset : s.x1;
+      const y1 = isWall ? s.y1 + wallOffset : s.y1;
+      const x2 = isWall ? s.x2 + wallOffset : s.x2;
+      const y2 = isWall ? s.y2 + wallOffset : s.y2;
+
+      const p1 = this.worldToScreen(x1, y1);
+      const p2 = this.worldToScreen(x2, y2);
+      const sx = Math.min(p1.x, p2.x);
+      const sy = Math.min(p1.y, p2.y);
+      const sw = Math.abs(p2.x - p1.x);
+      const sh = Math.abs(p2.y - p1.y);
+
+      ctx.save();
+      ctx.fillStyle = toRgba(s.color || (isWall ? '#b57a6b' : '#67a9cf'), isWall ? 0.22 : 0.26);
+      ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#67a9cf');
+      ctx.lineWidth = isSelected ? 2.5 : 1.5;
+      if (isWall) ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.rect(sx, sy, sw, sh);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      if (s.type === 'floor') {
+        this._drawLoadArrow(ctx, sx, sy, sw, sh, s.loadDirection);
+      }
+    }
+  }
+
+  _drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor) {
+    if (!points.length) return;
+    const screenPoints = points.map(p => this.worldToScreen(p.x, p.y));
+    ctx.save();
+    ctx.fillStyle = toRgba(s.color || (isWall ? '#b57a6b' : '#67a9cf'), isWall ? 0.22 : 0.26);
+    ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#67a9cf');
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    if (isWall) ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+    for (let i = 1; i < screenPoints.length; i++) {
+      ctx.lineTo(screenPoints[i].x, screenPoints[i].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    if (s.type === 'floor') {
+      const bounds = polygonBounds(screenPoints);
+      this._drawLoadArrow(ctx, bounds.x, bounds.y, bounds.w, bounds.h, s.loadDirection);
+    }
+  }
+
+  _drawLoadArrow(ctx, x, y, w, h, dir) {
+    const minSpan = 20;
+    if (w < minSpan || h < minSpan) return;
+    ctx.save();
+    ctx.strokeStyle = '#facc15';
+    ctx.fillStyle = '#facc15';
+    ctx.lineWidth = 1.5;
+
+    if (dir === 'x' || dir === 'twoWay') {
+      const yMid = y + h * 0.5;
+      this._arrowLine(ctx, x + w * 0.18, yMid, x + w * 0.82, yMid);
+    }
+    if (dir === 'y' || dir === 'twoWay') {
+      const xMid = x + w * 0.5;
+      this._arrowLine(ctx, xMid, y + h * 0.82, xMid, y + h * 0.18);
+    }
+
+    ctx.restore();
+  }
+
+  _arrowLine(ctx, x1, y1, x2, y2) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const size = 7;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 7), y2 - size * Math.sin(angle - Math.PI / 7));
+    ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 7), y2 - size * Math.sin(angle + Math.PI / 7));
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function toRgba(hex, alpha) {
+  const h = (hex || '#67a9cf').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function polygonBounds(points) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 }

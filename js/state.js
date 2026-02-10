@@ -2,7 +2,7 @@
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 1;
+    this.schemaVersion = 2;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -11,6 +11,7 @@ export class AppState {
     this.settings = {
       gridSize: 1000,
       snap: true,
+      wallDisplayOffset: 120,
     };
     this.levels = [
       { id: 'L0', name: 'GL', z: 0 },
@@ -18,14 +19,23 @@ export class AppState {
     ];
     this.nodes = [];
     this.members = [];
+    this.surfaces = [];
 
     // Runtime state (not serialized)
     this.selectedMemberId = null;
+    this.selectedSurfaceId = null;
     this.currentTool = 'select';
+    this.activeLayerId = 'L0';
+    this.memberDraftType = 'beam';
+    this.surfaceDraftType = 'floor';
+    this.surfaceDraftMode = 'rect';
+    this.surfaceDraftLoadDir = 'twoWay';
+    this.surfaceDraftTopLayerId = 'L1';
 
     // Counters for ID generation
     this._nodeCounter = 0;
     this._memberCounter = 0;
+    this._surfaceCounter = 0;
   }
 
   // --- Nodes ---
@@ -84,7 +94,7 @@ export class AppState {
       startNodeId,
       endNodeId,
       section: { b: options.b || 200, h: options.h || 400 },
-      levelId: options.levelId || 'L0',
+      levelId: options.levelId || this.activeLayerId || 'L0',
       material: options.material || 'steel',
       color: options.color || '#666666',
     };
@@ -143,6 +153,103 @@ export class AppState {
     return closest;
   }
 
+  // --- Surfaces ---
+
+  nextSurfaceId() {
+    this._surfaceCounter++;
+    return `S${this._surfaceCounter}`;
+  }
+
+  addSurfaceRect(x1, y1, x2, y2, options = {}) {
+    const id = this.nextSurfaceId();
+    const surface = {
+      id,
+      type: options.type || 'floor', // floor | wall
+      levelId: options.levelId || this.activeLayerId || 'L0',
+      topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
+      loadDirection: options.loadDirection || 'twoWay', // x | y | twoWay
+      color: options.color || (options.type === 'wall' ? '#b57a6b' : '#67a9cf'),
+      x1: Math.min(x1, x2),
+      y1: Math.min(y1, y2),
+      x2: Math.max(x1, x2),
+      y2: Math.max(y1, y2),
+      points: null,
+      shape: 'rect',
+    };
+    this.surfaces.push(surface);
+    return surface;
+  }
+
+  addSurfacePolygon(points, options = {}) {
+    if (!Array.isArray(points) || points.length < 3) return null;
+    const id = this.nextSurfaceId();
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const surface = {
+      id,
+      type: options.type || 'wall',
+      levelId: options.levelId || this.activeLayerId || 'L0',
+      topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
+      loadDirection: options.loadDirection || 'twoWay',
+      color: options.color || (options.type === 'wall' ? '#b57a6b' : '#67a9cf'),
+      x1: Math.min(...xs),
+      y1: Math.min(...ys),
+      x2: Math.max(...xs),
+      y2: Math.max(...ys),
+      points: points.map(p => ({ x: p.x, y: p.y })),
+      shape: 'polygon',
+    };
+    this.surfaces.push(surface);
+    return surface;
+  }
+
+  getSurface(id) {
+    return this.surfaces.find(s => s.id === id);
+  }
+
+  updateSurface(id, props) {
+    const surface = this.getSurface(id);
+    if (surface) Object.assign(surface, props);
+    return surface;
+  }
+
+  removeSurface(id) {
+    this.surfaces = this.surfaces.filter(s => s.id !== id);
+    if (this.selectedSurfaceId === id) {
+      this.selectedSurfaceId = null;
+    }
+  }
+
+  findSurfaceAt(x, y) {
+    const wallOffset = this.settings.wallDisplayOffset || 120;
+    for (let i = this.surfaces.length - 1; i >= 0; i--) {
+      const s = this.surfaces[i];
+      if (s.shape === 'polygon' && Array.isArray(s.points)) {
+        const pts = s.points.map(p => ({
+          x: p.x + (s.type === 'wall' ? wallOffset : 0),
+          y: p.y + (s.type === 'wall' ? wallOffset : 0),
+        }));
+        if (pointInPolygon(x, y, pts)) {
+          return s;
+        }
+        continue;
+      }
+      const x1 = s.type === 'wall' ? s.x1 + wallOffset : s.x1;
+      const y1 = s.type === 'wall' ? s.y1 + wallOffset : s.y1;
+      const x2 = s.type === 'wall' ? s.x2 + wallOffset : s.x2;
+      const y2 = s.type === 'wall' ? s.y2 + wallOffset : s.y2;
+      if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  clearSelection() {
+    this.selectedMemberId = null;
+    this.selectedSurfaceId = null;
+  }
+
   // --- Serialization ---
 
   toJSON() {
@@ -156,27 +263,50 @@ export class AppState {
         ...m,
         section: { ...m.section },
       })),
+      surfaces: this.surfaces.map(s => ({
+        ...s,
+        points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
+      })),
     };
   }
 
   loadJSON(data) {
-    if (!data || data.schemaVersion !== 1) {
+    if (!data || (data.schemaVersion !== 1 && data.schemaVersion !== 2)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = data.schemaVersion;
+    this.schemaVersion = 2;
     this.meta = { ...data.meta };
-    this.settings = { ...data.settings };
+    this.settings = {
+      gridSize: 1000,
+      snap: true,
+      wallDisplayOffset: 120,
+      ...data.settings,
+    };
     this.levels = data.levels.map(l => ({ ...l }));
     this.nodes = data.nodes.map(n => ({ ...n }));
     this.members = data.members.map(m => ({
       ...m,
       section: { ...m.section },
     }));
+    this.surfaces = (data.surfaces || []).map(s => ({
+      ...s,
+      shape: s.shape || 'rect',
+      points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
+    }));
     this.selectedMemberId = null;
+    this.selectedSurfaceId = null;
+    this.currentTool = 'select';
+    this.activeLayerId = this.levels[0]?.id || 'L0';
+    this.memberDraftType = 'beam';
+    this.surfaceDraftType = 'floor';
+    this.surfaceDraftMode = 'rect';
+    this.surfaceDraftLoadDir = 'twoWay';
+    this.surfaceDraftTopLayerId = this.levels[1]?.id || this.activeLayerId;
 
     // Restore counters
     this._nodeCounter = maxIdNum(this.nodes);
     this._memberCounter = maxIdNum(this.members);
+    this._surfaceCounter = maxIdNum(this.surfaces);
   }
 
   // Deep clone for undo/redo snapshots
@@ -208,4 +338,18 @@ function maxIdNum(items) {
     if (n > max) max = n;
   }
   return max;
+}
+
+function pointInPolygon(px, py, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x;
+    const yi = points[i].y;
+    const xj = points[j].x;
+    const yj = points[j].y;
+    const intersect = ((yi > py) !== (yj > py)) &&
+      (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }

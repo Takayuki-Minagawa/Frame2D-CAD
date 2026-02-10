@@ -1,7 +1,7 @@
 # LineFrame CAD (Ver.Beta01)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
-建築の柱・梁・ブレースなどの線材（部材）を2D平面上に配置・編集し、同じデータを3Dで可視化できます。
+建築の柱・梁・ブレースなどの線材（部材）に加えて、床・壁の面要素を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
 
 **GitHub Pages** でそのまま動作します（バックエンド不要）。
 
@@ -13,15 +13,21 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 ### 2D CAD
 - 部材（線分）の作成・選択・移動・削除
+- 面要素（床 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
+- 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
 - ノード（端点）のドラッグによる形状変更
 - パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
 - 原点と軸方向を左下に常時表示（部材配置の基準）
-- プロパティパネルで部材属性を編集（種別・断面寸法・レベル・色）
+- レイヤー（Zレベル）管理: 名前（GL/NFL等）+ 数値高さ
+- プロパティパネルで部材/面属性を編集（種別・断面寸法・レイヤー・色・荷重方向）
+- 床スラブの荷重方向（X / Y / 2方向）を矢印表示
+- 壁要素は梁線と重なりにくいよう平面上でオフセット表示
 - Undo / Redo
 
 ### 3D Viewer
 - 部材を断面寸法（b x h）を反映した直方体として3D表示
+- 床スラブを水平面、壁要素を鉛直面として3D表示
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
 
@@ -43,8 +49,10 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 |-----|--------|
 | `V` | Select tool |
 | `M` | Member tool |
+| `F` | Surface tool |
+| `Enter` (Surface Polyline) | Close polyline to polygon |
 | `Esc` | Cancel / Deselect |
-| `Delete` | Delete selected member |
+| `Delete` | Delete selected member/surface |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Right Drag` / `Middle Drag` / `Space + Drag` | Pan |
@@ -69,7 +77,7 @@ Frame2D-CAD/
 ├── THIRD_PARTY_LICENSES.md  # Third-party license details
 ├── js/
 │   ├── app.js          # App init / Module wiring / Theme / Lang / Help
-│   ├── state.js        # Data model (nodes, members, levels) / CRUD / JSON serialization
+│   ├── state.js        # Data model (nodes, members, surfaces, layers) / CRUD / JSON serialization
 │   ├── history.js      # Undo/Redo (snapshot, max 50)
 │   ├── grid.js         # Grid drawing / Snap calculation
 │   ├── canvas2d.js     # 2D canvas (pan/zoom camera, rendering)
@@ -105,7 +113,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "meta": {
     "name": "sample",
     "unit": "mm",
@@ -133,6 +141,41 @@ app.js ─┬─ state.js      Data model (AppState)
       "levelId": "L0",
       "material": "steel",
       "color": "#666666"
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "S1",
+      "type": "floor",
+      "shape": "rect",
+      "levelId": "L1",
+      "topLevelId": "L1",
+      "loadDirection": "twoWay",
+      "color": "#67a9cf",
+      "x1": 0,
+      "y1": 0,
+      "x2": 5000,
+      "y2": 4000,
+      "points": null
+    },
+    {
+      "id": "S2",
+      "type": "wall",
+      "shape": "polygon",
+      "levelId": "L0",
+      "topLevelId": "L1",
+      "loadDirection": "twoWay",
+      "color": "#b57a6b",
+      "x1": 0,
+      "y1": 0,
+      "x2": 6000,
+      "y2": 5000,
+      "points": [
+        { "x": 0, "y": 0 },
+        { "x": 6000, "y": 0 },
+        { "x": 6000, "y": 5000 },
+        { "x": 0, "y": 5000 }
+      ]
     }
   ]
 }

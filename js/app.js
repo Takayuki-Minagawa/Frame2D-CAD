@@ -46,6 +46,8 @@ let activeView = '2d'; // '2d' | '3d'
 function update() {
   if (activeView === '2d') {
     canvas2d.draw();
+  } else if (viewer3d) {
+    viewer3d.rebuildScene();
   }
   ui.updatePropertyPanel();
   ui.updateZoom(canvas2d.camera.scale);
@@ -64,12 +66,13 @@ const ui = new UI(state, {
   onToolChange() { update(); },
   onSnapToggle() { update(); },
   onGridChange() { update(); },
+  onLayerChange() { update(); },
   onPropertyChange() { update(); },
 });
 
 // --- Tools ---
 
-const _tools = new ToolManager(canvas2d, state, history, update);
+new ToolManager(canvas2d, state, history, update);
 
 // --- View Tab Switching ---
 
@@ -113,6 +116,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     await importJSON(file, state, history);
     document.getElementById('chk-snap').checked = state.settings.snap;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
+    ui.refreshLayerSelectors();
     update();
     if (activeView === '3d' && viewer3d) {
       viewer3d.rebuildScene();
