@@ -174,6 +174,8 @@ export class UI {
     }
 
     const isColumn = member.type === 'column';
+    const isVBrace = member.type === 'vbrace';
+    const hasTopLevel = isColumn || isVBrace;
     const n1 = this.state.getNode(member.startNodeId);
     const n2 = this.state.getNode(member.endNodeId);
 
@@ -214,10 +216,19 @@ export class UI {
         <label>${t('propLayer')}</label>
         <select id="prop-level">${levelOptions}</select>
       </div>
-      ${isColumn ? `
+      ${hasTopLevel ? `
       <div class="prop-group">
         <label>${t('topLayer')}</label>
         <select id="prop-top-level">${topLevelOptions}</select>
+      </div>
+      ` : ''}
+      ${isVBrace ? `
+      <div class="prop-group">
+        <label>${t('bracePattern')}</label>
+        <select id="prop-brace-pattern">
+          <option value="single" ${member.bracePattern === 'single' ? 'selected' : ''}>${t('braceSingle')}</option>
+          <option value="cross" ${member.bracePattern === 'cross' ? 'selected' : ''}>${t('braceCross')}</option>
+        </select>
       </div>
       ` : ''}
       <div class="prop-row">
@@ -264,7 +275,8 @@ export class UI {
 
     bind('prop-type', 'type');
     bind('prop-level', 'levelId');
-    if (isColumn) bind('prop-top-level', 'topLevelId');
+    if (hasTopLevel) bind('prop-top-level', 'topLevelId');
+    if (isVBrace) bind('prop-brace-pattern', 'bracePattern');
     bind('prop-b', 'b', parseFloat);
     bind('prop-h', 'h', parseFloat);
     bind('prop-material', 'material');

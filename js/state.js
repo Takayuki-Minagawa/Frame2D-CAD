@@ -26,7 +26,7 @@ export class AppState {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
-    this.currentTool = 'select';
+    this.currentTool = 'member';
     this.activeLayerId = 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';
@@ -103,6 +103,7 @@ export class AppState {
       material: options.material || 'steel',
       color: options.color || '#666666',
       topLevelId: options.topLevelId || null,
+      bracePattern: options.bracePattern || 'single',
     };
     this.members.push(member);
     return member;
@@ -440,6 +441,7 @@ export class AppState {
       ...m,
       section: { ...m.section },
       topLevelId: m.topLevelId || null,
+      bracePattern: m.bracePattern || 'single',
     }));
     this.surfaces = (data.surfaces || []).map(s => ({
       ...s,
@@ -450,7 +452,7 @@ export class AppState {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
-    this.currentTool = 'select';
+    this.currentTool = 'member';
     this.activeLayerId = this.levels[0]?.id || 'L0';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';

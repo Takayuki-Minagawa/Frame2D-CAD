@@ -356,6 +356,29 @@ export class ToolManager {
 
     if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
 
+    // 水平ブレースは斜め配置のみ（X軸・Y軸に平行な配置は不可）
+    if (this.state.memberDraftType === 'hbrace') {
+      const dx = Math.abs(end.x - start.x);
+      const dy = Math.abs(end.y - start.y);
+      if (dx < 1 || dy < 1) {
+        alert(t('hbraceNeedsDiagonal'));
+        return;
+      }
+    }
+
+    // 垂直ブレースは上レイヤーが必要
+    let topLevelId = null;
+    if (this.state.memberDraftType === 'vbrace') {
+      topLevelId = this._getAutoTopLevelId();
+      if (!topLevelId) {
+        alert(t('noLevelAbove'));
+        this._memberStart = null;
+        this.c.preview = null;
+        this.onUpdate();
+        return;
+      }
+    }
+
     this.history.save();
 
     let startNode = this.state.findNodeAt(start.x, start.y, 1);
@@ -367,6 +390,7 @@ export class ToolManager {
     const member = this.state.addMember(startNode.id, endNode.id, {
       type: this.state.memberDraftType || 'beam',
       levelId: this.state.activeLayerId || 'L0',
+      topLevelId,
     });
 
     this.state.selectedMemberId = member.id;

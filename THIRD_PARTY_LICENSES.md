@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-LineFrame CAD が利用しているサードパーティライブラリのライセンス情報です。
+Element Modeler が利用しているサードパーティライブラリのライセンス情報です。
 
 ---
 

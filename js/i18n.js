@@ -5,11 +5,11 @@ const dict = {
     // Toolbar
     tools: 'ツール',
     select: '選択',
-    selectTool: '要素',
+    selectTool: '選択',
     member: '線材',
     surface: '面材',
     load: '荷重',
-    toolLabel: '選択',
+    toolLabel: '要素',
     snap: 'スナップ',
     grid: 'グリッド',
     activeLayer: 'レイヤー',
@@ -39,6 +39,10 @@ const dict = {
     layerCannotDeleteLast: '最低1つのレイヤーが必要です。',
     layerDuplicateZ: 'この高さ(z値)は既に使用されています。',
     noLevelAbove: '現在のレイヤーより上にレイヤーがありません。レイヤー管理で追加してください。',
+    bracePattern: 'ブレースパターン',
+    braceSingle: 'シングル',
+    braceCross: '襷掛け',
+    hbraceNeedsDiagonal: '水平ブレースは斜め配置のみ可能です（X軸・Y軸に平行な配置はできません）。',
     exteriorWallConfirmReplace: 'このレイヤーには既に外壁線があります。既存の外壁線を削除して新しく入力しますか？',
 
     // Tabs
@@ -163,11 +167,11 @@ const dict = {
     // Toolbar
     tools: 'Tools',
     select: 'Select',
-    selectTool: 'Element',
+    selectTool: 'Select',
     member: 'Line',
     surface: 'Surface',
     load: 'Load',
-    toolLabel: 'Selection',
+    toolLabel: 'Element',
     snap: 'Snap',
     grid: 'Grid',
     activeLayer: 'Layer',
@@ -197,6 +201,10 @@ const dict = {
     layerCannotDeleteLast: 'At least one layer is required.',
     layerDuplicateZ: 'This height (z value) is already in use.',
     noLevelAbove: 'No layer above the current layer. Please add one in Layer Management.',
+    bracePattern: 'Brace Pattern',
+    braceSingle: 'Single',
+    braceCross: 'Cross (X)',
+    hbraceNeedsDiagonal: 'Horizontal braces must be placed diagonally (cannot be parallel to X or Y axis).',
     exteriorWallConfirmReplace: 'An exterior wall line already exists on this layer. Delete it and start new input?',
 
     // Tabs

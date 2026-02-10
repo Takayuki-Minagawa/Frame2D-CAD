@@ -1,4 +1,4 @@
-# LineFrame CAD (Ver.Beta01)
+# Element Modeler (Ver.Beta02)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。

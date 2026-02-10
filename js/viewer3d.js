@@ -167,6 +167,11 @@ export class Viewer3D {
       const n2 = this.state.getNode(m.endNodeId);
       if (!n2) continue;
 
+      if (m.type === 'vbrace') {
+        this._addVBrace3D(m, n1, n2);
+        continue;
+      }
+
       const level = this.state.levels.find(l => l.id === m.levelId);
       const y = (level ? level.z : 0) / 1000;
 
@@ -328,6 +333,39 @@ export class Viewer3D {
       lineSegments.position.copy(mesh.position);
       this.memberGroup.add(lineSegments);
     }
+  }
+
+  _addVBrace3D(member, n1, n2) {
+    const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
+    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
+    if (!bottomLevel || !topLevel) return;
+
+    const yBottom = bottomLevel.z / 1000;
+    const yTop = topLevel.z / 1000;
+    const color = new THREE.Color(member.color || '#666666');
+    const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+
+    const s1 = new THREE.Vector3(n1.x / 1000, yBottom, -n1.y / 1000);
+    const s2 = new THREE.Vector3(n2.x / 1000, yBottom, -n2.y / 1000);
+    const t1 = new THREE.Vector3(n1.x / 1000, yTop, -n1.y / 1000);
+    const t2 = new THREE.Vector3(n2.x / 1000, yTop, -n2.y / 1000);
+
+    if (member.bracePattern === 'cross') {
+      // X: both diagonals
+      const geo1 = new THREE.BufferGeometry().setFromPoints([s1, t2]);
+      this.memberGroup.add(new THREE.Line(geo1, mat));
+      const geo2 = new THREE.BufferGeometry().setFromPoints([s2, t1]);
+      this.memberGroup.add(new THREE.Line(geo2, mat));
+    } else {
+      // Single: start-bottom to end-top
+      const geo = new THREE.BufferGeometry().setFromPoints([s1, t2]);
+      this.memberGroup.add(new THREE.Line(geo, mat));
+    }
+
+    // Frame outline (rectangle)
+    const frameGeo = new THREE.BufferGeometry().setFromPoints([s1, s2, t2, t1, s1]);
+    const frameMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
+    this.memberGroup.add(new THREE.Line(frameGeo, frameMat));
   }
 
   _addPolygonSurface3D(surface, base, top) {

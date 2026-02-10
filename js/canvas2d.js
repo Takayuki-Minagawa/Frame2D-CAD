@@ -104,13 +104,18 @@ export class Canvas2D {
         continue;
       }
 
+      if (m.type === 'vbrace') {
+        this._drawVBrace(ctx, m, n1, n2, isSelected, selectedColor, memberDefault);
+        continue;
+      }
+
       const s1 = this.worldToScreen(n1.x, n1.y);
       const s2 = this.worldToScreen(n2.x, n2.y);
 
       ctx.save();
       ctx.strokeStyle = isSelected ? selectedColor : (m.color || memberDefault);
       ctx.lineWidth = isSelected ? 3 : 2;
-      if (m.type === 'brace' || m.type === 'hbrace' || m.type === 'vbrace') {
+      if (m.type === 'brace' || m.type === 'hbrace') {
         ctx.setLineDash([7, 4]);
       }
       ctx.beginPath();
@@ -191,6 +196,95 @@ export class Canvas2D {
     ctx.moveTo(s.x, s.y - r);
     ctx.lineTo(s.x, s.y + r);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawVBrace(ctx, member, n1, n2, isSelected, selectedColor, memberDefault) {
+    const offset = this.state.settings.wallDisplayOffset || 120;
+
+    // Direction and perpendicular in world space
+    const dx = n2.x - n1.x;
+    const dy = n2.y - n1.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1) return;
+
+    const px = -dy / len;
+    const py = dx / len;
+
+    // Offset node positions in world space
+    const w1 = { x: n1.x + px * offset, y: n1.y + py * offset };
+    const w2 = { x: n2.x + px * offset, y: n2.y + py * offset };
+
+    // Convert to screen
+    const s1 = this.worldToScreen(w1.x, w1.y);
+    const s2 = this.worldToScreen(w2.x, w2.y);
+
+    // Screen perpendicular for triangle height
+    const sdx = s2.x - s1.x;
+    const sdy = s2.y - s1.y;
+    const slen = Math.hypot(sdx, sdy);
+    if (slen < 4) return;
+
+    const triH = 14;
+    const spx = (-sdy / slen) * triH;
+    const spy = (sdx / slen) * triH;
+
+    // Rectangle corners: s1-s2 top edge, s4-s3 bottom edge
+    const s3 = { x: s2.x + spx, y: s2.y + spy };
+    const s4 = { x: s1.x + spx, y: s1.y + spy };
+
+    const color = isSelected ? selectedColor : (member.color || memberDefault);
+
+    ctx.save();
+
+    // Rectangle outline
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    ctx.lineTo(s3.x, s3.y);
+    ctx.lineTo(s4.x, s4.y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Diagonals
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    if (member.bracePattern === 'cross') {
+      // X pattern
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s3.x, s3.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(s4.x, s4.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.stroke();
+      // Fill rectangle
+      ctx.fillStyle = toRgba(color, 0.12);
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineTo(s3.x, s3.y);
+      ctx.lineTo(s4.x, s4.y);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      // Single diagonal: s4 → s2 (start-bottom to end-top)
+      ctx.beginPath();
+      ctx.moveTo(s4.x, s4.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.stroke();
+      // Fill right triangle: s1, s2, s4
+      ctx.fillStyle = toRgba(color, 0.12);
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineTo(s4.x, s4.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 
