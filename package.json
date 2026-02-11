@@ -6,6 +6,8 @@
   "description": "2D CAD + 3D Viewer for structural frame layout",
   "scripts": {
     "test": "node --test",
+    "version:sync": "node scripts/version-sync.mjs",
+    "version:check": "node scripts/version-check.mjs",
     "lint": "eslint js/",
     "lint:html": "htmlhint index.html",
     "lint:css": "stylelint style.css",

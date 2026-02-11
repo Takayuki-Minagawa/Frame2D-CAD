@@ -271,6 +271,27 @@ npm run lint:all
 - JSON Export/Import時のID非出力・再採番
 - 面材色解決の2D/3D共有ロジック（スモーク）
 
+## Version Management
+
+バージョンの正本は `package.json` の `version` です。  
+表示用バージョン（`Ver.<major>`）は `index.html` / `README.md` に自動同期します。
+
+```bash
+# 例: 100.0.0 -> 101.0.0
+npm version 101.0.0
+
+# 表示バージョンを同期
+npm run version:sync
+
+# 不整合チェック（CIでも実行）
+npm run version:check
+```
+
+運用ルール:
+- `index.html` と `README.md` のバージョン表記は手編集しない
+- バージョン更新時は `package.json` を更新し、`version:sync` を実行する
+- `version:check` が失敗した場合は同期漏れまたは `package-lock.json` の不整合を修正する
+
 ## Deploy to GitHub Pages
 
 1. GitHubにリポジトリをpush
