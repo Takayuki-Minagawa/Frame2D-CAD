@@ -10,12 +10,12 @@ export async function readPackageVersion() {
 }
 
 export function displayVersionFromPackageVersion(packageVersion) {
-  const majorText = String(packageVersion).split('.')[0];
-  const major = Number.parseInt(majorText, 10);
-  if (!Number.isFinite(major) || major < 0) {
+  const normalized = String(packageVersion).trim();
+  const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+  if (!semverPattern.test(normalized)) {
     throw new Error(`Invalid package version: ${packageVersion}`);
   }
-  return `Ver.${major}`;
+  return `Ver.${normalized}`;
 }
 
 export function updateIndexHtml(source, displayVersion) {
