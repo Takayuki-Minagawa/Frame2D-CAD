@@ -5,6 +5,7 @@
   "type": "module",
   "description": "2D CAD + 3D Viewer for structural frame layout",
   "scripts": {
+    "test": "node --test",
     "lint": "eslint js/",
     "lint:html": "htmlhint index.html",
     "lint:css": "stylelint style.css",

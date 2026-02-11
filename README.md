@@ -255,6 +255,22 @@ python3 -m http.server 8080
 # http://localhost:8080
 ```
 
+## Testing
+
+```bash
+# Unit/Smoke tests (node:test)
+npm test
+
+# Lint (JS/HTML/CSS)
+npm run lint:all
+```
+
+主なテスト対象:
+- 断面/バネの命名ルール（先頭`_`禁止、既定名重複禁止）
+- 断面変更時の寸法・色反映
+- JSON Export/Import時のID非出力・再採番
+- 面材色解決の2D/3D共有ロジック（スモーク）
+
 ## Deploy to GitHub Pages
 
 1. GitHubにリポジトリをpush

@@ -2,6 +2,7 @@
 
 import { drawGrid } from './grid.js';
 import { offsetPolygonOutward } from './state.js';
+import { resolveSurfaceColor } from './surface-color.js';
 
 export class Canvas2D {
   constructor(canvasEl, state) {
@@ -633,19 +634,6 @@ function toRgba(hex, alpha) {
   const g = (n >> 8) & 255;
   const b = n & 255;
   return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function isHexColor(value) {
-  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-function defaultSurfaceColorForType(type) {
-  return type === 'floor' ? '#67a9cf' : '#b57a6b';
-}
-
-function resolveSurfaceColor(surface) {
-  if (isHexColor(surface?.color)) return surface.color;
-  return defaultSurfaceColorForType(surface?.type);
 }
 
 function polygonBounds(points) {

@@ -3,22 +3,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { offsetPolygonOutward } from './state.js';
+import { resolveSurfaceColor } from './surface-color.js';
 
 function isWallSurfaceType(type) {
   return type === 'wall' || type === 'exteriorWall';
-}
-
-function isHexColor(value) {
-  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
-}
-
-function defaultSurfaceColorForType(type) {
-  return type === 'floor' ? '#67a9cf' : '#b57a6b';
-}
-
-function resolveSurfaceColor(surface) {
-  if (isHexColor(surface?.color)) return surface.color;
-  return defaultSurfaceColorForType(surface?.type);
 }
 
 export class Viewer3D {
