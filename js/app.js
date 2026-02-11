@@ -120,7 +120,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     ui.refreshLayerSelectors();
     update();
   } catch (err) {
-    alert(t('importFailed') + err.message);
+    showNotice(t('importFailed') + err.message, 'error', 6500);
   }
   e.target.value = '';
 });
@@ -145,12 +145,76 @@ const userDefSymbolInput = document.getElementById('user-def-symbol');
 const userDefMemoInput = document.getElementById('user-def-memo');
 const userDefListModal = document.getElementById('user-def-list-modal');
 const userDefListBody = document.getElementById('user-def-list-body');
+const userDefFormErrorEl = document.getElementById('user-def-form-error');
+let noticeTimerId = null;
 
 function applyI18nTo(root) {
   if (!root) return;
   root.querySelectorAll('[data-i18n]').forEach(el => {
     el.textContent = t(el.dataset.i18n);
   });
+}
+
+function ensureNoticeHost() {
+  let host = document.getElementById('app-notice-host');
+  if (host) return host;
+  host = document.createElement('div');
+  host.id = 'app-notice-host';
+  document.body.appendChild(host);
+  return host;
+}
+
+function showNotice(message, kind = 'error', durationMs = 4200) {
+  const text = String(message || '').trim();
+  if (!text) return;
+  const host = ensureNoticeHost();
+  host.innerHTML = '';
+
+  const notice = document.createElement('div');
+  notice.className = `app-notice app-notice-${kind}`;
+  notice.textContent = text;
+  host.appendChild(notice);
+
+  if (noticeTimerId) {
+    window.clearTimeout(noticeTimerId);
+    noticeTimerId = null;
+  }
+  noticeTimerId = window.setTimeout(() => {
+    notice.remove();
+    noticeTimerId = null;
+  }, durationMs);
+}
+
+function clearInputError(input) {
+  if (!input) return;
+  input.classList.remove('input-error');
+}
+
+function markInputError(input) {
+  if (!input) return;
+  input.classList.add('input-error');
+  input.focus();
+}
+
+function clearUserDefFormError() {
+  if (!userDefFormErrorEl) return;
+  userDefFormErrorEl.hidden = true;
+  userDefFormErrorEl.textContent = '';
+  clearInputError(userDefNameInput);
+  clearInputError(userDefBInput);
+  clearInputError(userDefHInput);
+  clearInputError(userDefSymbolInput);
+}
+
+function showUserDefFormError(message, input) {
+  if (!userDefFormErrorEl) {
+    showNotice(message, 'error');
+    return;
+  }
+  clearUserDefFormError();
+  userDefFormErrorEl.textContent = message;
+  userDefFormErrorEl.hidden = false;
+  markInputError(input);
 }
 
 function refreshUserDefTypeOptions() {
@@ -205,6 +269,7 @@ function applyUserDefDefaultSectionValues() {
 }
 
 function resetUserDefForm() {
+  clearUserDefFormError();
   if (userDefKindSelect) userDefKindSelect.value = 'section';
   if (userDefTargetSelect) userDefTargetSelect.value = 'member';
   if (userDefNameInput) userDefNameInput.value = '';
@@ -218,6 +283,7 @@ function resetUserDefForm() {
 }
 
 function showUserDefModal() {
+  clearUserDefFormError();
   applyI18nTo(userDefModal);
   refreshUserDefTypeOptions();
   refreshUserDefFormVisibility();
@@ -225,6 +291,7 @@ function showUserDefModal() {
 }
 
 function hideUserDefModal() {
+  clearUserDefFormError();
   userDefModal.classList.remove('visible');
 }
 
@@ -267,13 +334,16 @@ function renderUserDefGroupList() {
     : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}
               </td>
               <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-              <td>
-                ${s.isDefault
-    ? '-'
-    : `<button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>`}
-              </td>
-            </tr>
-          `).join('')}
+	            <td>
+	                ${s.isDefault
+	    ? '-'
+	    : `<div class="user-def-table-actions">
+	                 <button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>
+	                 <button type="button" class="user-def-table-btn" data-action="remove-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefDelete')}</button>
+	               </div>`}
+	              </td>
+	            </tr>
+	          `).join('')}
         </tbody>
       </table>
     `;
@@ -316,13 +386,16 @@ function renderUserDefGroupList() {
     ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
     : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
             <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-            <td>
-              ${s.isDefault
-    ? '-'
-    : `<button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>`}
-            </td>
-          </tr>
-        `).join('')}
+	            <td>
+	              ${s.isDefault
+	    ? '-'
+	    : `<div class="user-def-table-actions">
+	                 <button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>
+	                 <button type="button" class="user-def-table-btn" data-action="remove-section" data-name="${escapeHtml(s.name)}">${t('userDefDelete')}</button>
+	               </div>`}
+	            </td>
+	          </tr>
+	        `).join('')}
       </tbody>
     </table>
   `;
@@ -345,10 +418,16 @@ function attachUserDefListHandlers() {
       if (colorEl) patch.color = colorEl.value;
 
       if (target === 'member') {
-        const b = parseFloat(row.querySelector('[data-field="b"]')?.value || '');
-        const h = parseFloat(row.querySelector('[data-field="h"]')?.value || '');
+        const bInput = row.querySelector('[data-field="b"]');
+        const hInput = row.querySelector('[data-field="h"]');
+        clearInputError(bInput);
+        clearInputError(hInput);
+        const b = parseFloat(bInput?.value || '');
+        const h = parseFloat(hInput?.value || '');
         if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
-          alert(t('userDefInvalidSize'));
+          markInputError(bInput);
+          markInputError(hInput);
+          showNotice(t('userDefInvalidSize'), 'error');
           return;
         }
         patch.b = b;
@@ -357,9 +436,10 @@ function attachUserDefListHandlers() {
 
       const updated = state.updateSection(target, type, name, patch);
       if (!updated) {
-        alert(t('userDefUpdateFailed'));
+        showNotice(t('userDefUpdateFailed'), 'error');
         return;
       }
+      showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
       update();
       renderUserDefGroupList();
     });
@@ -373,9 +453,50 @@ function attachUserDefListHandlers() {
       const memo = row.querySelector('[data-field="memo"]')?.value || '';
       const updated = state.updateSpring(symbol, { memo });
       if (!updated) {
-        alert(t('userDefUpdateFailed'));
+        showNotice(t('userDefUpdateFailed'), 'error');
         return;
       }
+      showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
+      update();
+      renderUserDefGroupList();
+    });
+  });
+
+  userDefListBody.querySelectorAll('[data-action="remove-section"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = userDefTargetSelect?.value || 'member';
+      const type = userDefTypeSelect?.value || '';
+      const name = btn.dataset.name || '';
+      if (!name) return;
+      const confirmed = window.confirm(
+        t('userDefDeleteConfirm').replace('{name}', name)
+      );
+      if (!confirmed) return;
+      const removed = state.removeSection(target, type, name);
+      if (!removed) {
+        showNotice(t('userDefDeleteFailed'), 'error');
+        return;
+      }
+      showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
+      update();
+      renderUserDefGroupList();
+    });
+  });
+
+  userDefListBody.querySelectorAll('[data-action="remove-spring"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const symbol = btn.dataset.symbol || '';
+      if (!symbol) return;
+      const confirmed = window.confirm(
+        t('userDefDeleteConfirm').replace('{name}', symbol)
+      );
+      if (!confirmed) return;
+      const removed = state.removeSpring(symbol);
+      if (!removed) {
+        showNotice(t('userDefDeleteFailed'), 'error');
+        return;
+      }
+      showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
       update();
       renderUserDefGroupList();
     });
@@ -393,6 +514,7 @@ function hideUserDefListModal() {
 }
 
 function addUserDefinition() {
+  clearUserDefFormError();
   const kind = userDefKindSelect?.value || 'section';
   let added = null;
 
@@ -401,7 +523,7 @@ function addUserDefinition() {
     const type = userDefTypeSelect?.value || '';
     const name = userDefNameInput?.value?.trim() || '';
     if (name.startsWith('_')) {
-      alert(t('userDefNoLeadingUnderscore'));
+      showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefNameInput);
       return;
     }
     const color = userDefColorInput?.value || '';
@@ -409,7 +531,8 @@ function addUserDefinition() {
       const b = parseFloat(userDefBInput?.value || '');
       const h = parseFloat(userDefHInput?.value || '');
       if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
-        alert(t('userDefInvalidSize'));
+        showUserDefFormError(t('userDefInvalidSize'), userDefBInput);
+        markInputError(userDefHInput);
         return;
       }
       added = state.addSection({ target, type, name, b, h, color });
@@ -419,7 +542,7 @@ function addUserDefinition() {
   } else {
     const symbol = userDefSymbolInput?.value?.trim() || '';
     if (symbol.startsWith('_')) {
-      alert(t('userDefNoLeadingUnderscore'));
+      showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefSymbolInput);
       return;
     }
     const memo = userDefMemoInput?.value?.trim() || '';
@@ -427,10 +550,12 @@ function addUserDefinition() {
   }
 
   if (!added) {
-    alert(t('userDefAddFailed'));
+    const keyInput = kind === 'section' ? userDefNameInput : userDefSymbolInput;
+    showUserDefFormError(t('userDefAddFailed'), keyInput);
     return;
   }
-  alert(t('userDefAdded'));
+  clearUserDefFormError();
+  showNotice(t('userDefAdded'), 'success');
   update();
   resetUserDefForm();
   if (userDefListModal?.classList.contains('visible')) {
@@ -463,6 +588,8 @@ function applyLang(lang) {
   applyI18nTo(userDefListModal);
   refreshUserDefTypeOptions();
   refreshUserDefFormVisibility();
+  clearUserDefFormError();
+  clearLayerFormError();
   if (userDefListModal?.classList.contains('visible')) {
     renderUserDefGroupList();
   }
@@ -505,15 +632,18 @@ document.getElementById('btn-user-def-list').addEventListener('click', showUserD
 document.getElementById('btn-user-def-list-close').addEventListener('click', hideUserDefListModal);
 
 if (userDefKindSelect) userDefKindSelect.addEventListener('change', () => {
+  clearUserDefFormError();
   refreshUserDefFormVisibility();
   if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
 });
 if (userDefTargetSelect) userDefTargetSelect.addEventListener('change', () => {
+  clearUserDefFormError();
   refreshUserDefTypeOptions();
   refreshUserDefFormVisibility();
   if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
 });
 if (userDefTypeSelect) userDefTypeSelect.addEventListener('change', () => {
+  clearUserDefFormError();
   applyUserDefDefaultSectionValues();
   if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
 });
@@ -569,6 +699,29 @@ helpModal.addEventListener('click', (e) => {
 
 const layerModal = document.getElementById('layer-modal');
 const layerListEl = document.getElementById('layer-list');
+const layerFormErrorEl = document.getElementById('layer-form-error');
+
+function clearLayerFormError() {
+  if (!layerFormErrorEl) return;
+  layerFormErrorEl.hidden = true;
+  layerFormErrorEl.textContent = '';
+  if (layerListEl) {
+    layerListEl.querySelectorAll('.input-error').forEach(el => {
+      el.classList.remove('input-error');
+    });
+  }
+}
+
+function showLayerFormError(message, input = null) {
+  if (!layerFormErrorEl) {
+    showNotice(message, 'error');
+    return;
+  }
+  clearLayerFormError();
+  layerFormErrorEl.textContent = message;
+  layerFormErrorEl.hidden = false;
+  markInputError(input);
+}
 
 function renderLayerList() {
   layerListEl.innerHTML = '';
@@ -598,8 +751,10 @@ function renderLayerList() {
     nameInput.type = 'text';
     nameInput.value = level.name;
     nameInput.addEventListener('change', () => {
+      clearInputError(nameInput);
       state.updateLevel(level.id, { name: nameInput.value });
       ui.refreshLayerSelectors();
+      clearLayerFormError();
       update();
     });
 
@@ -608,15 +763,17 @@ function renderLayerList() {
     zInput.value = level.z;
     zInput.step = '100';
     zInput.addEventListener('change', () => {
+      clearInputError(zInput);
       const newZ = parseFloat(zInput.value) || 0;
       const duplicate = state.levels.some(l => l.id !== level.id && l.z === newZ);
       if (duplicate) {
-        alert(t('layerDuplicateZ'));
+        showLayerFormError(t('layerDuplicateZ'), zInput);
         zInput.value = level.z;
         return;
       }
       state.updateLevel(level.id, { z: newZ });
       ui.refreshLayerSelectors();
+      clearLayerFormError();
       renderLayerList();
       update();
     });
@@ -627,17 +784,21 @@ function renderLayerList() {
     delBtn.title = t('layerDelete');
     delBtn.addEventListener('click', () => {
       if (state.levels.length <= 1) {
-        alert(t('layerCannotDeleteLast'));
+        showNotice(t('layerCannotDeleteLast'), 'error');
         return;
       }
       const usage = state.getLevelUsage(level.id);
       const total = usage.members.length + usage.surfaces.length;
       if (total > 0) {
-        alert(t('layerInUse').replace('{m}', usage.members.length).replace('{s}', usage.surfaces.length));
+        showNotice(
+          t('layerInUse').replace('{m}', usage.members.length).replace('{s}', usage.surfaces.length),
+          'error'
+        );
         return;
       }
       state.removeLevel(level.id);
       ui.refreshLayerSelectors();
+      clearLayerFormError();
       renderLayerList();
       update();
     });
@@ -651,6 +812,7 @@ function renderLayerList() {
 }
 
 function showLayerModal() {
+  clearLayerFormError();
   renderLayerList();
   layerModal.querySelectorAll('[data-i18n]').forEach(el => {
     el.textContent = t(el.dataset.i18n);
@@ -659,6 +821,7 @@ function showLayerModal() {
 }
 
 function hideLayerModal() {
+  clearLayerFormError();
   layerModal.classList.remove('visible');
 }
 
@@ -666,6 +829,7 @@ document.getElementById('btn-layer-manage').addEventListener('click', showLayerM
 document.getElementById('btn-layer-close').addEventListener('click', hideLayerModal);
 
 document.getElementById('btn-layer-add').addEventListener('click', () => {
+  clearLayerFormError();
   let nextZ = state.levels.length > 0
     ? Math.max(...state.levels.map(l => l.z)) + 2800
     : 0;

@@ -108,10 +108,15 @@ const dict = {
     userDefCustomFlag: 'ユーザー',
     userDefAdd: '追加',
     userDefUpdate: '更新',
+    userDefUpdated: '更新しました。',
+    userDefDelete: '削除',
+    userDefDeleted: '削除しました。',
+    userDefDeleteConfirm: '「{name}」を削除します。よろしいですか？',
     userDefInvalidSize: '幅と高さは正の数値で入力してください。',
     userDefNoLeadingUnderscore: 'ユーザー定義名の先頭に「_」は使用できません。',
     userDefAddFailed: '追加できません。名称重複または入力値を確認してください。',
     userDefUpdateFailed: '更新できません。入力値を確認してください。',
+    userDefDeleteFailed: '削除できません。既定値または使用中の定義の可能性があります。',
     userDefAdded: '追加しました。',
     endPin: 'ピン',
     endRigid: '剛',
@@ -194,7 +199,7 @@ const dict = {
   <li><b>ユーザー定義</b> - 断面定義 / バネ定義を追加・管理</li>
   <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
 </ul>
-<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。登録後は名前以外の項目（寸法・色・メモ）を更新できます。</p>
+<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。登録後は名前以外の項目（寸法・色・メモ）を更新でき、ユーザー定義は削除可能です（使用中の定義は削除できません）。</p>
 <p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
 
 <h3>レイヤー管理</h3>
@@ -318,10 +323,15 @@ const dict = {
     userDefCustomFlag: 'User',
     userDefAdd: 'Add',
     userDefUpdate: 'Update',
+    userDefUpdated: 'Updated.',
+    userDefDelete: 'Delete',
+    userDefDeleted: 'Deleted.',
+    userDefDeleteConfirm: 'Delete \"{name}\"?',
     userDefInvalidSize: 'Width and height must be positive values.',
     userDefNoLeadingUnderscore: 'User-defined names cannot start with \"_\".',
     userDefAddFailed: 'Could not add. Check duplicate names or input values.',
     userDefUpdateFailed: 'Could not update. Check input values.',
+    userDefDeleteFailed: 'Could not delete. The definition may be default or currently in use.',
     userDefAdded: 'Added.',
     endPin: 'Pinned',
     endRigid: 'Rigid',
@@ -404,7 +414,7 @@ const dict = {
   <li><b>User Definitions</b> - Add/manage section and spring definitions</li>
   <li><b>Help</b> - Opens this quick manual</li>
 </ul>
-<p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. After registration, fields other than name can be updated (size, color, memo).</p>
+<p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. After registration, fields other than name can be updated (size, color, memo), and custom definitions can be deleted unless they are currently in use.</p>
 <p>Use "Group List" to review registered definitions for the current group in a separate dialog.</p>
 
 <h3>Layer Management</h3>

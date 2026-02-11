@@ -1,4 +1,4 @@
-# Element Modeler (Ver.100)
+# Element Modeler (Ver.1.0.1)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -64,6 +64,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 既定名と同名のユーザー定義は作成不可
 - 同グループ一覧で既定値・ユーザー定義を確認可能
 - ユーザー定義は登録後に「名前以外（寸法・色・メモ）」を更新可能
+- ユーザー定義は削除可能（ただし使用中の定義は削除不可）
 
 ## Keyboard Shortcuts
 
@@ -254,6 +255,43 @@ python3 -m http.server 8080
 # Open in browser
 # http://localhost:8080
 ```
+
+## Testing
+
+```bash
+# Unit/Smoke tests (node:test)
+npm test
+
+# Lint (JS/HTML/CSS)
+npm run lint:all
+```
+
+主なテスト対象:
+- 断面/バネの命名ルール（先頭`_`禁止、既定名重複禁止）
+- 断面変更時の寸法・色反映
+- JSON Export/Import時のID非出力・再採番
+- 面材色解決の2D/3D共有ロジック（スモーク）
+
+## Version Management
+
+バージョンの正本は `package.json` の `version` です。  
+表示用バージョン（`Ver.<semver>`。例: `Ver.1.0.1`）は `index.html` / `README.md` に自動同期します。
+
+```bash
+# 例: 1.0.1 -> 1.0.2
+npm version 1.0.2
+
+# 表示バージョンを同期
+npm run version:sync
+
+# 不整合チェック（CIでも実行）
+npm run version:check
+```
+
+運用ルール:
+- `index.html` と `README.md` のバージョン表記は手編集しない
+- バージョン更新時は `package.json` を更新し、`version:sync` を実行する
+- `version:check` が失敗した場合は同期漏れまたは `package-lock.json` の不整合を修正する
 
 ## Deploy to GitHub Pages
 

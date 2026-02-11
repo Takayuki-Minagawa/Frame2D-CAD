@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Element Modeler - Ver.100</title>
+  <title>Element Modeler - Ver.1.0.1</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css?v=20260210-1">
 </head>
@@ -121,7 +121,7 @@
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
       <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
-      <span id="status-version">Ver.100</span>
+      <span id="status-version">Ver.1.0.1</span>
     </footer>
   </main>
 
@@ -233,6 +233,8 @@
           </div>
         </div>
 
+        <p id="user-def-form-error" class="form-error" hidden></p>
+
         <button id="btn-user-def-list" class="settings-help-btn">&#128065; <span data-i18n="userDefListOpen">同グループ一覧</span></button>
         <div style="height:8px;"></div>
         <button id="btn-user-def-add" class="settings-help-btn">&#10133; <span data-i18n="userDefAdd">追加</span></button>
@@ -260,6 +262,7 @@
       </div>
       <div class="modal-body">
         <div id="layer-list"></div>
+        <p id="layer-form-error" class="form-error" hidden></p>
         <button id="btn-layer-add" class="settings-help-btn">+ <span data-i18n="layerAdd">追加</span></button>
       </div>
     </div>
