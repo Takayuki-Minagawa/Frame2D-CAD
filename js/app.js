@@ -267,13 +267,16 @@ function renderUserDefGroupList() {
     : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}
               </td>
               <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-              <td>
-                ${s.isDefault
-    ? '-'
-    : `<button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>`}
-              </td>
-            </tr>
-          `).join('')}
+	            <td>
+	                ${s.isDefault
+	    ? '-'
+	    : `<div class="user-def-table-actions">
+	                 <button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>
+	                 <button type="button" class="user-def-table-btn" data-action="remove-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefDelete')}</button>
+	               </div>`}
+	              </td>
+	            </tr>
+	          `).join('')}
         </tbody>
       </table>
     `;
@@ -316,13 +319,16 @@ function renderUserDefGroupList() {
     ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
     : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
             <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-            <td>
-              ${s.isDefault
-    ? '-'
-    : `<button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>`}
-            </td>
-          </tr>
-        `).join('')}
+	            <td>
+	              ${s.isDefault
+	    ? '-'
+	    : `<div class="user-def-table-actions">
+	                 <button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>
+	                 <button type="button" class="user-def-table-btn" data-action="remove-section" data-name="${escapeHtml(s.name)}">${t('userDefDelete')}</button>
+	               </div>`}
+	            </td>
+	          </tr>
+	        `).join('')}
       </tbody>
     </table>
   `;
@@ -374,6 +380,44 @@ function attachUserDefListHandlers() {
       const updated = state.updateSpring(symbol, { memo });
       if (!updated) {
         alert(t('userDefUpdateFailed'));
+        return;
+      }
+      update();
+      renderUserDefGroupList();
+    });
+  });
+
+  userDefListBody.querySelectorAll('[data-action="remove-section"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = userDefTargetSelect?.value || 'member';
+      const type = userDefTypeSelect?.value || '';
+      const name = btn.dataset.name || '';
+      if (!name) return;
+      const confirmed = window.confirm(
+        t('userDefDeleteConfirm').replace('{name}', name)
+      );
+      if (!confirmed) return;
+      const removed = state.removeSection(target, type, name);
+      if (!removed) {
+        alert(t('userDefDeleteFailed'));
+        return;
+      }
+      update();
+      renderUserDefGroupList();
+    });
+  });
+
+  userDefListBody.querySelectorAll('[data-action="remove-spring"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const symbol = btn.dataset.symbol || '';
+      if (!symbol) return;
+      const confirmed = window.confirm(
+        t('userDefDeleteConfirm').replace('{name}', symbol)
+      );
+      if (!confirmed) return;
+      const removed = state.removeSpring(symbol);
+      if (!removed) {
+        alert(t('userDefDeleteFailed'));
         return;
       }
       update();

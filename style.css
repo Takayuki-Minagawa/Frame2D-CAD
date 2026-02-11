@@ -364,6 +364,11 @@ body {
   border-color: var(--accent);
   background: rgba(137, 180, 250, 0.1);
 }
+.modal-body .user-def-table-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .modal-body td:first-child {
   width: 120px;
   white-space: nowrap;

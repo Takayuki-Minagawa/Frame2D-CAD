@@ -99,3 +99,41 @@ test('surface section changes update color and follow section catalog updates', 
   state.updateSurface(wall.id, { color: '#ffffff' });
   assert.equal(wall.color, '#335577');
 });
+
+test('removeSection and removeSpring only allow deleting unused custom definitions', () => {
+  const state = new AppState();
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B_REMOVE',
+    b: 300,
+    h: 500,
+    color: '#123456',
+  });
+  state.addSpring({ symbol: 'SP_REMOVE', memo: 'test spring' });
+
+  const beam = addBeam(state);
+  state.updateMember(beam.id, { sectionName: 'B_REMOVE' });
+  state.updateMember(beam.id, {
+    endI: {
+      condition: 'spring',
+      springSymbol: 'SP_REMOVE',
+    },
+  });
+
+  assert.equal(state.removeSection('member', 'beam', '_G'), false);
+  assert.equal(state.removeSpring('_SP'), false);
+  assert.equal(state.removeSection('member', 'beam', 'B_REMOVE'), false);
+  assert.equal(state.removeSpring('SP_REMOVE'), false);
+
+  state.updateMember(beam.id, { sectionName: '_G' });
+  state.updateMember(beam.id, {
+    endI: {
+      condition: 'rigid',
+      springSymbol: null,
+    },
+  });
+
+  assert.equal(state.removeSection('member', 'beam', 'B_REMOVE'), true);
+  assert.equal(state.removeSpring('SP_REMOVE'), true);
+});
