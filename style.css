@@ -123,6 +123,31 @@ body {
   background: rgba(37, 99, 235, 0.08);
 }
 
+#app-notice-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1400;
+  width: min(360px, calc(100vw - 24px));
+}
+.app-notice {
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 11px;
+  margin-top: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+  line-height: 1.45;
+}
+.app-notice-error {
+  border-left-color: #f38ba8;
+}
+.app-notice-success {
+  border-left-color: #94e2d5;
+}
+
 /* Tool sub-options: hidden by default, shown when relevant tool is active */
 .tool-opts {
   display: none;
@@ -368,6 +393,28 @@ body {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+.form-error {
+  margin: 8px 0;
+  border: 1px solid rgba(243, 139, 168, 0.55);
+  border-radius: 4px;
+  background: rgba(243, 139, 168, 0.12);
+  color: #f38ba8;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+[data-theme="light"] .form-error {
+  border-color: rgba(220, 38, 38, 0.45);
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+}
+.input-error {
+  border-color: #f38ba8 !important;
+  box-shadow: 0 0 0 1px rgba(243, 139, 168, 0.25);
+}
+[data-theme="light"] .input-error {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.2);
 }
 .modal-body td:first-child {
   width: 120px;
