@@ -299,7 +299,7 @@ export class Canvas2D {
   _drawSurfaceLine(ctx, s, isSelected, selectedColor, wallOffset) {
     const p1 = this.worldToScreen(s.x1 + wallOffset, s.y1 + wallOffset);
     const p2 = this.worldToScreen(s.x2 + wallOffset, s.y2 + wallOffset);
-    const color = isSelected ? selectedColor : (s.color || '#b57a6b');
+    const color = isSelected ? selectedColor : resolveSurfaceColor(s);
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -318,6 +318,7 @@ export class Canvas2D {
     for (const s of this.state.surfaces) {
       const isWall = s.type === 'wall' || s.type === 'exteriorWall';
       const isSelected = s.id === this.state.selectedSurfaceId;
+      const surfaceColor = resolveSurfaceColor(s);
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);
 
       if (isPolygon) {
@@ -352,8 +353,8 @@ export class Canvas2D {
       const sh = Math.abs(p2.y - p1.y);
 
       ctx.save();
-      ctx.fillStyle = toRgba(s.color || (isWall ? '#b57a6b' : '#67a9cf'), isWall ? 0.22 : 0.26);
-      ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#67a9cf');
+      ctx.fillStyle = toRgba(surfaceColor, isWall ? 0.22 : 0.26);
+      ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
       ctx.lineWidth = isSelected ? 2.5 : 1.5;
       if (isWall) ctx.setLineDash([4, 3]);
       ctx.beginPath();
@@ -371,9 +372,10 @@ export class Canvas2D {
   _drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor) {
     if (!points.length) return;
     const screenPoints = points.map(p => this.worldToScreen(p.x, p.y));
+    const surfaceColor = resolveSurfaceColor(s);
     ctx.save();
-    ctx.fillStyle = toRgba(s.color || (isWall ? '#b57a6b' : '#67a9cf'), isWall ? 0.22 : 0.26);
-    ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#67a9cf');
+    ctx.fillStyle = toRgba(surfaceColor, isWall ? 0.22 : 0.26);
+    ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
     if (isWall) ctx.setLineDash([4, 3]);
     ctx.beginPath();
@@ -394,6 +396,7 @@ export class Canvas2D {
 
   _drawExteriorWallEdges(ctx, points, s, isSelected, selectedColor) {
     if (points.length < 2) return;
+    const surfaceColor = resolveSurfaceColor(s);
 
     const offset = this.state.settings.wallDisplayOffset || 120;
     const oPts = offsetPolygonOutward(points, offset);
@@ -402,8 +405,8 @@ export class Canvas2D {
 
     ctx.save();
 
-    // Thick semi-transparent gray closed polygon (outward offset)
-    ctx.strokeStyle = isSelected ? selectedColor : 'rgba(140,140,140,0.5)';
+    // Thick semi-transparent closed polygon (outward offset)
+    ctx.strokeStyle = isSelected ? selectedColor : toRgba(surfaceColor, 0.5);
     ctx.lineWidth = isSelected ? 7 : 6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -416,7 +419,7 @@ export class Canvas2D {
     ctx.stroke();
 
     // Thin dashed line at original polygon position
-    ctx.strokeStyle = isSelected ? selectedColor : (s.color || '#888888');
+    ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
     ctx.lineWidth = isSelected ? 2 : 1;
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
@@ -630,6 +633,19 @@ function toRgba(hex, alpha) {
   const g = (n >> 8) & 255;
   const b = n & 255;
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function isHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function defaultSurfaceColorForType(type) {
+  return type === 'floor' ? '#67a9cf' : '#b57a6b';
+}
+
+function resolveSurfaceColor(surface) {
+  if (isHexColor(surface?.color)) return surface.color;
+  return defaultSurfaceColorForType(surface?.type);
 }
 
 function polygonBounds(points) {

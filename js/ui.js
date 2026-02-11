@@ -178,6 +178,8 @@ export class UI {
     const hasTopLevel = isColumn || isVBrace;
     const n1 = this.state.getNode(member.startNodeId);
     const n2 = this.state.getNode(member.endNodeId);
+    const sectionDefs = this.state.listSections('member', member.type);
+    const springDefs = this.state.listSprings();
 
     let lengthDisplay;
     if (isColumn) {
@@ -189,69 +191,95 @@ export class UI {
       lengthDisplay = `${len} mm`;
     }
 
-    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
-      `<option value="${l.id}" ${l.id === member.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
-    ).join('');
+    const sectionOptions = sectionDefs.length > 0
+      ? sectionDefs.map(s =>
+        `<option value="${escapeHtml(s.name)}" ${s.name === member.sectionName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
+      ).join('')
+      : `<option value="${escapeHtml(member.sectionName || '')}" selected>${escapeHtml(member.sectionName || '-')}</option>`;
 
-    const topLevelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
-      `<option value="${l.id}" ${l.id === member.topLevelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
+    const iEnd = member.endI || { condition: 'rigid', springSymbol: null };
+    const jEnd = member.endJ || { condition: 'rigid', springSymbol: null };
+    const iCoords = n1 ? `X=${Math.round(n1.x)}, Y=${Math.round(n1.y)}` : '-';
+    const jCoords = n2 ? `X=${Math.round(n2.x)}, Y=${Math.round(n2.y)}` : '-';
+    const typeLabel = t(member.type);
+    const level = this.state.levels.find(l => l.id === member.levelId);
+    const levelLabel = level ? `${level.name} (z=${level.z})` : member.levelId;
+    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
+    const topLevelLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : (member.topLevelId || '-');
+    const bracePatternLabel = member.bracePattern === 'cross' ? t('braceCross') : t('braceSingle');
+    const springOptionsI = springDefs.map(s =>
+      `<option value="${escapeHtml(s.symbol)}" ${s.symbol === iEnd.springSymbol ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
+    ).join('');
+    const springOptionsJ = springDefs.map(s =>
+      `<option value="${escapeHtml(s.symbol)}" ${s.symbol === jEnd.springSymbol ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
     ).join('');
 
     container.innerHTML = `
       <div class="prop-group">
-        <label>${t('propId')}</label>
-        <input type="text" value="${member.id}" disabled>
+        <label>${t('propType')}</label>
+        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
       </div>
       <div class="prop-group">
-        <label>${t('propType')}</label>
-        <select id="prop-type">
-          <option value="beam" ${member.type === 'beam' ? 'selected' : ''}>${t('beam')}</option>
-          <option value="column" ${member.type === 'column' ? 'selected' : ''}>${t('column')}</option>
-          <option value="hbrace" ${member.type === 'hbrace' ? 'selected' : ''}>${t('hbrace')}</option>
-          <option value="vbrace" ${member.type === 'vbrace' ? 'selected' : ''}>${t('vbrace')}</option>
-          <option value="brace" ${member.type === 'brace' ? 'selected' : ''}>${t('brace')}</option>
-        </select>
+        <label>${t('propSection')}</label>
+        <select id="prop-section-name">${sectionOptions}</select>
       </div>
       <div class="prop-group">
         <label>${t('propLayer')}</label>
-        <select id="prop-level">${levelOptions}</select>
+        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
       </div>
       ${hasTopLevel ? `
       <div class="prop-group">
         <label>${t('topLayer')}</label>
-        <select id="prop-top-level">${topLevelOptions}</select>
+        <input type="text" value="${escapeHtml(topLevelLabel)}" disabled>
       </div>
       ` : ''}
       ${isVBrace ? `
       <div class="prop-group">
         <label>${t('bracePattern')}</label>
-        <select id="prop-brace-pattern">
-          <option value="single" ${member.bracePattern === 'single' ? 'selected' : ''}>${t('braceSingle')}</option>
-          <option value="cross" ${member.bracePattern === 'cross' ? 'selected' : ''}>${t('braceCross')}</option>
-        </select>
+        <input type="text" value="${escapeHtml(bracePatternLabel)}" disabled>
       </div>
       ` : ''}
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('propWidthB')}</label>
-          <input type="number" id="prop-b" value="${member.section.b}" step="1" min="1">
+          <input type="text" value="${member.section.b}" disabled>
         </div>
         <div class="prop-group">
           <label>${t('propHeightH')}</label>
-          <input type="number" id="prop-h" value="${member.section.h}" step="1" min="1">
+          <input type="text" value="${member.section.h}" disabled>
         </div>
       </div>
       <div class="prop-group">
-        <label>${t('propMaterial')}</label>
-        <select id="prop-material">
-          <option value="steel" ${member.material === 'steel' ? 'selected' : ''}>${t('steel')}</option>
-          <option value="rc" ${member.material === 'rc' ? 'selected' : ''}>${t('rc')}</option>
-          <option value="wood" ${member.material === 'wood' ? 'selected' : ''}>${t('wood')}</option>
+        <label>${t('propEndI')} (${t('propStartPoint')}: ${escapeHtml(iCoords)})</label>
+        <select id="prop-endi-condition">
+          <option value="pin" ${iEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
+          <option value="rigid" ${iEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
+          <option value="spring" ${iEnd.condition === 'spring' ? 'selected' : ''}>${t('endSpring')}</option>
         </select>
       </div>
+      ${iEnd.condition === 'spring' ? `
+      <div class="prop-group">
+        <label>${t('propSpringSymbol')}</label>
+        <select id="prop-endi-spring">${springOptionsI}</select>
+      </div>
+      ` : ''}
+      <div class="prop-group">
+        <label>${t('propEndJ')} (${t('propEndPoint')}: ${escapeHtml(jCoords)})</label>
+        <select id="prop-endj-condition">
+          <option value="pin" ${jEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
+          <option value="rigid" ${jEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
+          <option value="spring" ${jEnd.condition === 'spring' ? 'selected' : ''}>${t('endSpring')}</option>
+        </select>
+      </div>
+      ${jEnd.condition === 'spring' ? `
+      <div class="prop-group">
+        <label>${t('propSpringSymbol')}</label>
+        <select id="prop-endj-spring">${springOptionsJ}</select>
+      </div>
+      ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
-        <input type="color" id="prop-color" value="${member.color}">
+        <input type="color" value="${member.color}" disabled>
       </div>
       <div class="prop-group">
         <label>${t('propLength')}</label>
@@ -264,23 +292,41 @@ export class UI {
       if (!el) return;
       el.addEventListener('change', () => {
         const val = transform(el.value);
-        if (key === 'b' || key === 'h') {
-          this.state.updateMember(member.id, { section: { [key]: val } });
-        } else {
-          this.state.updateMember(member.id, { [key]: val });
-        }
+        this.state.updateMember(member.id, { [key]: val });
         this.callbacks.onPropertyChange?.(member.id);
       });
     };
 
-    bind('prop-type', 'type');
-    bind('prop-level', 'levelId');
-    if (hasTopLevel) bind('prop-top-level', 'topLevelId');
-    if (isVBrace) bind('prop-brace-pattern', 'bracePattern');
-    bind('prop-b', 'b', parseFloat);
-    bind('prop-h', 'h', parseFloat);
-    bind('prop-material', 'material');
-    bind('prop-color', 'color');
+    const bindEnd = (conditionId, springId, key) => {
+      const conditionEl = document.getElementById(conditionId);
+      const springEl = document.getElementById(springId);
+      if (conditionEl) {
+        conditionEl.addEventListener('change', () => {
+          this.state.updateMember(member.id, {
+            [key]: {
+              condition: conditionEl.value,
+              springSymbol: springEl ? springEl.value : null,
+            },
+          });
+          this.callbacks.onPropertyChange?.(member.id);
+        });
+      }
+      if (springEl) {
+        springEl.addEventListener('change', () => {
+          this.state.updateMember(member.id, {
+            [key]: {
+              condition: conditionEl?.value || 'spring',
+              springSymbol: springEl.value,
+            },
+          });
+          this.callbacks.onPropertyChange?.(member.id);
+        });
+      }
+    };
+
+    bind('prop-section-name', 'sectionName');
+    bindEnd('prop-endi-condition', 'prop-endi-spring', 'endI');
+    bindEnd('prop-endj-condition', 'prop-endj-spring', 'endJ');
   }
 
   _renderSurfaceProperties(container) {
@@ -290,30 +336,31 @@ export class UI {
       return;
     }
 
-    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
-      `<option value="${l.id}" ${l.id === surface.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
-    ).join('');
-
     const isExteriorWall = surface.type === 'exteriorWall';
     const area = Math.round(Math.abs((surface.x2 - surface.x1) * (surface.y2 - surface.y1)) / 1000000);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
+    const typeLabel = t(surface.type);
+    const level = this.state.levels.find(l => l.id === surface.levelId);
+    const levelLabel = level ? `${level.name} (z=${level.z})` : surface.levelId;
+    const sectionDefs = this.state.listSections('surface', surface.type);
+    const sectionOptions = sectionDefs.length > 0
+      ? sectionDefs.map(s =>
+        `<option value="${escapeHtml(s.name)}" ${s.name === surface.sectionName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
+      ).join('')
+      : `<option value="${escapeHtml(surface.sectionName || '')}" selected>${escapeHtml(surface.sectionName || '-')}</option>`;
 
     container.innerHTML = `
       <div class="prop-group">
-        <label>${t('propId')}</label>
-        <input type="text" value="${surface.id}" disabled>
-      </div>
-      <div class="prop-group">
         <label>${t('propType')}</label>
-        <select id="prop-surface-type">
-          <option value="floor" ${surface.type === 'floor' ? 'selected' : ''}>${t('floor')}</option>
-          <option value="exteriorWall" ${surface.type === 'exteriorWall' ? 'selected' : ''}>${t('exteriorWall')}</option>
-          <option value="wall" ${surface.type === 'wall' ? 'selected' : ''}>${t('wall')}</option>
-        </select>
+        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
       </div>
       <div class="prop-group">
         <label>${t('propLayer')}</label>
-        <select id="prop-surface-level">${levelOptions}</select>
+        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
+      </div>
+      <div class="prop-group">
+        <label>${t('propSection')}</label>
+        <select id="prop-surface-section">${sectionOptions}</select>
       </div>
       ${surface.type === 'floor' ? `
       <div class="prop-group">
@@ -327,7 +374,7 @@ export class UI {
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
-        <input type="color" id="prop-surface-color" value="${surface.color}">
+        <input type="color" value="${surface.color}" disabled>
       </div>
       ${!isExteriorWall ? `
       <div class="prop-group">
@@ -350,11 +397,9 @@ export class UI {
       });
     };
 
-    bind('prop-surface-type', 'type');
-    bind('prop-surface-level', 'levelId');
+    bind('prop-surface-section', 'sectionName');
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
-    bind('prop-surface-color', 'color');
   }
 
   _renderLoadProperties(container) {
@@ -364,13 +409,12 @@ export class UI {
       return;
     }
 
-    const levelOptions = [...this.state.levels].sort((a, b) => a.z - b.z).map(l =>
-      `<option value="${l.id}" ${l.id === load.levelId ? 'selected' : ''}>${l.name} (z=${l.z})</option>`
-    ).join('');
-
     const isArea = load.type === 'areaLoad';
     const isLine = load.type === 'lineLoad';
     const isPoint = load.type === 'pointLoad';
+    const typeLabel = t(load.type);
+    const level = this.state.levels.find(l => l.id === load.levelId);
+    const levelLabel = level ? `${level.name} (z=${level.z})` : load.levelId;
 
     let coordFields = '';
     if (isArea || isLine) {
@@ -422,20 +466,12 @@ export class UI {
 
     container.innerHTML = `
       <div class="prop-group">
-        <label>${t('propId')}</label>
-        <input type="text" value="${load.id}" disabled>
-      </div>
-      <div class="prop-group">
         <label>${t('propType')}</label>
-        <select id="prop-ld-type">
-          <option value="areaLoad" ${isArea ? 'selected' : ''}>${t('areaLoad')}</option>
-          <option value="lineLoad" ${isLine ? 'selected' : ''}>${t('lineLoad')}</option>
-          <option value="pointLoad" ${isPoint ? 'selected' : ''}>${t('pointLoad')}</option>
-        </select>
+        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
       </div>
       <div class="prop-group">
         <label>${t('propLayer')}</label>
-        <select id="prop-ld-level">${levelOptions}</select>
+        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
       </div>
       ${coordFields}
       ${valueFields}
@@ -454,8 +490,6 @@ export class UI {
       });
     };
 
-    bind('prop-ld-type', 'type');
-    bind('prop-ld-level', 'levelId');
     bind('prop-ld-x1', 'x1', parseFloat);
     bind('prop-ld-y1', 'y1', parseFloat);
     bind('prop-ld-x2', 'x2', parseFloat);
@@ -490,4 +524,13 @@ export class UI {
     this.updateStatusBar();
     this.updatePropertyPanel();
   }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }

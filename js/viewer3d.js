@@ -4,6 +4,23 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { offsetPolygonOutward } from './state.js';
 
+function isWallSurfaceType(type) {
+  return type === 'wall' || type === 'exteriorWall';
+}
+
+function isHexColor(value) {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+function defaultSurfaceColorForType(type) {
+  return type === 'floor' ? '#67a9cf' : '#b57a6b';
+}
+
+function resolveSurfaceColor(surface) {
+  if (isHexColor(surface?.color)) return surface.color;
+  return defaultSurfaceColorForType(surface?.type);
+}
+
 export class Viewer3D {
   constructor(containerEl, state) {
     this.container = containerEl;
@@ -241,13 +258,12 @@ export class Viewer3D {
 
       let yCenter;
       let ySize;
-      let matColor = s.color || '#67a9cf';
+      const matColor = resolveSurfaceColor(s);
 
-      const isWallType = s.type === 'wall' || s.type === 'exteriorWall';
+      const isWallType = isWallSurfaceType(s.type);
       if (isWallType) {
         ySize = Math.max(0.1, Math.abs(top - base) / 1000);
         yCenter = (Math.min(base, top) / 1000) + ySize / 2;
-        matColor = s.color || '#b57a6b';
       } else {
         ySize = 0.12;
         yCenter = base / 1000 + ySize / 2;
@@ -408,7 +424,7 @@ export class Viewer3D {
     const thickness = 0.05;
     const geometry = new THREE.BoxGeometry(length, height, thickness);
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(surface.color || '#b57a6b'),
+      color: new THREE.Color(resolveSurfaceColor(surface)),
       transparent: true,
       opacity: 0.35,
     });
@@ -499,8 +515,8 @@ export class Viewer3D {
   _addPolygonSurface3D(surface, base, top) {
     const points = surface.points.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
     const shape = new THREE.Shape(points);
-    const isWallType = surface.type === 'wall' || surface.type === 'exteriorWall';
-    const color = new THREE.Color(surface.color || (isWallType ? '#b57a6b' : '#67a9cf'));
+    const isWallType = isWallSurfaceType(surface.type);
+    const color = new THREE.Color(resolveSurfaceColor(surface));
 
     if (isWallType) {
       const height = Math.max(0.1, Math.abs(top - base) / 1000);
@@ -543,7 +559,7 @@ export class Viewer3D {
 
       const geometry = new THREE.BoxGeometry(edgeLen, height, thickness);
       const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(surface.color || '#888888'),
+        color: new THREE.Color(resolveSurfaceColor(surface)),
         transparent: true,
         opacity: 0.35,
       });

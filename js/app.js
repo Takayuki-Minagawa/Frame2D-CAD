@@ -130,6 +130,322 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
 const settingsModal = document.getElementById('settings-modal');
 const settingsThemeSelect = document.getElementById('settings-theme');
 const settingsLangSelect = document.getElementById('settings-lang');
+const userDefModal = document.getElementById('user-def-modal');
+const userDefKindSelect = document.getElementById('user-def-kind');
+const userDefTargetSelect = document.getElementById('user-def-target');
+const userDefTypeSelect = document.getElementById('user-def-type');
+const userDefSectionGroup = document.getElementById('user-def-section-group');
+const userDefSpringGroup = document.getElementById('user-def-spring-group');
+const userDefSizeGroup = document.getElementById('user-def-size-group');
+const userDefNameInput = document.getElementById('user-def-name');
+const userDefColorInput = document.getElementById('user-def-color');
+const userDefBInput = document.getElementById('user-def-b');
+const userDefHInput = document.getElementById('user-def-h');
+const userDefSymbolInput = document.getElementById('user-def-symbol');
+const userDefMemoInput = document.getElementById('user-def-memo');
+const userDefListModal = document.getElementById('user-def-list-modal');
+const userDefListBody = document.getElementById('user-def-list-body');
+
+function applyI18nTo(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+}
+
+function refreshUserDefTypeOptions() {
+  if (!userDefTargetSelect || !userDefTypeSelect) return;
+  const isMember = userDefTargetSelect.value === 'member';
+  const options = isMember
+    ? [
+        { value: 'beam', label: t('beam') },
+        { value: 'column', label: t('column') },
+        { value: 'hbrace', label: t('hbrace') },
+        { value: 'vbrace', label: t('vbrace') },
+      ]
+    : [
+        { value: 'floor', label: t('floor') },
+        { value: 'exteriorWall', label: t('exteriorWall') },
+        { value: 'wall', label: t('wall') },
+      ];
+  userDefTypeSelect.innerHTML = options
+    .map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`)
+    .join('');
+  applyUserDefDefaultSectionValues();
+}
+
+function refreshUserDefFormVisibility() {
+  const isSection = userDefKindSelect?.value !== 'spring';
+  if (userDefSectionGroup) userDefSectionGroup.style.display = isSection ? '' : 'none';
+  if (userDefSpringGroup) userDefSpringGroup.style.display = isSection ? 'none' : '';
+  const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
+  if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
+}
+
+function getUserDefGroupDefaultSection(target, type) {
+  return state.getDefaultSection(target, type) || state.listSections(target, type)[0] || null;
+}
+
+function applyUserDefDefaultSectionValues() {
+  if (!userDefColorInput || !userDefTargetSelect || !userDefTypeSelect) return;
+  const target = userDefTargetSelect.value || 'member';
+  const type = userDefTypeSelect.value || '';
+  const section = getUserDefGroupDefaultSection(target, type);
+  if (section?.color) {
+    userDefColorInput.value = section.color;
+  } else if (target === 'surface') {
+    userDefColorInput.value = type === 'floor' ? '#67a9cf' : '#b57a6b';
+  } else {
+    userDefColorInput.value = '#666666';
+  }
+  if (target === 'member') {
+    if (userDefBInput) userDefBInput.value = String(section?.b || 200);
+    if (userDefHInput) userDefHInput.value = String(section?.h || 400);
+  }
+}
+
+function resetUserDefForm() {
+  if (userDefKindSelect) userDefKindSelect.value = 'section';
+  if (userDefTargetSelect) userDefTargetSelect.value = 'member';
+  if (userDefNameInput) userDefNameInput.value = '';
+  if (userDefColorInput) userDefColorInput.value = '#666666';
+  if (userDefBInput) userDefBInput.value = '200';
+  if (userDefHInput) userDefHInput.value = '400';
+  if (userDefSymbolInput) userDefSymbolInput.value = '';
+  if (userDefMemoInput) userDefMemoInput.value = '';
+  refreshUserDefTypeOptions();
+  refreshUserDefFormVisibility();
+}
+
+function showUserDefModal() {
+  applyI18nTo(userDefModal);
+  refreshUserDefTypeOptions();
+  refreshUserDefFormVisibility();
+  userDefModal.classList.add('visible');
+}
+
+function hideUserDefModal() {
+  userDefModal.classList.remove('visible');
+}
+
+function currentUserDefGroupLabel() {
+  const kind = userDefKindSelect?.value || 'section';
+  if (kind === 'spring') return t('userDefSpring');
+  const target = userDefTargetSelect?.value || 'member';
+  const type = userDefTypeSelect?.value || '';
+  return `${target === 'member' ? t('userDefTargetMember') : t('userDefTargetSurface')} / ${t(type)}`;
+}
+
+function renderUserDefGroupList() {
+  if (!userDefListBody) return;
+  const kind = userDefKindSelect?.value || 'section';
+
+  if (kind === 'spring') {
+    const springs = state.listSprings();
+    if (springs.length === 0) {
+      userDefListBody.innerHTML = `<p>${t('userDefListNoItems')}</p>`;
+      return;
+    }
+    userDefListBody.innerHTML = `
+      <p><b>${t('userDefListGroup')}:</b> ${escapeHtml(currentUserDefGroupLabel())}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>${t('userDefListColName')}</th>
+            <th>${t('userDefListColMemo')}</th>
+            <th>${t('userDefListColDefault')}</th>
+            <th>${t('userDefListColAction')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${springs.map(s => `
+            <tr>
+              <td>${escapeHtml(s.symbol)}</td>
+              <td>
+                ${s.isDefault
+    ? escapeHtml(s.memo || '')
+    : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}
+              </td>
+              <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
+              <td>
+                ${s.isDefault
+    ? '-'
+    : `<button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>`}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    attachUserDefListHandlers();
+    return;
+  }
+
+  const target = userDefTargetSelect?.value || 'member';
+  const type = userDefTypeSelect?.value || '';
+  const sections = state.listSections(target, type);
+  if (sections.length === 0) {
+    userDefListBody.innerHTML = `<p>${t('userDefListNoItems')}</p>`;
+    return;
+  }
+
+  const hasSize = target === 'member';
+  userDefListBody.innerHTML = `
+    <p><b>${t('userDefListGroup')}:</b> ${escapeHtml(currentUserDefGroupLabel())}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>${t('userDefListColName')}</th>
+          ${hasSize ? `<th>${t('userDefListColB')}</th><th>${t('userDefListColH')}</th>` : ''}
+          <th>${t('userDefListColColor')}</th>
+          <th>${t('userDefListColDefault')}</th>
+          <th>${t('userDefListColAction')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sections.map(s => `
+          <tr>
+            <td>${escapeHtml(s.name)}</td>
+            ${hasSize ? `<td>${s.isDefault
+    ? `${s.b ?? '-'}`
+    : `<input type="number" class="user-def-table-input" data-field="b" min="1" step="1" value="${Number.isFinite(s.b) ? s.b : 1}">`}</td>
+            <td>${s.isDefault
+    ? `${s.h ?? '-'}`
+    : `<input type="number" class="user-def-table-input" data-field="h" min="1" step="1" value="${Number.isFinite(s.h) ? s.h : 1}">`}</td>` : ''}
+            <td>${s.isDefault
+    ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
+    : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
+            <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
+            <td>
+              ${s.isDefault
+    ? '-'
+    : `<button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>`}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  attachUserDefListHandlers();
+}
+
+function attachUserDefListHandlers() {
+  if (!userDefListBody) return;
+
+  userDefListBody.querySelectorAll('[data-action="save-section"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = userDefTargetSelect?.value || 'member';
+      const type = userDefTypeSelect?.value || '';
+      const name = btn.dataset.name || '';
+      const row = btn.closest('tr');
+      if (!row) return;
+
+      const patch = {};
+      const colorEl = row.querySelector('[data-field="color"]');
+      if (colorEl) patch.color = colorEl.value;
+
+      if (target === 'member') {
+        const b = parseFloat(row.querySelector('[data-field="b"]')?.value || '');
+        const h = parseFloat(row.querySelector('[data-field="h"]')?.value || '');
+        if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
+          alert(t('userDefInvalidSize'));
+          return;
+        }
+        patch.b = b;
+        patch.h = h;
+      }
+
+      const updated = state.updateSection(target, type, name, patch);
+      if (!updated) {
+        alert(t('userDefUpdateFailed'));
+        return;
+      }
+      update();
+      renderUserDefGroupList();
+    });
+  });
+
+  userDefListBody.querySelectorAll('[data-action="save-spring"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const symbol = btn.dataset.symbol || '';
+      const row = btn.closest('tr');
+      if (!row) return;
+      const memo = row.querySelector('[data-field="memo"]')?.value || '';
+      const updated = state.updateSpring(symbol, { memo });
+      if (!updated) {
+        alert(t('userDefUpdateFailed'));
+        return;
+      }
+      update();
+      renderUserDefGroupList();
+    });
+  });
+}
+
+function showUserDefListModal() {
+  applyI18nTo(userDefListModal);
+  renderUserDefGroupList();
+  userDefListModal.classList.add('visible');
+}
+
+function hideUserDefListModal() {
+  userDefListModal.classList.remove('visible');
+}
+
+function addUserDefinition() {
+  const kind = userDefKindSelect?.value || 'section';
+  let added = null;
+
+  if (kind === 'section') {
+    const target = userDefTargetSelect?.value || 'member';
+    const type = userDefTypeSelect?.value || '';
+    const name = userDefNameInput?.value?.trim() || '';
+    if (name.startsWith('_')) {
+      alert(t('userDefNoLeadingUnderscore'));
+      return;
+    }
+    const color = userDefColorInput?.value || '';
+    if (target === 'member') {
+      const b = parseFloat(userDefBInput?.value || '');
+      const h = parseFloat(userDefHInput?.value || '');
+      if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
+        alert(t('userDefInvalidSize'));
+        return;
+      }
+      added = state.addSection({ target, type, name, b, h, color });
+    } else {
+      added = state.addSection({ target, type, name, color });
+    }
+  } else {
+    const symbol = userDefSymbolInput?.value?.trim() || '';
+    if (symbol.startsWith('_')) {
+      alert(t('userDefNoLeadingUnderscore'));
+      return;
+    }
+    const memo = userDefMemoInput?.value?.trim() || '';
+    added = state.addSpring({ symbol, memo });
+  }
+
+  if (!added) {
+    alert(t('userDefAddFailed'));
+    return;
+  }
+  alert(t('userDefAdded'));
+  update();
+  resetUserDefForm();
+  if (userDefListModal?.classList.contains('visible')) {
+    renderUserDefGroupList();
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -142,14 +458,20 @@ function applyLang(lang) {
   setLang(lang);
   ui.applyLanguage();
   if (settingsLangSelect) settingsLangSelect.value = lang;
+  applyI18nTo(settingsModal);
+  applyI18nTo(userDefModal);
+  applyI18nTo(userDefListModal);
+  refreshUserDefTypeOptions();
+  refreshUserDefFormVisibility();
+  if (userDefListModal?.classList.contains('visible')) {
+    renderUserDefGroupList();
+  }
 }
 
 function showSettingsModal() {
   settingsThemeSelect.value = document.documentElement.dataset.theme || 'dark';
   settingsLangSelect.value = getLang();
-  settingsModal.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
+  applyI18nTo(settingsModal);
   settingsModal.classList.add('visible');
 }
 
@@ -166,15 +488,48 @@ settingsThemeSelect.addEventListener('change', (e) => {
 
 settingsLangSelect.addEventListener('change', (e) => {
   applyLang(e.target.value);
-  // Re-apply i18n to settings modal itself
-  settingsModal.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
 });
 
 settingsModal.addEventListener('click', (e) => {
   if (e.target === settingsModal) hideSettingsModal();
 });
+
+document.getElementById('btn-open-user-def').addEventListener('click', () => {
+  hideSettingsModal();
+  showUserDefModal();
+});
+
+document.getElementById('btn-user-def-close').addEventListener('click', hideUserDefModal);
+document.getElementById('btn-user-def-add').addEventListener('click', addUserDefinition);
+document.getElementById('btn-user-def-list').addEventListener('click', showUserDefListModal);
+document.getElementById('btn-user-def-list-close').addEventListener('click', hideUserDefListModal);
+
+if (userDefKindSelect) userDefKindSelect.addEventListener('change', () => {
+  refreshUserDefFormVisibility();
+  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
+});
+if (userDefTargetSelect) userDefTargetSelect.addEventListener('change', () => {
+  refreshUserDefTypeOptions();
+  refreshUserDefFormVisibility();
+  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
+});
+if (userDefTypeSelect) userDefTypeSelect.addEventListener('change', () => {
+  applyUserDefDefaultSectionValues();
+  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
+});
+
+if (userDefModal) {
+  userDefModal.addEventListener('click', (e) => {
+    if (e.target === userDefModal) hideUserDefModal();
+  });
+}
+if (userDefListModal) {
+  userDefListModal.addEventListener('click', (e) => {
+    if (e.target === userDefListModal) hideUserDefListModal();
+  });
+}
+
+resetUserDefForm();
 
 // Apply initial theme and language
 const savedTheme = localStorage.getItem('lineframe-theme') || 'dark';
@@ -332,7 +687,13 @@ layerModal.addEventListener('click', (e) => {
 // Close modals on Escape
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (helpModal.classList.contains('visible')) {
+    if (userDefListModal.classList.contains('visible')) {
+      hideUserDefListModal();
+      e.stopPropagation();
+    } else if (userDefModal.classList.contains('visible')) {
+      hideUserDefModal();
+      e.stopPropagation();
+    } else if (helpModal.classList.contains('visible')) {
       hideHelpModal();
       e.stopPropagation();
     } else if (layerModal.classList.contains('visible')) {

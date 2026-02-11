@@ -1,4 +1,4 @@
-# Element Modeler (Ver.Beta02)
+# Element Modeler (Ver.100)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -12,8 +12,8 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 ## Features
 
 ### 2D CAD
-- 線材（梁・柱・ブレース）の作成・選択・移動・削除
-- 面材（床 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
+- 線材（梁 / 柱 / 水平ブレース / 鉛直ブレース）の作成・選択・移動・削除
+- 面材（床 / 外壁 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
 - 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
 - 荷重（面荷重 / 線荷重 / 点荷重）の作成・選択・編集・削除
 - ノード（端点）のドラッグによる形状変更
@@ -22,9 +22,14 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 原点と軸方向を左下に常時表示（配置の基準）
 - レイヤー（Zレベル）管理: 名前・高さの編集、追加・削除（z値ソート表示、重複禁止、使用中レイヤー削除不可）
 - ツール選択コンボボックスで要素 / 線材 / 面材 / 荷重を切替
-- プロパティパネルで線材/面材/荷重属性を編集（種別・断面寸法・レイヤー・座標・荷重値・色）
+- プロパティパネルで線材/面材/荷重属性を編集
+- 線材: 断面、端部条件 I/J（ピン / 剛 / バネ）、バネ記号を編集
+- 面材: 断面、床のみ荷重方向を編集
+- 荷重: 座標、荷重値、色などを編集
+- 種別・レイヤー・断面寸法・断面色は表示専用（断面定義から自動反映）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
 - 壁要素は梁線と重なりにくいよう平面上でオフセット表示
+- 断面変更時に色が更新され、平面図と3D表示の両方へ連動
 - Undo / Redo
 
 ### 3D Viewer
@@ -38,14 +43,27 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 - JSON Export（ファイルダウンロード）
 - JSON Import（ファイル読み込みで状態復元）
+- 部材IDはアプリ内部管理のみ（JSONには出力しない）
 - schemaVersion による互換性管理
 
 ### UI
 
-- 設定モーダル（⚙ ボタン）: テーマ切替（ダーク/ライト）、言語切替（日本語/英語）、ヘルプ表示
+- 設定モーダル（⚙ ボタン）: テーマ切替（ダーク/ライト）、言語切替（日本語/英語）、ユーザー定義、ヘルプ
 - レイヤー管理モーダル（⚙ ボタン）: レイヤーの追加・名前/高さ編集・削除
 - 簡易マニュアル（設定 → ヘルプボタンでモーダル表示、多言語対応）
 - 設定はブラウザ（localStorage）に保存
+
+### 断面・バネ定義
+
+- 断面とバネは「設定 → ユーザー定義」で管理
+- 既定値（削除不可）
+  - 線材: 梁 `_G` (b=200, h=400), 柱 `_C` (b=105, h=105), 水平ブレース `_H` (b=20, h=20), 鉛直ブレース `_V` (b=20, h=20)
+  - 面材: 床 `_S`, 外壁 `_OW`, 壁 `_IW`
+  - バネ: `_SP`（回転バネ）
+- ユーザー定義名の先頭に `_` は使用不可
+- 既定名と同名のユーザー定義は作成不可
+- 同グループ一覧で既定値・ユーザー定義を確認可能
+- ユーザー定義は登録後に「名前以外（寸法・色・メモ）」を更新可能
 
 ## Keyboard Shortcuts
 
@@ -118,15 +136,16 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "meta": {
     "name": "sample",
     "unit": "mm",
-    "createdAt": "2026-02-09T00:00:00Z"
+    "createdAt": "2026-02-11T00:00:00Z"
   },
   "settings": {
     "gridSize": 1000,
-    "snap": true
+    "snap": true,
+    "wallDisplayOffset": 120
   },
   "levels": [
     { "id": "L0", "name": "GL", "z": 0 },
@@ -136,22 +155,31 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": "N1", "x": 0, "y": 0, "z": 0 },
     { "id": "N2", "x": 5000, "y": 0, "z": 0 }
   ],
+  "sectionCatalog": [
+    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "isDefault": true },
+    { "target": "surface", "type": "floor", "name": "_S", "material": "", "b": null, "h": null, "color": "#67a9cf", "isDefault": true }
+  ],
+  "springCatalog": [
+    { "symbol": "_SP", "memo": "回転バネ", "isDefault": true }
+  ],
   "members": [
     {
-      "id": "M1",
       "type": "beam",
       "startNodeId": "N1",
       "endNodeId": "N2",
-      "section": { "b": 200, "h": 400 },
+      "sectionName": "_G",
       "levelId": "L0",
-      "material": "steel",
-      "color": "#666666"
+      "color": "#666666",
+      "topLevelId": null,
+      "bracePattern": "single",
+      "endI": { "condition": "rigid", "springSymbol": null },
+      "endJ": { "condition": "rigid", "springSymbol": null }
     }
   ],
   "surfaces": [
     {
-      "id": "S1",
       "type": "floor",
+      "sectionName": "_S",
       "shape": "rect",
       "levelId": "L1",
       "topLevelId": "L1",
@@ -164,8 +192,8 @@ app.js ─┬─ state.js      Data model (AppState)
       "points": null
     },
     {
-      "id": "S2",
-      "type": "wall",
+      "type": "exteriorWall",
+      "sectionName": "_OW",
       "shape": "polygon",
       "levelId": "L0",
       "topLevelId": "L1",
@@ -185,7 +213,6 @@ app.js ─┬─ state.js      Data model (AppState)
   ],
   "loads": [
     {
-      "id": "LD1",
       "type": "areaLoad",
       "levelId": "L1",
       "x1": 0, "y1": 0, "x2": 5000, "y2": 4000,
@@ -193,7 +220,6 @@ app.js ─┬─ state.js      Data model (AppState)
       "color": "#e57373"
     },
     {
-      "id": "LD2",
       "type": "lineLoad",
       "levelId": "L0",
       "x1": 0, "y1": 0, "x2": 5000, "y2": 0,
@@ -201,7 +227,6 @@ app.js ─┬─ state.js      Data model (AppState)
       "color": "#ffb74d"
     },
     {
-      "id": "LD3",
       "type": "pointLoad",
       "levelId": "L0",
       "x1": 2500, "y1": 2000,
@@ -212,6 +237,9 @@ app.js ─┬─ state.js      Data model (AppState)
   ]
 }
 ```
+
+- `nodes` / `levels` の `id` はJSONに保存されます
+- `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
 
 ## Getting Started
 

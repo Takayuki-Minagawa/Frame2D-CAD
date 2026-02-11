@@ -30,6 +30,8 @@ const dict = {
     settingsTitle: '設定',
     themeLabel: 'テーマ',
     langLabel: '言語',
+    userDefManage: 'ユーザー定義',
+    userDefTitle: 'ユーザー定義',
     layerManage: 'レイヤー管理',
     layerName: '名前',
     layerZ: '高さ (mm)',
@@ -64,13 +66,56 @@ const dict = {
     propType: '種別',
     propLevel: 'レイヤー',
     propLayer: 'レイヤー',
+    propSection: '断面',
     propWidthB: '幅 b (mm)',
     propHeightH: '高さ h (mm)',
     propMaterial: '材料',
+    propEndI: 'I端部',
+    propEndJ: 'J端部',
+    propSpringSymbol: 'バネ記号',
+    propStartPoint: '始点',
+    propEndPoint: '終点',
     propColor: '色',
     propLength: '長さ',
     propArea: '面積',
     propVertices: '頂点数',
+    userDefOpen: 'ユーザー定義を追加',
+    userDefKind: '定義種別',
+    userDefSection: '断面定義',
+    userDefSpring: 'バネ定義',
+    userDefTarget: '対象',
+    userDefTargetMember: '線材',
+    userDefTargetSurface: '面材',
+    userDefType: '種別',
+    userDefName: '名称',
+    userDefColor: '色',
+    userDefWidthB: '幅 b (mm)',
+    userDefHeightH: '高さ h (mm)',
+    userDefMemo: 'メモ',
+    userDefListOpen: '同グループ一覧',
+    userDefListTitle: '同グループ定義一覧',
+    userDefListNoItems: '該当する定義はありません。',
+    userDefListGroup: 'グループ',
+    userDefListColName: '名称',
+    userDefListColMaterial: '材料',
+    userDefListColB: '幅 b',
+    userDefListColH: '高さ h',
+    userDefListColColor: '色',
+    userDefListColMemo: 'メモ',
+    userDefListColDefault: '既定',
+    userDefListColAction: '操作',
+    userDefDefaultFlag: '既定',
+    userDefCustomFlag: 'ユーザー',
+    userDefAdd: '追加',
+    userDefUpdate: '更新',
+    userDefInvalidSize: '幅と高さは正の数値で入力してください。',
+    userDefNoLeadingUnderscore: 'ユーザー定義名の先頭に「_」は使用できません。',
+    userDefAddFailed: '追加できません。名称重複または入力値を確認してください。',
+    userDefUpdateFailed: '更新できません。入力値を確認してください。',
+    userDefAdded: '追加しました。',
+    endPin: 'ピン',
+    endRigid: '剛',
+    endSpring: 'バネ',
     beam: '梁',
     column: '柱',
     hbrace: '水平ブレース',
@@ -135,19 +180,22 @@ const dict = {
 <h3>プロパティパネル</h3>
 <p>要素を選択すると右パネルで以下を編集できます:</p>
 <ul>
-  <li><b>線材</b> - 種別 / 断面(b,h) / レイヤー / 材料 / 色</li>
-  <li><b>面材</b> - 種別 / レイヤー / 荷重方向 / 色</li>
+  <li><b>線材</b> - 断面 / 端部(I/J) / バネ記号（バネ時）</li>
+  <li><b>面材</b> - 断面 / 荷重方向（床のみ）</li>
   <li><b>荷重</b> - 種別 / 座標 / 荷重値(面・線) / 力・モーメント(点) / 色</li>
 </ul>
-<p>床スラブは荷重方向（X/Y/2方向）を矢印で表示します。壁要素は平面上で少しオフセットして表示します。</p>
+<p>種別・レイヤー・幅/高さ・色は表示専用です。断面を変更すると寸法と色が自動反映され、外壁を含む面材の色は平面図と3D表示へ連動します。</p>
 
-<h3>設定</h3>
+<h3>設定 / ユーザー定義</h3>
 <p>ツールバー上部の ⚙ 設定ボタンから設定モーダルを開きます。</p>
 <ul>
   <li><b>テーマ</b> - ダーク / ライトを切替</li>
   <li><b>言語</b> - 日本語 / English を切替</li>
+  <li><b>ユーザー定義</b> - 断面定義 / バネ定義を追加・管理</li>
   <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
 </ul>
+<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。登録後は名前以外の項目（寸法・色・メモ）を更新できます。</p>
+<p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
 
 <h3>レイヤー管理</h3>
 <p>レイヤー選択横の ⚙ ボタンからレイヤー管理モーダルを開きます。</p>
@@ -159,7 +207,7 @@ const dict = {
 <p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
-<p>「保存」でJSONファイルをダウンロード、「読込」でJSONファイルを読み込みます。</p>
+<p>「保存」でJSONファイルをダウンロード、「読込」でJSONファイルを読み込みます。部材IDは内部管理用で、出力JSONには含まれません。</p>
 `,
   },
 
@@ -192,6 +240,8 @@ const dict = {
     settingsTitle: 'Settings',
     themeLabel: 'Theme',
     langLabel: 'Language',
+    userDefManage: 'User Definitions',
+    userDefTitle: 'User Definitions',
     layerManage: 'Layer Management',
     layerName: 'Name',
     layerZ: 'Height (mm)',
@@ -226,13 +276,56 @@ const dict = {
     propType: 'Type',
     propLevel: 'Layer',
     propLayer: 'Layer',
+    propSection: 'Section',
     propWidthB: 'Width b (mm)',
     propHeightH: 'Height h (mm)',
     propMaterial: 'Material',
+    propEndI: 'I End',
+    propEndJ: 'J End',
+    propSpringSymbol: 'Spring Symbol',
+    propStartPoint: 'Start',
+    propEndPoint: 'End',
     propColor: 'Color',
     propLength: 'Length',
     propArea: 'Area',
     propVertices: 'Vertices',
+    userDefOpen: 'Add User Definition',
+    userDefKind: 'Definition Type',
+    userDefSection: 'Section Definition',
+    userDefSpring: 'Spring Definition',
+    userDefTarget: 'Target',
+    userDefTargetMember: 'Line',
+    userDefTargetSurface: 'Surface',
+    userDefType: 'Type',
+    userDefName: 'Name',
+    userDefColor: 'Color',
+    userDefWidthB: 'Width b (mm)',
+    userDefHeightH: 'Height h (mm)',
+    userDefMemo: 'Memo',
+    userDefListOpen: 'View Group List',
+    userDefListTitle: 'Definition List (Group)',
+    userDefListNoItems: 'No definitions in this group.',
+    userDefListGroup: 'Group',
+    userDefListColName: 'Name',
+    userDefListColMaterial: 'Material',
+    userDefListColB: 'Width b',
+    userDefListColH: 'Height h',
+    userDefListColColor: 'Color',
+    userDefListColMemo: 'Memo',
+    userDefListColDefault: 'Type',
+    userDefListColAction: 'Action',
+    userDefDefaultFlag: 'Default',
+    userDefCustomFlag: 'User',
+    userDefAdd: 'Add',
+    userDefUpdate: 'Update',
+    userDefInvalidSize: 'Width and height must be positive values.',
+    userDefNoLeadingUnderscore: 'User-defined names cannot start with \"_\".',
+    userDefAddFailed: 'Could not add. Check duplicate names or input values.',
+    userDefUpdateFailed: 'Could not update. Check input values.',
+    userDefAdded: 'Added.',
+    endPin: 'Pinned',
+    endRigid: 'Rigid',
+    endSpring: 'Spring',
     beam: 'Beam',
     column: 'Column',
     hbrace: 'Horizontal Brace',
@@ -297,19 +390,22 @@ const dict = {
 <h3>Property Panel</h3>
 <p>Select an element to edit in the right panel:</p>
 <ul>
-  <li><b>Line</b> - Type / Section (b,h) / Layer / Material / Color</li>
-  <li><b>Surface</b> - Type / Layer / Load direction / Color</li>
+  <li><b>Line</b> - Section / End condition (I/J) / Spring symbol (when spring)</li>
+  <li><b>Surface</b> - Section / Load direction (floor only)</li>
   <li><b>Load</b> - Type / Coordinates / Value (area/line) / Force &amp; Moment (point) / Color</li>
 </ul>
-<p>Floor slabs can show load direction arrows (X/Y/Two-way). Wall surfaces are shown with a slight visual offset in plan.</p>
+<p>Type, layer, width/height, and color are display-only. Changing section automatically updates dimensions and color, including surface color sync in both plan and 3D views.</p>
 
-<h3>Settings</h3>
+<h3>Settings / User Definitions</h3>
 <p>Click the ⚙ Settings button at the top of the toolbar to open the settings modal.</p>
 <ul>
   <li><b>Theme</b> - Switch between Dark / Light</li>
   <li><b>Language</b> - Switch between Japanese / English</li>
+  <li><b>User Definitions</b> - Add/manage section and spring definitions</li>
   <li><b>Help</b> - Opens this quick manual</li>
 </ul>
+<p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. After registration, fields other than name can be updated (size, color, memo).</p>
+<p>Use "Group List" to review registered definitions for the current group in a separate dialog.</p>
 
 <h3>Layer Management</h3>
 <p>Click the ⚙ button next to the layer selector to open the layer management modal.</p>
@@ -321,7 +417,7 @@ const dict = {
 <p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
-<p>"Export" downloads a JSON file. "Import" loads a JSON file.</p>
+<p>"Export" downloads a JSON file. "Import" loads a JSON file. Member IDs are internal and are not written to export JSON.</p>
 `,
   },
 };

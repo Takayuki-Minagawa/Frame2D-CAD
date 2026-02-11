@@ -324,10 +324,45 @@ body {
   border-collapse: collapse;
   margin-bottom: 8px;
 }
+.modal-body th {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 600;
+}
 .modal-body td {
   padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
+}
+.modal-body .user-def-table-input {
+  width: 100%;
+  min-width: 72px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+}
+.modal-body .user-def-table-input[type="color"] {
+  min-width: 40px;
+  padding: 2px;
+  height: 26px;
+}
+.modal-body .user-def-table-btn {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.modal-body .user-def-table-btn:hover {
+  border-color: var(--accent);
+  background: rgba(137, 180, 250, 0.1);
 }
 .modal-body td:first-child {
   width: 120px;
@@ -361,6 +396,9 @@ body {
 .modal-settings {
   width: min(400px, 90vw);
 }
+.modal-user-def-list {
+  width: min(760px, 94vw);
+}
 .settings-group {
   display: flex;
   flex-direction: column;
@@ -381,6 +419,19 @@ body {
   border-radius: 4px;
   font-size: 13px;
   cursor: pointer;
+}
+.settings-group input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.settings-group input[type="color"] {
+  height: 34px;
+  padding: 4px;
 }
 .settings-group select:hover {
   border-color: var(--accent);

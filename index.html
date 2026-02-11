@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Element Modeler - Ver.Beta02</title>
+  <title>Element Modeler - Ver.100</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css?v=20260210-1">
 </head>
@@ -121,7 +121,7 @@
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
       <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
-      <span id="status-version">Ver.Beta02</span>
+      <span id="status-version">Ver.100</span>
     </footer>
   </main>
 
@@ -167,8 +167,87 @@
           </select>
         </div>
         <hr>
+        <button id="btn-open-user-def" class="settings-help-btn">&#9881; <span data-i18n="userDefManage">ユーザー定義</span></button>
+        <div style="height:8px;"></div>
         <button id="btn-open-help" class="settings-help-btn">&#10067; <span data-i18n="help">ヘルプ</span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- User Definition Modal -->
+  <div id="user-def-modal" class="modal-overlay">
+    <div class="modal-content modal-settings">
+      <div class="modal-header">
+        <h2 data-i18n="userDefTitle">ユーザー定義</h2>
+        <button id="btn-user-def-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <label data-i18n="userDefKind">定義種別</label>
+          <select id="user-def-kind">
+            <option value="section" data-i18n="userDefSection">断面定義</option>
+            <option value="spring" data-i18n="userDefSpring">バネ定義</option>
+          </select>
+        </div>
+
+        <div id="user-def-section-group">
+          <div class="settings-group">
+            <label data-i18n="userDefTarget">対象</label>
+            <select id="user-def-target">
+              <option value="member" data-i18n="userDefTargetMember">線材</option>
+              <option value="surface" data-i18n="userDefTargetSurface">面材</option>
+            </select>
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefType">種別</label>
+            <select id="user-def-type"></select>
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefName">名称</label>
+            <input id="user-def-name" type="text" placeholder="U1">
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefColor">色</label>
+            <input id="user-def-color" type="color" value="#666666">
+          </div>
+          <div id="user-def-size-group" class="prop-row">
+            <div class="settings-group" style="flex:1;">
+              <label data-i18n="userDefWidthB">幅 b (mm)</label>
+              <input id="user-def-b" type="number" min="1" step="1" value="100">
+            </div>
+            <div class="settings-group" style="flex:1;">
+              <label data-i18n="userDefHeightH">高さ h (mm)</label>
+              <input id="user-def-h" type="number" min="1" step="1" value="100">
+            </div>
+          </div>
+        </div>
+
+        <div id="user-def-spring-group" style="display:none;">
+          <div class="settings-group">
+            <label data-i18n="userDefName">名称</label>
+            <input id="user-def-symbol" type="text" placeholder="SP1">
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefMemo">メモ</label>
+            <input id="user-def-memo" type="text" placeholder="">
+          </div>
+        </div>
+
+        <button id="btn-user-def-list" class="settings-help-btn">&#128065; <span data-i18n="userDefListOpen">同グループ一覧</span></button>
+        <div style="height:8px;"></div>
+        <button id="btn-user-def-add" class="settings-help-btn">&#10133; <span data-i18n="userDefAdd">追加</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Definition List Modal -->
+  <div id="user-def-list-modal" class="modal-overlay">
+    <div class="modal-content modal-user-def-list">
+      <div class="modal-header">
+        <h2 data-i18n="userDefListTitle">同グループ定義一覧</h2>
+        <button id="btn-user-def-list-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div id="user-def-list-body" class="modal-body"></div>
     </div>
   </div>
 
