@@ -105,6 +105,7 @@ tab3d.addEventListener('click', async () => {
 
 document.getElementById('btn-export').addEventListener('click', () => {
   exportJSON(state);
+  showNotice(t('cadExported'), 'success');
 });
 
 document.getElementById('btn-import-trigger').addEventListener('click', () => {
@@ -120,6 +121,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
     ui.refreshLayerSelectors();
     update();
+    showNotice(t('cadImported'), 'success');
   } catch (err) {
     showNotice(t('importFailed') + err.message, 'error', 6500);
   }

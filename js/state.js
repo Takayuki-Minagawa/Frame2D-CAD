@@ -983,8 +983,8 @@ export class AppState {
       settings: { ...this.settings },
       levels: this.levels.map(l => ({ ...l })),
       nodes: this.nodes.map(n => ({ ...n })),
-      sectionCatalog: this.sectionCatalog.map(s => ({ ...s })),
-      springCatalog: this.springCatalog.map(s => ({ ...s })),
+      sectionCatalog: this.sectionCatalog.filter(s => s.isDefault).map(s => ({ ...s })),
+      springCatalog: this.springCatalog.filter(s => s.isDefault).map(s => ({ ...s })),
       members: this.members.map(m => ({
         type: m.type,
         startNodeId: m.startNodeId,
@@ -1052,8 +1052,21 @@ export class AppState {
     this.activeLayerId = this.levels[0]?.id || 'L0';
     this.surfaceDraftTopLayerId = this.levels[1]?.id || this.activeLayerId;
     this.nodes = (data.nodes || []).map(n => ({ ...n }));
+    // Preserve current custom user definitions across CAD load
+    const prevCustomSections = this.sectionCatalog.filter(s => !s.isDefault);
+    const prevCustomSprings = this.springCatalog.filter(s => !s.isDefault);
     this.sectionCatalog = this._hydrateSectionCatalog(data.sectionCatalog);
     this.springCatalog = this._hydrateSpringCatalog(data.springCatalog);
+    for (const cs of prevCustomSections) {
+      if (!this.sectionCatalog.some(s => s.target === cs.target && s.type === cs.type && s.name === cs.name)) {
+        this.sectionCatalog.push({ ...cs });
+      }
+    }
+    for (const cs of prevCustomSprings) {
+      if (!this.springCatalog.some(s => s.symbol === cs.symbol)) {
+        this.springCatalog.push({ ...cs });
+      }
+    }
     this.members = (data.members || []).map((m, idx) =>
       this._normalizeLoadedMember({ id: m.id || `M${idx + 1}`, ...m })
     );
