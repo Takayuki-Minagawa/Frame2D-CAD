@@ -391,10 +391,12 @@ export class Viewer3D {
     }
 
     // Supports
-    for (const sup of this.state.supports || []) {
-      const level = this.state.levels.find(l => l.id === sup.levelId);
-      const y = (level ? level.z : 0) / 1000;
-      this._addSupport3D(sup, y);
+    if (this.state.settings.showSupports) {
+      for (const sup of this.state.supports || []) {
+        const level = this.state.levels.find(l => l.id === sup.levelId);
+        const y = (level ? level.z : 0) / 1000;
+        this._addSupport3D(sup, y);
+      }
     }
 
     const bounds = this._computeContentBounds();

@@ -33,6 +33,8 @@ export class AppState {
       gridSize: 1000,
       snap: true,
       wallDisplayOffset: 120,
+      showSupports: true,
+      widePick: false,
     };
     this.levels = [
       { id: 'L0', name: 'GL', z: 0 },
@@ -1041,6 +1043,8 @@ export class AppState {
       gridSize: 1000,
       snap: true,
       wallDisplayOffset: 120,
+      showSupports: true,
+      widePick: false,
       ...data.settings,
     };
     this.levels = Array.isArray(data.levels) && data.levels.length > 0

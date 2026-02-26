@@ -628,6 +628,7 @@ export class Canvas2D {
   }
 
   _drawSupports(ctx, selectedColor) {
+    if (!this.state.settings.showSupports) return;
     for (const sup of this.state.supports) {
       const isSelected = sup.id === this.state.selectedSupportId;
       this._drawSupport(ctx, sup, isSelected, selectedColor);

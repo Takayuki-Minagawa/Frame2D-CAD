@@ -233,10 +233,13 @@ export class ToolManager {
 
   _selectDown(e) {
     const world = this._getWorldPos(e);
-    const tolerance = 8 / this.c.camera.scale;
+    const basePx = this.state.settings.widePick ? 20 : 8;
+    const tolerance = basePx / this.c.camera.scale;
 
-    // Support hit first (small target, check before others)
-    const support = this.state.findSupportAt(world.x, world.y, tolerance);
+    // Support hit first (small target, check before others) — skip if hidden
+    const support = this.state.settings.showSupports
+      ? this.state.findSupportAt(world.x, world.y, tolerance)
+      : null;
     if (support) {
       this.state.selectedSupportId = support.id;
       this.state.selectedLoadId = null;
@@ -716,7 +719,8 @@ export class ToolManager {
 
   _supportDown(e) {
     const snapped = this._getSnappedPos(e);
-    const tolerance = 8 / this.c.camera.scale;
+    const basePx = this.state.settings.widePick ? 20 : 8;
+    const tolerance = basePx / this.c.camera.scale;
 
     // Check if clicking on an existing support
     const existing = this.state.findSupportAt(snapped.x, snapped.y, tolerance);

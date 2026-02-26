@@ -118,6 +118,8 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
   try {
     await importJSON(file, state, history);
     document.getElementById('chk-snap').checked = state.settings.snap;
+    document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
+    document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
     ui.refreshLayerSelectors();
     update();

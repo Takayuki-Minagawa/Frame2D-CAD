@@ -26,6 +26,17 @@ export class UI {
       this.callbacks.onSnapToggle?.(e.target.checked);
     });
 
+    // Show supports toggle
+    document.getElementById('chk-show-supports').addEventListener('change', e => {
+      this.state.settings.showSupports = e.target.checked;
+      this.callbacks.onPropertyChange?.();
+    });
+
+    // Wide pick toggle
+    document.getElementById('chk-wide-pick').addEventListener('change', e => {
+      this.state.settings.widePick = e.target.checked;
+    });
+
     // Grid size
     document.getElementById('sel-grid').addEventListener('change', e => {
       this.state.settings.gridSize = parseFloat(e.target.value);
@@ -208,8 +219,6 @@ export class UI {
 
     const iEnd = member.endI || { condition: 'rigid', springSymbol: null };
     const jEnd = member.endJ || { condition: 'rigid', springSymbol: null };
-    const iCoords = n1 ? `X=${Math.round(n1.x)}, Y=${Math.round(n1.y)}` : '-';
-    const jCoords = n2 ? `X=${Math.round(n2.x)}, Y=${Math.round(n2.y)}` : '-';
     const typeLabel = t(member.type);
     const level = this.state.levels.find(l => l.id === member.levelId);
     const levelLabel = level ? `${level.name} (z=${level.z})` : member.levelId;
@@ -259,7 +268,11 @@ export class UI {
         </div>
       </div>
       <div class="prop-group">
-        <label>${t('propEndI')} (${t('propStartPoint')}: ${escapeHtml(iCoords)})</label>
+        <label>${t('propEndI')} (${t('propStartPoint')})</label>
+        <div class="prop-row">
+          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-start-x" value="${n1 ? Math.round(n1.x) : 0}" step="100"></div>
+          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-start-y" value="${n1 ? Math.round(n1.y) : 0}" step="100"></div>
+        </div>
         <select id="prop-endi-condition">
           <option value="pin" ${iEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
           <option value="rigid" ${iEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
@@ -273,7 +286,11 @@ export class UI {
       </div>
       ` : ''}
       <div class="prop-group">
-        <label>${t('propEndJ')} (${t('propEndPoint')}: ${escapeHtml(jCoords)})</label>
+        <label>${t('propEndJ')} (${t('propEndPoint')})</label>
+        <div class="prop-row">
+          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-end-x" value="${n2 ? Math.round(n2.x) : 0}" step="100"></div>
+          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-end-y" value="${n2 ? Math.round(n2.y) : 0}" step="100"></div>
+        </div>
         <select id="prop-endj-condition">
           <option value="pin" ${jEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
           <option value="rigid" ${jEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
@@ -336,6 +353,22 @@ export class UI {
     bind('prop-section-name', 'sectionName');
     bindEnd('prop-endi-condition', 'prop-endi-spring', 'endI');
     bindEnd('prop-endj-condition', 'prop-endj-spring', 'endJ');
+
+    // Node coordinate editing
+    const bindNodeCoord = (inputId, nodeId, key) => {
+      const el = document.getElementById(inputId);
+      if (!el || !nodeId) return;
+      el.addEventListener('change', () => {
+        const val = parseFloat(el.value);
+        if (!Number.isFinite(val)) return;
+        this.state.updateNode(nodeId, { [key]: val });
+        this.callbacks.onPropertyChange?.(member.id);
+      });
+    };
+    bindNodeCoord('prop-start-x', member.startNodeId, 'x');
+    bindNodeCoord('prop-start-y', member.startNodeId, 'y');
+    bindNodeCoord('prop-end-x', member.endNodeId, 'x');
+    bindNodeCoord('prop-end-y', member.endNodeId, 'y');
   }
 
   _renderSurfaceProperties(container) {

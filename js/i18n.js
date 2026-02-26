@@ -155,6 +155,8 @@ const dict = {
     supportPin: 'ピン',
     supportRigid: '剛',
     supportFree: '全解除',
+    showSupports: '支点表示',
+    widePick: '広域選択',
 
     // User definition export/import
     userDefExport: 'エクスポート',
@@ -184,7 +186,7 @@ const dict = {
   <tr><td><b>荷重作成</b></td><td>「荷重」ツール(Lキー)。面荷重は矩形2点、線荷重は線分2点、点荷重は1点クリック</td></tr>
   <tr><td><b>支点配置</b></td><td>「支点」ツール(Sキー)でキャンバス上をクリック。プロパティパネルで6自由度(DX/DY/DZ/RX/RY/RZ)を設定</td></tr>
   <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重・支点をクリック</td></tr>
-  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ</td></tr>
+  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ。またはプロパティパネルで始点/終点のX,Y座標を数値入力</td></tr>
   <tr><td><b>削除</b></td><td>要素を選択してDeleteキー</td></tr>
 </table>
 
@@ -214,12 +216,21 @@ const dict = {
 <h3>プロパティパネル</h3>
 <p>要素を選択すると右パネルで以下を編集できます:</p>
 <ul>
-  <li><b>線材</b> - 断面 / 端部(I/J) / バネ記号（バネ時）</li>
+  <li><b>線材</b> - 断面 / 始点座標(X,Y) / 終点座標(X,Y) / 端部(I/J) / バネ記号（バネ時）</li>
   <li><b>面材</b> - 断面 / 荷重方向（床のみ）</li>
   <li><b>荷重</b> - 種別 / 座標 / 荷重値(面・線) / 力・モーメント(点) / 色</li>
   <li><b>支点</b> - 位置(X,Y) / 並進拘束(DX,DY,DZ) / 回転拘束(RX,RY,RZ) / プリセット(ピン/剛/全解除)</li>
 </ul>
+<p>線材の始点・終点座標は数値入力で直接編集でき、ノード位置を正確に指定できます。</p>
 <p>種別・レイヤー・幅/高さ・色は表示専用です。断面を変更すると寸法と色が自動反映され、外壁を含む面材の色は平面図と3D表示へ連動します。</p>
+
+<h3>表示・選択オプション</h3>
+<p>ツールバーのチェックボックスで以下を切り替えられます:</p>
+<table>
+  <tr><td><b>スナップ</b></td><td>ONにするとグリッド/既存ノードに吸着します</td></tr>
+  <tr><td><b>支点表示</b></td><td>OFFにすると支点を2D/3Dの両方で非表示にします。非表示中は支点のクリック選択もスキップされます</td></tr>
+  <tr><td><b>広域選択</b></td><td>ONにするとクリックの許容範囲が広がり、グリッドからズレた部材も選択しやすくなります（通常 8px → 20px）</td></tr>
+</table>
 
 <h3>設定 / ユーザー定義</h3>
 <p>ツールバー上部の ⚙ 設定ボタンから設定モーダルを開きます。</p>
@@ -410,6 +421,8 @@ const dict = {
     supportPin: 'Pin',
     supportRigid: 'Rigid',
     supportFree: 'Free',
+    showSupports: 'Show Supports',
+    widePick: 'Wide Pick',
 
     // User definition export/import
     userDefExport: 'Export',
@@ -439,7 +452,7 @@ const dict = {
   <tr><td><b>Create load</b></td><td>Use "Load" (L). Area load: 2-point rectangle. Line load: 2-point line. Point load: single click</td></tr>
   <tr><td><b>Place support</b></td><td>Use "Support" (S). Click to place. Edit 6 DOFs (DX/DY/DZ/RX/RY/RZ) in the property panel</td></tr>
   <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load/support element</td></tr>
-  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element</td></tr>
+  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element. Or edit start/end X,Y coordinates in the property panel</td></tr>
   <tr><td><b>Delete</b></td><td>Select an element and press Delete key</td></tr>
 </table>
 
@@ -469,12 +482,21 @@ const dict = {
 <h3>Property Panel</h3>
 <p>Select an element to edit in the right panel:</p>
 <ul>
-  <li><b>Line</b> - Section / End condition (I/J) / Spring symbol (when spring)</li>
+  <li><b>Line</b> - Section / Start point (X,Y) / End point (X,Y) / End condition (I/J) / Spring symbol (when spring)</li>
   <li><b>Surface</b> - Section / Load direction (floor only)</li>
   <li><b>Load</b> - Type / Coordinates / Value (area/line) / Force &amp; Moment (point) / Color</li>
   <li><b>Support</b> - Position (X,Y) / Translation (DX,DY,DZ) / Rotation (RX,RY,RZ) / Presets (Pin/Rigid/Free)</li>
 </ul>
+<p>Start/end point coordinates can be edited numerically to precisely position nodes.</p>
 <p>Type, layer, width/height, and color are display-only. Changing section automatically updates dimensions and color, including surface color sync in both plan and 3D views.</p>
+
+<h3>Display &amp; Selection Options</h3>
+<p>Toggle the following options using toolbar checkboxes:</p>
+<table>
+  <tr><td><b>Snap</b></td><td>When ON, snaps to grid points and existing nodes</td></tr>
+  <tr><td><b>Show Supports</b></td><td>When OFF, hides supports in both 2D and 3D views. Click selection of supports is also skipped</td></tr>
+  <tr><td><b>Wide Pick</b></td><td>When ON, widens the click tolerance for easier selection of off-grid elements (8px → 20px)</td></tr>
+</table>
 
 <h3>Settings / User Definitions</h3>
 <p>Click the ⚙ Settings button at the top of the toolbar to open the settings modal.</p>
