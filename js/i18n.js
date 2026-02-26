@@ -250,6 +250,7 @@ const dict = {
   <tr><td><b>定義エクスポート</b></td><td>設定 → ユーザー定義 →「エクスポート」でカスタム定義を別ファイルに保存</td></tr>
   <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み</td></tr>
 </table>
+<p>定義インポート時、同名の定義が既に存在する場合はスキップされ、追加件数とスキップ件数が通知されます。</p>
 <p>部材IDは内部管理用で、CADファイルには含まれません。旧バージョンで保存されたファイルも読み込めます。</p>
 <p><b>推奨ワークフロー:</b> ユーザー定義をインポート → CADデータを読込</p>
 `,
@@ -504,6 +505,7 @@ const dict = {
   <tr><td><b>Export Defs</b></td><td>Settings → User Definitions → "Export" to save custom definitions to a separate file</td></tr>
   <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment</td></tr>
 </table>
+<p>When importing definitions, entries with duplicate names are skipped, and the number of added and skipped items is shown.</p>
 <p>Member IDs are internal and are not written to CAD files. Files saved with older versions can still be loaded.</p>
 <p><b>Recommended workflow:</b> Import user definitions → Load CAD data</p>
 `,
