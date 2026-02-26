@@ -63,22 +63,23 @@ export function importUserDefs(file, state) {
           reject(new Error('Not a user definition file'));
           return;
         }
-        let count = 0;
+        let added = 0;
+        let skipped = 0;
         if (Array.isArray(data.sections)) {
           for (const entry of data.sections) {
             if (entry.isDefault) continue;
-            const added = state.addSection(entry);
-            if (added) count++;
+            const result = state.addSection(entry);
+            if (result) { added++; } else { skipped++; }
           }
         }
         if (Array.isArray(data.springs)) {
           for (const entry of data.springs) {
             if (entry.isDefault) continue;
-            const added = state.addSpring(entry);
-            if (added) count++;
+            const result = state.addSpring(entry);
+            if (result) { added++; } else { skipped++; }
           }
         }
-        resolve(count);
+        resolve({ added, skipped });
       } catch (err) {
         reject(err);
       }

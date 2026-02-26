@@ -161,7 +161,9 @@ const dict = {
     userDefImport: 'インポート',
     userDefExported: 'ユーザー定義をエクスポートしました。',
     userDefExportEmpty: 'エクスポート対象のユーザー定義がありません。',
-    userDefImported: 'ユーザー定義をインポートしました。',
+    userDefImported: '{n}件のユーザー定義をインポートしました。',
+    userDefImportedWithSkip: '{n}件をインポートしました（{s}件は同名の定義が既にあるためスキップ）。',
+    userDefImportAllSkipped: 'すべての定義が同名の既存定義と重複するためスキップされました（{s}件）。',
     userDefImportFailed: 'インポートに失敗しました: ',
     userDefImportNone: 'インポート可能な定義がありませんでした。',
 
@@ -413,7 +415,9 @@ const dict = {
     userDefImport: 'Import',
     userDefExported: 'User definitions exported.',
     userDefExportEmpty: 'No user definitions to export.',
-    userDefImported: 'User definitions imported.',
+    userDefImported: '{n} user definition(s) imported.',
+    userDefImportedWithSkip: '{n} imported ({s} skipped due to duplicate names).',
+    userDefImportAllSkipped: 'All definitions skipped due to duplicate names ({s}).',
     userDefImportFailed: 'Import failed: ',
     userDefImportNone: 'No importable definitions found.',
 

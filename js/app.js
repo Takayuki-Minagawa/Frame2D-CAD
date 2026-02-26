@@ -652,13 +652,18 @@ document.getElementById('file-user-def-import').addEventListener('change', async
   const file = e.target.files[0];
   if (!file) return;
   try {
-    const count = await importUserDefs(file, state);
-    if (count > 0) {
-      showNotice(t('userDefImported'), 'success');
+    const { added, skipped } = await importUserDefs(file, state);
+    if (added > 0) {
+      const msg = skipped > 0
+        ? t('userDefImportedWithSkip').replace('{n}', added).replace('{s}', skipped)
+        : t('userDefImported').replace('{n}', added);
+      showNotice(msg, 'success');
       update();
       if (userDefListModal?.classList.contains('visible')) {
         renderUserDefGroupList();
       }
+    } else if (skipped > 0) {
+      showNotice(t('userDefImportAllSkipped').replace('{s}', skipped), 'error');
     } else {
       showNotice(t('userDefImportNone'), 'error');
     }
