@@ -241,7 +241,15 @@ const dict = {
 <p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
-<p>「保存」でJSONファイルをダウンロード、「読込」でJSONファイルを読み込みます。部材IDは内部管理用で、出力JSONには含まれません。</p>
+<p>CADデータ（図面情報）とユーザー定義（断面・バネ）は<b>別ファイルとして分離管理</b>されます。</p>
+<table>
+  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。カスタムユーザー定義は含まれません</td></tr>
+  <tr><td><b>CAD読込</b></td><td>ツールバーの「CAD読込」でJSONファイルを読み込み。既にロード済みのカスタム定義は維持されます</td></tr>
+  <tr><td><b>定義エクスポート</b></td><td>設定 → ユーザー定義 →「エクスポート」でカスタム定義を別ファイルに保存</td></tr>
+  <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み</td></tr>
+</table>
+<p>部材IDは内部管理用で、CADファイルには含まれません。旧バージョンで保存されたファイルも読み込めます。</p>
+<p><b>推奨ワークフロー:</b> ユーザー定義をインポート → CADデータを読込</p>
 `,
   },
 
@@ -485,7 +493,15 @@ const dict = {
 <p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
-<p>"Export" downloads a JSON file. "Import" loads a JSON file. Member IDs are internal and are not written to export JSON.</p>
+<p>CAD data (drawing) and user definitions (sections/springs) are <b>managed as separate files</b>.</p>
+<table>
+  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. Custom user definitions are not included</td></tr>
+  <tr><td><b>Load CAD</b></td><td>Click "Load CAD" in the toolbar to load a JSON file. Existing custom definitions in memory are preserved</td></tr>
+  <tr><td><b>Export Defs</b></td><td>Settings → User Definitions → "Export" to save custom definitions to a separate file</td></tr>
+  <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment</td></tr>
+</table>
+<p>Member IDs are internal and are not written to CAD files. Files saved with older versions can still be loaded.</p>
+<p><b>Recommended workflow:</b> Import user definitions → Load CAD data</p>
 `,
   },
 };

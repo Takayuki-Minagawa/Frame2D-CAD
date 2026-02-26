@@ -37,14 +37,20 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 線材を断面寸法（b x h）を反映した直方体として3D表示
 - 面材（床スラブを水平面、壁を鉛直面）として3D表示
 - 荷重（面荷重=赤スラブ、線荷重=オレンジ線、点荷重=紫球体）を3D表示
+- 支点を3D表示（固定=コーン+プレート、ローラー/部分拘束=コーン+球体）
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
+- CDNからThree.jsの読み込みに失敗した場合はユーザーにエラー通知
 
 ### Data I/O
 
-- JSON Export（ファイルダウンロード）
-- JSON Import（ファイル読み込みで状態復元）
-- ユーザー定義（断面・バネ）のエクスポート/インポート（設定 → ユーザー定義モーダルから操作）
+CADデータ（図面情報）とユーザー定義（断面・バネ）は**別ファイルとして分離管理**されます。
+
+- **CAD保存/CAD読込**（ツールバー）: 図面データ（ノード・線材・面材・荷重・支点・レイヤー・設定）をJSONファイルとして保存/読込
+  - カスタムユーザー定義はCADファイルに含まれません（デフォルト定義のみ）
+  - CAD読込時、既にメモリ上にあるカスタムユーザー定義は維持されます
+  - 旧バージョンで保存されたファイル（カスタム定義が埋め込まれたもの）も後方互換で読込可能
+- **ユーザー定義エクスポート/インポート**（設定 → ユーザー定義モーダル）: カスタム断面・バネ定義を別のJSONファイルとして管理
 - 部材IDはアプリ内部管理のみ（JSONには出力しない）
 - schemaVersion による互換性管理
 
@@ -138,6 +144,10 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ## Data Format (JSON)
 
+### CADデータ（図面情報）
+
+「CAD保存」で出力されるファイル。カスタムユーザー定義は含まれず、デフォルト定義のみ出力されます。
+
 ```json
 {
   "schemaVersion": 3,
@@ -160,8 +170,7 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": "N2", "x": 5000, "y": 0, "z": 0 }
   ],
   "sectionCatalog": [
-    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "isDefault": true },
-    { "target": "surface", "type": "floor", "name": "_S", "material": "", "b": null, "h": null, "color": "#67a9cf", "isDefault": true }
+    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "isDefault": true }
   ],
   "springCatalog": [
     { "symbol": "_SP", "memo": "回転バネ", "isDefault": true }
@@ -180,65 +189,8 @@ app.js ─┬─ state.js      Data model (AppState)
       "endJ": { "condition": "rigid", "springSymbol": null }
     }
   ],
-  "surfaces": [
-    {
-      "type": "floor",
-      "sectionName": "_S",
-      "shape": "rect",
-      "levelId": "L1",
-      "topLevelId": "L1",
-      "loadDirection": "twoWay",
-      "color": "#67a9cf",
-      "x1": 0,
-      "y1": 0,
-      "x2": 5000,
-      "y2": 4000,
-      "points": null
-    },
-    {
-      "type": "exteriorWall",
-      "sectionName": "_OW",
-      "shape": "polygon",
-      "levelId": "L0",
-      "topLevelId": "L1",
-      "loadDirection": "twoWay",
-      "color": "#b57a6b",
-      "x1": 0,
-      "y1": 0,
-      "x2": 6000,
-      "y2": 5000,
-      "points": [
-        { "x": 0, "y": 0 },
-        { "x": 6000, "y": 0 },
-        { "x": 6000, "y": 5000 },
-        { "x": 0, "y": 5000 }
-      ]
-    }
-  ],
-  "loads": [
-    {
-      "type": "areaLoad",
-      "levelId": "L1",
-      "x1": 0, "y1": 0, "x2": 5000, "y2": 4000,
-      "value": 3000,
-      "color": "#e57373"
-    },
-    {
-      "type": "lineLoad",
-      "levelId": "L0",
-      "x1": 0, "y1": 0, "x2": 5000, "y2": 0,
-      "value": 1500,
-      "color": "#ffb74d"
-    },
-    {
-      "type": "pointLoad",
-      "levelId": "L0",
-      "x1": 2500, "y1": 2000,
-      "fx": 0, "fy": 0, "fz": -10000,
-      "mx": 0, "my": 0, "mz": 0,
-      "color": "#ba68c8"
-    }
-  ],
+  "surfaces": [ ... ],
+  "loads": [ ... ],
   "supports": [
     {
       "x": 0, "y": 0,
@@ -250,8 +202,26 @@ app.js ─┬─ state.js      Data model (AppState)
 }
 ```
 
+- `sectionCatalog` / `springCatalog` にはデフォルト定義のみ含まれます（カスタム定義は別ファイルで管理）
 - `nodes` / `levels` の `id` はJSONに保存されます
 - `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
+- 旧バージョンで保存されたファイル（カスタム定義が埋め込まれたもの）も後方互換で読込可能
+
+### ユーザー定義ファイル
+
+「設定 → ユーザー定義 → エクスポート」で出力されるファイル。カスタム断面・バネ定義のみ含まれます。
+
+```json
+{
+  "userDefinitions": true,
+  "sections": [
+    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456" }
+  ],
+  "springs": [
+    { "symbol": "SP1", "memo": "カスタムバネ" }
+  ]
+}
+```
 
 ## Getting Started
 
@@ -280,7 +250,8 @@ npm run lint:all
 主なテスト対象:
 - 断面/バネの命名ルール（先頭`_`禁止、既定名重複禁止）
 - 断面変更時の寸法・色反映
-- JSON Export/Import時のID非出力・再採番
+- CAD JSON Export時のカスタム定義除外・ID非出力
+- CAD読込時のカスタム定義保持・後方互換
 - 面材色解決の2D/3D共有ロジック（スモーク）
 
 ## Version Management
