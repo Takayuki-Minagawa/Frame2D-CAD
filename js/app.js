@@ -5,7 +5,7 @@ import { History } from './history.js';
 import { Canvas2D } from './canvas2d.js';
 import { ToolManager } from './tools.js';
 import { UI } from './ui.js';
-import { exportJSON, importJSON } from './io.js';
+import { exportJSON, importJSON, exportUserDefs, importUserDefs } from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
 
 // --- Initialize ---
@@ -630,6 +630,40 @@ document.getElementById('btn-user-def-close').addEventListener('click', hideUser
 document.getElementById('btn-user-def-add').addEventListener('click', addUserDefinition);
 document.getElementById('btn-user-def-list').addEventListener('click', showUserDefListModal);
 document.getElementById('btn-user-def-list-close').addEventListener('click', hideUserDefListModal);
+
+// User definition export/import
+document.getElementById('btn-user-def-export').addEventListener('click', () => {
+  const exported = exportUserDefs(state);
+  if (exported) {
+    showNotice(t('userDefExported'), 'success');
+  } else {
+    showNotice(t('userDefExportEmpty'), 'error');
+  }
+});
+
+document.getElementById('btn-user-def-import-trigger').addEventListener('click', () => {
+  document.getElementById('file-user-def-import').click();
+});
+
+document.getElementById('file-user-def-import').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const count = await importUserDefs(file, state);
+    if (count > 0) {
+      showNotice(t('userDefImported'), 'success');
+      update();
+      if (userDefListModal?.classList.contains('visible')) {
+        renderUserDefGroupList();
+      }
+    } else {
+      showNotice(t('userDefImportNone'), 'error');
+    }
+  } catch (err) {
+    showNotice(t('userDefImportFailed') + err.message, 'error', 6500);
+  }
+  e.target.value = '';
+});
 
 if (userDefKindSelect) userDefKindSelect.addEventListener('change', () => {
   clearUserDefFormError();

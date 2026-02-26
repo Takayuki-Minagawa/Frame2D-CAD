@@ -42,6 +42,7 @@ export class AppState {
     this.members = [];
     this.surfaces = [];
     this.loads = [];
+    this.supports = [];
     this.sectionCatalog = createDefaultSectionCatalog();
     this.springCatalog = createDefaultSpringCatalog();
 
@@ -49,6 +50,7 @@ export class AppState {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
+    this.selectedSupportId = null;
     this.currentTool = 'member';
     this.activeLayerId = 'L0';
     this.memberDraftType = 'beam';
@@ -64,6 +66,7 @@ export class AppState {
     this._surfaceCounter = 0;
     this._levelCounter = 1;
     this._loadCounter = 0;
+    this._supportCounter = 0;
   }
 
   // --- Section & Spring catalogs ---
@@ -909,10 +912,66 @@ export class AppState {
     return null;
   }
 
+  // --- Supports ---
+
+  nextSupportId() {
+    this._supportCounter++;
+    return `SUP${this._supportCounter}`;
+  }
+
+  addSupport(x, y, options = {}) {
+    const id = this.nextSupportId();
+    const support = {
+      id,
+      x,
+      y,
+      levelId: options.levelId || this.activeLayerId || 'L0',
+      dx: options.dx !== undefined ? !!options.dx : true,
+      dy: options.dy !== undefined ? !!options.dy : true,
+      dz: options.dz !== undefined ? !!options.dz : true,
+      rx: options.rx !== undefined ? !!options.rx : false,
+      ry: options.ry !== undefined ? !!options.ry : false,
+      rz: options.rz !== undefined ? !!options.rz : false,
+    };
+    this.supports.push(support);
+    return support;
+  }
+
+  getSupport(id) {
+    return this.supports.find(s => s.id === id);
+  }
+
+  updateSupport(id, props) {
+    const support = this.getSupport(id);
+    if (support) Object.assign(support, props);
+    return support;
+  }
+
+  removeSupport(id) {
+    this.supports = this.supports.filter(s => s.id !== id);
+    if (this.selectedSupportId === id) {
+      this.selectedSupportId = null;
+    }
+  }
+
+  findSupportAt(x, y, tolerance = 300) {
+    let closest = null;
+    let minDist = tolerance;
+    for (const s of this.supports) {
+      const d = Math.hypot(s.x - x, s.y - y);
+      if (d < minDist) {
+        minDist = d;
+        closest = s;
+      }
+    }
+    return closest;
+  }
+
   clearSelection() {
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
+    this.selectedSupportId = null;
   }
 
   // --- Serialization ---
@@ -957,6 +1016,17 @@ export class AppState {
         delete rest.id;
         return { ...rest };
       }),
+      supports: this.supports.map(s => ({
+        x: s.x,
+        y: s.y,
+        levelId: s.levelId,
+        dx: s.dx,
+        dy: s.dy,
+        dz: s.dz,
+        rx: s.rx,
+        ry: s.ry,
+        rz: s.rz,
+      })),
     };
   }
 
@@ -991,9 +1061,22 @@ export class AppState {
       this._normalizeLoadedSurface({ id: s.id || `S${idx + 1}`, ...s })
     );
     this.loads = (data.loads || []).map((l, idx) => ({ id: l.id || `LD${idx + 1}`, ...l }));
+    this.supports = (data.supports || []).map((s, idx) => ({
+      id: s.id || `SUP${idx + 1}`,
+      x: s.x || 0,
+      y: s.y || 0,
+      levelId: s.levelId || this.activeLayerId || 'L0',
+      dx: !!s.dx,
+      dy: !!s.dy,
+      dz: !!s.dz,
+      rx: !!s.rx,
+      ry: !!s.ry,
+      rz: !!s.rz,
+    }));
     this.selectedMemberId = null;
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
+    this.selectedSupportId = null;
     this.currentTool = 'member';
     this.memberDraftType = 'beam';
     this.surfaceDraftType = 'floor';
@@ -1007,6 +1090,7 @@ export class AppState {
     this._surfaceCounter = maxIdNum(this.surfaces);
     this._levelCounter = maxIdNum(this.levels);
     this._loadCounter = maxIdNumPrefix(this.loads, 'LD');
+    this._supportCounter = maxIdNumPrefix(this.supports, 'SUP');
   }
 
   // Deep clone for undo/redo snapshots

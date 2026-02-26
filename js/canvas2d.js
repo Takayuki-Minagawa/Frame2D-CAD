@@ -99,6 +99,7 @@ export class Canvas2D {
 
     this._drawSurfaces(ctx, selectedColor);
     this._drawLoads(ctx, selectedColor);
+    this._drawSupports(ctx, selectedColor);
 
     // Members
     for (const m of this.state.members) {
@@ -624,6 +625,77 @@ export class Canvas2D {
     ctx.lineTo(x1 + size * Math.cos(angle + Math.PI / 7), y1 + size * Math.sin(angle + Math.PI / 7));
     ctx.closePath();
     ctx.fill();
+  }
+
+  _drawSupports(ctx, selectedColor) {
+    for (const sup of this.state.supports) {
+      const isSelected = sup.id === this.state.selectedSupportId;
+      this._drawSupport(ctx, sup, isSelected, selectedColor);
+    }
+  }
+
+  _drawSupport(ctx, sup, isSelected, selectedColor) {
+    const p = this.worldToScreen(sup.x, sup.y);
+    const color = isSelected ? selectedColor : '#4ade80';
+    const sz = 12;
+
+    ctx.save();
+
+    const allTrans = sup.dx && sup.dy && sup.dz;
+    const allRot = sup.rx && sup.ry && sup.rz;
+    const isFixed = allTrans && allRot;
+
+    // Triangle: apex at support point, base below
+    ctx.strokeStyle = color;
+    ctx.lineWidth = isSelected ? 2.5 : 2;
+    ctx.fillStyle = toRgba(color, 0.25);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x - sz, p.y + sz * 1.4);
+    ctx.lineTo(p.x + sz, p.y + sz * 1.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    if (isFixed) {
+      // Fixed support: ground line + hatching
+      const baseY = p.y + sz * 1.4;
+      ctx.beginPath();
+      ctx.moveTo(p.x - sz - 3, baseY);
+      ctx.lineTo(p.x + sz + 3, baseY);
+      ctx.stroke();
+      // Hatching lines
+      for (let i = -sz; i <= sz; i += 5) {
+        ctx.beginPath();
+        ctx.moveTo(p.x + i, baseY);
+        ctx.lineTo(p.x + i - 4, baseY + 6);
+        ctx.stroke();
+      }
+    } else {
+      // Roller / partial: small circles under base
+      const baseY = p.y + sz * 1.4;
+      ctx.beginPath();
+      ctx.moveTo(p.x - sz - 3, baseY + 5);
+      ctx.lineTo(p.x + sz + 3, baseY + 5);
+      ctx.stroke();
+    }
+
+    // DOF labels
+    const dofs = [];
+    if (sup.dx) dofs.push('DX');
+    if (sup.dy) dofs.push('DY');
+    if (sup.dz) dofs.push('DZ');
+    if (sup.rx) dofs.push('RX');
+    if (sup.ry) dofs.push('RY');
+    if (sup.rz) dofs.push('RZ');
+    if (dofs.length > 0 && dofs.length < 6) {
+      ctx.fillStyle = color;
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(dofs.join(','), p.x, p.y + sz * 1.4 + 18);
+    }
+
+    ctx.restore();
   }
 }
 

@@ -109,6 +109,8 @@ export class ToolManager {
       this._surfaceDown(e);
     } else if (tool === 'load') {
       this._loadDown(e);
+    } else if (tool === 'support') {
+      this._supportDown(e);
     }
   }
 
@@ -184,7 +186,11 @@ export class ToolManager {
     // Delete (skip when focused on input/select)
     if ((e.key === 'Delete' || e.key === 'Backspace') &&
         e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') {
-      if (this.state.selectedLoadId) {
+      if (this.state.selectedSupportId) {
+        this.history.save();
+        this.state.removeSupport(this.state.selectedSupportId);
+        this.onUpdate();
+      } else if (this.state.selectedLoadId) {
         this.history.save();
         this.state.removeLoad(this.state.selectedLoadId);
         this.onUpdate();
@@ -229,12 +235,25 @@ export class ToolManager {
     const world = this._getWorldPos(e);
     const tolerance = 8 / this.c.camera.scale;
 
-    // Load hit first
+    // Support hit first (small target, check before others)
+    const support = this.state.findSupportAt(world.x, world.y, tolerance);
+    if (support) {
+      this.state.selectedSupportId = support.id;
+      this.state.selectedLoadId = null;
+      this.state.selectedSurfaceId = null;
+      this.state.selectedMemberId = null;
+      this._dragTarget = null;
+      this.onUpdate();
+      return;
+    }
+
+    // Load hit
     const load = this.state.findLoadAt(world.x, world.y);
     if (load) {
       this.state.selectedLoadId = load.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedMemberId = null;
+      this.state.selectedSupportId = null;
       this._dragTarget = null;
       this.onUpdate();
       return;
@@ -246,6 +265,7 @@ export class ToolManager {
       this.state.selectedSurfaceId = surface.id;
       this.state.selectedMemberId = null;
       this.state.selectedLoadId = null;
+      this.state.selectedSupportId = null;
       this._dragTarget = null;
       this.onUpdate();
       return;
@@ -261,6 +281,7 @@ export class ToolManager {
         this.state.selectedMemberId = member.id;
         this.state.selectedSurfaceId = null;
         this.state.selectedLoadId = null;
+        this.state.selectedSupportId = null;
         this._dragTarget = { type: 'node', id: node.id };
         this._isDragging = false;
         this._dragStartPos = { x: world.x, y: world.y };
@@ -275,6 +296,7 @@ export class ToolManager {
       this.state.selectedMemberId = member.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedLoadId = null;
+      this.state.selectedSupportId = null;
       const n1 = this.state.getNode(member.startNodeId);
       const n2 = this.state.getNode(member.endNodeId);
       this._dragTarget = {
@@ -687,6 +709,35 @@ export class ToolManager {
       endY: snapped.y,
       mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
     };
+    this.onUpdate();
+  }
+
+  // --- Support Tool ---
+
+  _supportDown(e) {
+    const snapped = this._getSnappedPos(e);
+    const tolerance = 8 / this.c.camera.scale;
+
+    // Check if clicking on an existing support
+    const existing = this.state.findSupportAt(snapped.x, snapped.y, tolerance);
+    if (existing) {
+      this.state.selectedSupportId = existing.id;
+      this.state.selectedMemberId = null;
+      this.state.selectedSurfaceId = null;
+      this.state.selectedLoadId = null;
+      this.onUpdate();
+      return;
+    }
+
+    // Place a new support
+    this.history.save();
+    const support = this.state.addSupport(snapped.x, snapped.y, {
+      levelId: this.state.activeLayerId || 'L0',
+    });
+    this.state.selectedSupportId = support.id;
+    this.state.selectedMemberId = null;
+    this.state.selectedSurfaceId = null;
+    this.state.selectedLoadId = null;
     this.onUpdate();
   }
 

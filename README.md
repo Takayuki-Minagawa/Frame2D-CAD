@@ -1,4 +1,4 @@
-# Element Modeler (Ver.1.0.1)
+# Element Modeler (Ver.1.0.2)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -16,13 +16,14 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 面材（床 / 外壁 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
 - 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
 - 荷重（面荷重 / 線荷重 / 点荷重）の作成・選択・編集・削除
+- 支点（境界条件）の配置・編集・削除（6自由度: DX/DY/DZ + RX/RY/RZ をチェックボックスで指定、ピン/剛/全解除プリセット付き）
 - ノード（端点）のドラッグによる形状変更
 - パン（右ドラッグ / 中ボタン / Space+ドラッグ）・ズーム（マウスホイール）
 - グリッド表示 + スナップ（グリッド / 既存ノード吸着）
 - 原点と軸方向を左下に常時表示（配置の基準）
 - レイヤー（Zレベル）管理: 名前・高さの編集、追加・削除（z値ソート表示、重複禁止、使用中レイヤー削除不可）
-- ツール選択コンボボックスで要素 / 線材 / 面材 / 荷重を切替
-- プロパティパネルで線材/面材/荷重属性を編集
+- ツール選択コンボボックスで要素 / 線材 / 面材 / 荷重 / 支点を切替
+- プロパティパネルで線材/面材/荷重/支点属性を編集
 - 線材: 断面、端部条件 I/J（ピン / 剛 / バネ）、バネ記号を編集
 - 面材: 断面、床のみ荷重方向を編集
 - 荷重: 座標、荷重値、色などを編集
@@ -43,6 +44,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 - JSON Export（ファイルダウンロード）
 - JSON Import（ファイル読み込みで状態復元）
+- ユーザー定義（断面・バネ）のエクスポート/インポート（設定 → ユーザー定義モーダルから操作）
 - 部材IDはアプリ内部管理のみ（JSONには出力しない）
 - schemaVersion による互換性管理
 
@@ -74,6 +76,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 | `M` | Line tool - 線材 |
 | `F` | Surface tool - 面材 |
 | `L` | Load tool - 荷重 |
+| `S` | Support tool - 支点 |
 | `Enter` (Surface Polyline) | Close polyline to polygon |
 | `Esc` | Cancel / Deselect / Close modal |
 | `Delete` | Delete selected element |
@@ -101,11 +104,11 @@ Frame2D-CAD/
 ├── THIRD_PARTY_LICENSES.md  # Third-party license details
 ├── js/
 │   ├── app.js          # App init / Module wiring / Theme / Lang / Help
-│   ├── state.js        # Data model (nodes, members, surfaces, loads, layers) / CRUD / JSON serialization
+│   ├── state.js        # Data model (nodes, members, surfaces, loads, supports, layers) / CRUD / JSON serialization
 │   ├── history.js      # Undo/Redo (snapshot, max 50)
 │   ├── grid.js         # Grid drawing / Snap calculation
 │   ├── canvas2d.js     # 2D canvas (pan/zoom camera, rendering)
-│   ├── tools.js        # Select / Member / Surface / Load tools / Keyboard shortcuts
+│   ├── tools.js        # Select / Member / Surface / Load / Support tools / Keyboard shortcuts
 │   ├── viewer3d.js     # 3D scene (three.js, BoxGeometry, OrbitControls)
 │   ├── ui.js           # Toolbar / Property panel / Status bar / i18n apply
 │   ├── io.js           # JSON export/import
@@ -126,7 +129,7 @@ app.js ─┬─ state.js      Data model (AppState)
         └─ i18n.js                   Language dictionary
 ```
 
-- **state.js** がノード・線材・面材・荷重・レベルなど全データを保持する中心モジュール
+- **state.js** がノード・線材・面材・荷重・支点・レベルなど全データを保持する中心モジュール
 - **canvas2d.js** は Canvas 2D API による描画のみを担当し、入力処理は **tools.js** に委譲
 - **viewer3d.js** は2Dデータを mm→m 変換して three.js シーンに描画
 - **i18n.js** が全UIテキストの日本語/英語辞書を管理し、`t(key)` で取得
@@ -235,6 +238,14 @@ app.js ─┬─ state.js      Data model (AppState)
       "mx": 0, "my": 0, "mz": 0,
       "color": "#ba68c8"
     }
+  ],
+  "supports": [
+    {
+      "x": 0, "y": 0,
+      "levelId": "L0",
+      "dx": true, "dy": true, "dz": true,
+      "rx": false, "ry": false, "rz": false
+    }
   ]
 }
 ```
@@ -278,8 +289,8 @@ npm run lint:all
 表示用バージョン（`Ver.<semver>`。例: `Ver.1.0.1`）は `index.html` / `README.md` に自動同期します。
 
 ```bash
-# 例: 1.0.1 -> 1.0.2
-npm version 1.0.2
+# 例: 1.0.2 -> 1.0.3
+npm version 1.0.3
 
 # 表示バージョンを同期
 npm run version:sync

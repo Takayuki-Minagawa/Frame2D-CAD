@@ -143,6 +143,26 @@ const dict = {
     loadUnit_area: 'N/m²',
     loadUnit_line: 'N/m',
 
+    // Support
+    support: '支点',
+    toolSupport: 'ツール: 支点',
+    supportType: '支点',
+    supportPos: '位置',
+    supportTranslation: '並進拘束',
+    supportRotation: '回転拘束',
+    supportPin: 'ピン',
+    supportRigid: '剛',
+    supportFree: '全解除',
+
+    // User definition export/import
+    userDefExport: 'エクスポート',
+    userDefImport: 'インポート',
+    userDefExported: 'ユーザー定義をエクスポートしました。',
+    userDefExportEmpty: 'エクスポート対象のユーザー定義がありません。',
+    userDefImported: 'ユーザー定義をインポートしました。',
+    userDefImportFailed: 'インポートに失敗しました: ',
+    userDefImportNone: 'インポート可能な定義がありませんでした。',
+
     // Import error
     importFailed: '読込失敗: ',
 
@@ -155,7 +175,8 @@ const dict = {
   <tr><td><b>線材作成</b></td><td>「線材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
   <tr><td><b>面材作成</b></td><td>「面材」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
   <tr><td><b>荷重作成</b></td><td>「荷重」ツール(Lキー)。面荷重は矩形2点、線荷重は線分2点、点荷重は1点クリック</td></tr>
-  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重をクリック</td></tr>
+  <tr><td><b>支点配置</b></td><td>「支点」ツール(Sキー)でキャンバス上をクリック。プロパティパネルで6自由度(DX/DY/DZ/RX/RY/RZ)を設定</td></tr>
+  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重・支点をクリック</td></tr>
   <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ</td></tr>
   <tr><td><b>削除</b></td><td>要素を選択してDeleteキー</td></tr>
 </table>
@@ -174,6 +195,7 @@ const dict = {
   <tr><td><kbd>M</kbd></td><td>線材ツール</td></tr>
   <tr><td><kbd>F</kbd></td><td>面材ツール</td></tr>
   <tr><td><kbd>L</kbd></td><td>荷重ツール</td></tr>
+  <tr><td><kbd>S</kbd></td><td>支点ツール</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>面材ポリラインを閉じて確定</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>キャンセル / 選択解除 / モーダルを閉じる</td></tr>
   <tr><td><kbd>Delete</kbd></td><td>選択要素を削除</td></tr>
@@ -188,6 +210,7 @@ const dict = {
   <li><b>線材</b> - 断面 / 端部(I/J) / バネ記号（バネ時）</li>
   <li><b>面材</b> - 断面 / 荷重方向（床のみ）</li>
   <li><b>荷重</b> - 種別 / 座標 / 荷重値(面・線) / 力・モーメント(点) / 色</li>
+  <li><b>支点</b> - 位置(X,Y) / 並進拘束(DX,DY,DZ) / 回転拘束(RX,RY,RZ) / プリセット(ピン/剛/全解除)</li>
 </ul>
 <p>種別・レイヤー・幅/高さ・色は表示専用です。断面を変更すると寸法と色が自動反映され、外壁を含む面材の色は平面図と3D表示へ連動します。</p>
 
@@ -201,6 +224,7 @@ const dict = {
 </ul>
 <p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。登録後は名前以外の項目（寸法・色・メモ）を更新でき、ユーザー定義は削除可能です（使用中の定義は削除できません）。</p>
 <p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
+<p>「エクスポート」でユーザー定義をJSONファイルとしてダウンロード、「インポート」で別環境からユーザー定義を読み込めます。</p>
 
 <h3>レイヤー管理</h3>
 <p>レイヤー選択横の ⚙ ボタンからレイヤー管理モーダルを開きます。</p>
@@ -358,6 +382,26 @@ const dict = {
     loadUnit_area: 'N/m²',
     loadUnit_line: 'N/m',
 
+    // Support
+    support: 'Support',
+    toolSupport: 'Tool: Support',
+    supportType: 'Support',
+    supportPos: 'Position',
+    supportTranslation: 'Translation',
+    supportRotation: 'Rotation',
+    supportPin: 'Pin',
+    supportRigid: 'Rigid',
+    supportFree: 'Free',
+
+    // User definition export/import
+    userDefExport: 'Export',
+    userDefImport: 'Import',
+    userDefExported: 'User definitions exported.',
+    userDefExportEmpty: 'No user definitions to export.',
+    userDefImported: 'User definitions imported.',
+    userDefImportFailed: 'Import failed: ',
+    userDefImportNone: 'No importable definitions found.',
+
     // Import error
     importFailed: 'Import failed: ',
 
@@ -370,7 +414,8 @@ const dict = {
   <tr><td><b>Create line</b></td><td>Select "Line" tool (M key), click start point → click end point</td></tr>
   <tr><td><b>Create surface</b></td><td>Use "Surface" (F). Rectangle: 2 diagonal points. Polyline: click points, then click first point or Enter to close</td></tr>
   <tr><td><b>Create load</b></td><td>Use "Load" (L). Area load: 2-point rectangle. Line load: 2-point line. Point load: single click</td></tr>
-  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load element</td></tr>
+  <tr><td><b>Place support</b></td><td>Use "Support" (S). Click to place. Edit 6 DOFs (DX/DY/DZ/RX/RY/RZ) in the property panel</td></tr>
+  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load/support element</td></tr>
   <tr><td><b>Move</b></td><td>After selecting, drag a node or line element</td></tr>
   <tr><td><b>Delete</b></td><td>Select an element and press Delete key</td></tr>
 </table>
@@ -389,6 +434,7 @@ const dict = {
   <tr><td><kbd>M</kbd></td><td>Line tool</td></tr>
   <tr><td><kbd>F</kbd></td><td>Surface tool</td></tr>
   <tr><td><kbd>L</kbd></td><td>Load tool</td></tr>
+  <tr><td><kbd>S</kbd></td><td>Support tool</td></tr>
   <tr><td><kbd>Enter</kbd></td><td>Close and confirm surface polyline</td></tr>
   <tr><td><kbd>Esc</kbd></td><td>Cancel / Deselect / Close modal</td></tr>
   <tr><td><kbd>Delete</kbd></td><td>Delete selected element</td></tr>
@@ -403,6 +449,7 @@ const dict = {
   <li><b>Line</b> - Section / End condition (I/J) / Spring symbol (when spring)</li>
   <li><b>Surface</b> - Section / Load direction (floor only)</li>
   <li><b>Load</b> - Type / Coordinates / Value (area/line) / Force &amp; Moment (point) / Color</li>
+  <li><b>Support</b> - Position (X,Y) / Translation (DX,DY,DZ) / Rotation (RX,RY,RZ) / Presets (Pin/Rigid/Free)</li>
 </ul>
 <p>Type, layer, width/height, and color are display-only. Changing section automatically updates dimensions and color, including surface color sync in both plan and 3D views.</p>
 
@@ -416,6 +463,7 @@ const dict = {
 </ul>
 <p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. After registration, fields other than name can be updated (size, color, memo), and custom definitions can be deleted unless they are currently in use.</p>
 <p>Use "Group List" to review registered definitions for the current group in a separate dialog.</p>
+<p>Use "Export" to download user definitions as a JSON file, and "Import" to load definitions from another environment.</p>
 
 <h3>Layer Management</h3>
 <p>Click the ⚙ button next to the layer selector to open the layer management modal.</p>

@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Element Modeler - Ver.1.0.1</title>
+  <title>Element Modeler - Ver.1.0.2</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="style.css?v=20260210-1">
 </head>
@@ -28,6 +28,7 @@
           <option value="member" data-i18n="member">線材</option>
           <option value="surface" data-i18n="surface">面材</option>
           <option value="load" data-i18n="load">荷重</option>
+          <option value="support" data-i18n="support">支点</option>
         </select>
       </div>
       <hr>
@@ -121,7 +122,7 @@
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
       <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
-      <span id="status-version">Ver.1.0.1</span>
+      <span id="status-version">Ver.1.0.2</span>
     </footer>
   </main>
 
@@ -238,6 +239,11 @@
         <button id="btn-user-def-list" class="settings-help-btn">&#128065; <span data-i18n="userDefListOpen">同グループ一覧</span></button>
         <div style="height:8px;"></div>
         <button id="btn-user-def-add" class="settings-help-btn">&#10133; <span data-i18n="userDefAdd">追加</span></button>
+        <hr>
+        <button id="btn-user-def-export" class="settings-help-btn">&#128190; <span data-i18n="userDefExport">エクスポート</span></button>
+        <div style="height:8px;"></div>
+        <button id="btn-user-def-import-trigger" class="settings-help-btn">&#128194; <span data-i18n="userDefImport">インポート</span></button>
+        <input type="file" id="file-user-def-import" accept=".json" hidden>
       </div>
     </div>
   </div>
