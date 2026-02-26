@@ -24,6 +24,7 @@ export class Viewer3D {
     this.nodeGroup = null;
     this.surfaceGroup = null;
     this.loadGroup = null;
+    this.supportGroup = null;
 
     this.showWireframe = false;
     this.showNodes = true;
@@ -75,6 +76,8 @@ export class Viewer3D {
     this.scene.add(this.nodeGroup);
     this.loadGroup = new THREE.Group();
     this.scene.add(this.loadGroup);
+    this.supportGroup = new THREE.Group();
+    this.scene.add(this.supportGroup);
 
     this.applyTheme();
 
@@ -102,7 +105,7 @@ export class Viewer3D {
   _computeContentBounds() {
     const box = new THREE.Box3();
     let hasContent = false;
-    for (const group of [this.surfaceGroup, this.memberGroup, this.nodeGroup, this.loadGroup]) {
+    for (const group of [this.surfaceGroup, this.memberGroup, this.nodeGroup, this.loadGroup, this.supportGroup]) {
       if (!group || group.children.length === 0) continue;
       const gbox = new THREE.Box3().setFromObject(group);
       if (!Number.isFinite(gbox.min.x) || !Number.isFinite(gbox.max.x)) continue;
@@ -218,6 +221,7 @@ export class Viewer3D {
     this._clearGroup(this.memberGroup);
     this._clearGroup(this.nodeGroup);
     this._clearGroup(this.loadGroup);
+    this._clearGroup(this.supportGroup);
 
     // Surfaces
     for (const s of this.state.surfaces || []) {
@@ -384,6 +388,13 @@ export class Viewer3D {
         mesh.position.set(ld.x1 / 1000, y, -ld.y1 / 1000);
         this.loadGroup.add(mesh);
       }
+    }
+
+    // Supports
+    for (const sup of this.state.supports || []) {
+      const level = this.state.levels.find(l => l.id === sup.levelId);
+      const y = (level ? level.z : 0) / 1000;
+      this._addSupport3D(sup, y);
     }
 
     const bounds = this._computeContentBounds();
@@ -568,6 +579,44 @@ export class Viewer3D {
       lineSegments.position.copy(mesh.position);
       lineSegments.rotation.copy(mesh.rotation);
       this.surfaceGroup.add(lineSegments);
+    }
+  }
+
+  _addSupport3D(sup, y) {
+    const px = sup.x / 1000;
+    const pz = -sup.y / 1000;
+    const allTrans = sup.dx && sup.dy && sup.dz;
+    const allRot = sup.rx && sup.ry && sup.rz;
+    const isFixed = allTrans && allRot;
+    const color = new THREE.Color(0x4ade80);
+
+    // Cone (triangle symbol) — apex at the support point, base below
+    const coneRadius = 0.2;
+    const coneHeight = 0.35;
+    const coneGeo = new THREE.ConeGeometry(coneRadius, coneHeight, 4);
+    const coneMat = new THREE.MeshStandardMaterial({
+      color,
+      transparent: true,
+      opacity: 0.7,
+    });
+    const cone = new THREE.Mesh(coneGeo, coneMat);
+    cone.position.set(px, y - coneHeight / 2, pz);
+    this.supportGroup.add(cone);
+
+    if (isFixed) {
+      // Fixed support: flat box as ground plate
+      const plateGeo = new THREE.BoxGeometry(coneRadius * 2.4, 0.04, coneRadius * 2.4);
+      const plateMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5 });
+      const plate = new THREE.Mesh(plateGeo, plateMat);
+      plate.position.set(px, y - coneHeight - 0.02, pz);
+      this.supportGroup.add(plate);
+    } else {
+      // Roller / partial: sphere under the cone
+      const sphereGeo = new THREE.SphereGeometry(0.08, 8, 8);
+      const sphereMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7 });
+      const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+      sphere.position.set(px, y - coneHeight - 0.08, pz);
+      this.supportGroup.add(sphere);
     }
   }
 

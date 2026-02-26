@@ -34,6 +34,7 @@ async function loadViewer3D() {
     return viewer3d;
   } catch (err) {
     console.error('Failed to load 3D viewer:', err);
+    showNotice(t('viewer3dLoadFailed'), 'error', 6500);
     return null;
   } finally {
     viewer3dLoading = false;

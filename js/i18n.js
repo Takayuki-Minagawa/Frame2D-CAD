@@ -163,6 +163,9 @@ const dict = {
     userDefImportFailed: 'インポートに失敗しました: ',
     userDefImportNone: 'インポート可能な定義がありませんでした。',
 
+    // 3D viewer
+    viewer3dLoadFailed: '3Dビューアの読み込みに失敗しました。',
+
     // Import error
     importFailed: '読込失敗: ',
 
@@ -401,6 +404,9 @@ const dict = {
     userDefImported: 'User definitions imported.',
     userDefImportFailed: 'Import failed: ',
     userDefImportNone: 'No importable definitions found.',
+
+    // 3D viewer
+    viewer3dLoadFailed: 'Failed to load 3D viewer.',
 
     // Import error
     importFailed: 'Import failed: ',
