@@ -1,4 +1,4 @@
-# Element Modeler (Ver.1.0.3)
+# Element Modeler (Ver.1.0.4)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -47,14 +47,15 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 
 ### Data I/O
 
-CADデータ（図面情報）とユーザー定義（断面・バネ）は**別ファイルとして分離管理**されます。
+CADデータ（図面情報）とユーザー定義（断面・バネ）は**別ファイルとしても分離管理**できます。
 
 - **CAD保存/CAD読込**（ツールバー）: 図面データ（ノード・線材・面材・荷重・支点・レイヤー・設定）をJSONファイルとして保存/読込
-  - カスタムユーザー定義はCADファイルに含まれません（デフォルト定義のみ）
+  - 使用中のカスタムユーザー定義はCADファイルに含まれます（未使用の定義は含まれません）
   - CAD読込時、既にメモリ上にあるカスタムユーザー定義は維持されます
-  - 旧バージョンで保存されたファイル（カスタム定義が埋め込まれたもの）も後方互換で読込可能
+  - 旧バージョンで保存されたファイルも後方互換で読込可能
 - **ユーザー定義エクスポート/インポート**（設定 → ユーザー定義モーダル）: カスタム断面・バネ定義を別のJSONファイルとして管理
-  - インポート時、同名の定義が既に存在する場合はスキップされ、件数が通知されます
+  - インポート時、同名の定義が既に存在する場合（CADファイルから読込済みの定義を含む）はスキップされ、件数が通知されます
+  - 断面定義・バネ定義にはメモ（説明テキスト）を付与可能
 - 部材IDはアプリ内部管理のみ（JSONには出力しない）
 - schemaVersion による互換性管理
 
@@ -150,7 +151,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ### CADデータ（図面情報）
 
-「CAD保存」で出力されるファイル。カスタムユーザー定義は含まれず、デフォルト定義のみ出力されます。
+「CAD保存」で出力されるファイル。デフォルト定義に加え、使用中のカスタムユーザー定義も含まれます。
 
 ```json
 {
@@ -176,7 +177,8 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": "N2", "x": 5000, "y": 0, "z": 0 }
   ],
   "sectionCatalog": [
-    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "isDefault": true }
+    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "memo": "", "isDefault": true },
+    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "isDefault": false }
   ],
   "springCatalog": [
     { "symbol": "_SP", "memo": "回転バネ", "isDefault": true }
@@ -186,9 +188,9 @@ app.js ─┬─ state.js      Data model (AppState)
       "type": "beam",
       "startNodeId": "N1",
       "endNodeId": "N2",
-      "sectionName": "_G",
+      "sectionName": "B300x500",
       "levelId": "L0",
-      "color": "#666666",
+      "color": "#123456",
       "topLevelId": null,
       "bracePattern": "single",
       "endI": { "condition": "rigid", "springSymbol": null },
@@ -208,10 +210,11 @@ app.js ─┬─ state.js      Data model (AppState)
 }
 ```
 
-- `sectionCatalog` / `springCatalog` にはデフォルト定義のみ含まれます（カスタム定義は別ファイルで管理）
+- `sectionCatalog` / `springCatalog` にはデフォルト定義＋使用中のカスタム定義が含まれます（未使用のカスタム定義は含まれません）
+- 断面定義には `memo`（説明テキスト）フィールドが含まれます
 - `nodes` / `levels` の `id` はJSONに保存されます
 - `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
-- 旧バージョンで保存されたファイル（カスタム定義が埋め込まれたもの）も後方互換で読込可能
+- 旧バージョンで保存されたファイルも後方互換で読込可能
 
 ### ユーザー定義ファイル
 
@@ -221,7 +224,7 @@ app.js ─┬─ state.js      Data model (AppState)
 {
   "userDefinitions": true,
   "sections": [
-    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456" }
+    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁" }
   ],
   "springs": [
     { "symbol": "SP1", "memo": "カスタムバネ" }

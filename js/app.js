@@ -146,6 +146,7 @@ const userDefNameInput = document.getElementById('user-def-name');
 const userDefColorInput = document.getElementById('user-def-color');
 const userDefBInput = document.getElementById('user-def-b');
 const userDefHInput = document.getElementById('user-def-h');
+const userDefSectionMemoInput = document.getElementById('user-def-section-memo');
 const userDefSymbolInput = document.getElementById('user-def-symbol');
 const userDefMemoInput = document.getElementById('user-def-memo');
 const userDefListModal = document.getElementById('user-def-list-modal');
@@ -281,6 +282,7 @@ function resetUserDefForm() {
   if (userDefColorInput) userDefColorInput.value = '#666666';
   if (userDefBInput) userDefBInput.value = '200';
   if (userDefHInput) userDefHInput.value = '400';
+  if (userDefSectionMemoInput) userDefSectionMemoInput.value = '';
   if (userDefSymbolInput) userDefSymbolInput.value = '';
   if (userDefMemoInput) userDefMemoInput.value = '';
   refreshUserDefTypeOptions();
@@ -373,6 +375,7 @@ function renderUserDefGroupList() {
           <th>${t('userDefListColName')}</th>
           ${hasSize ? `<th>${t('userDefListColB')}</th><th>${t('userDefListColH')}</th>` : ''}
           <th>${t('userDefListColColor')}</th>
+          <th>${t('userDefListColMemo')}</th>
           <th>${t('userDefListColDefault')}</th>
           <th>${t('userDefListColAction')}</th>
         </tr>
@@ -390,6 +393,9 @@ function renderUserDefGroupList() {
             <td>${s.isDefault
     ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
     : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
+            <td>${s.isDefault
+    ? escapeHtml(s.memo || '')
+    : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}</td>
             <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
 	            <td>
 	              ${s.isDefault
@@ -421,6 +427,8 @@ function attachUserDefListHandlers() {
       const patch = {};
       const colorEl = row.querySelector('[data-field="color"]');
       if (colorEl) patch.color = colorEl.value;
+      const memoEl = row.querySelector('[data-field="memo"]');
+      if (memoEl) patch.memo = memoEl.value;
 
       if (target === 'member') {
         const bInput = row.querySelector('[data-field="b"]');
@@ -532,6 +540,7 @@ function addUserDefinition() {
       return;
     }
     const color = userDefColorInput?.value || '';
+    const sectionMemo = userDefSectionMemoInput?.value?.trim() || '';
     if (target === 'member') {
       const b = parseFloat(userDefBInput?.value || '');
       const h = parseFloat(userDefHInput?.value || '');
@@ -540,9 +549,9 @@ function addUserDefinition() {
         markInputError(userDefHInput);
         return;
       }
-      added = state.addSection({ target, type, name, b, h, color });
+      added = state.addSection({ target, type, name, b, h, color, memo: sectionMemo });
     } else {
-      added = state.addSection({ target, type, name, color });
+      added = state.addSection({ target, type, name, color, memo: sectionMemo });
     }
   } else {
     const symbol = userDefSymbolInput?.value?.trim() || '';

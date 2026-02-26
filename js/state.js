@@ -144,6 +144,9 @@ export class AppState {
     if (hasOwn(props, 'color')) {
       section.color = sanitizeColor(props.color, defaultColorForSection(target, normalizedType));
     }
+    if (hasOwn(props, 'memo')) {
+      section.memo = sanitizeText(props.memo) || '';
+    }
 
     if (target === 'member') {
       for (const member of this.members) {
@@ -978,6 +981,26 @@ export class AppState {
 
   // --- Serialization ---
 
+  _usedSectionCatalog() {
+    const usedNames = new Set();
+    for (const m of this.members) {
+      if (m.sectionName) usedNames.add(m.sectionName);
+    }
+    for (const s of this.surfaces) {
+      if (s.sectionName) usedNames.add(s.sectionName);
+    }
+    return this.sectionCatalog.filter(s => s.isDefault || usedNames.has(s.name));
+  }
+
+  _usedSpringCatalog() {
+    const usedSymbols = new Set();
+    for (const m of this.members) {
+      if (m.endI?.condition === 'spring' && m.endI.springSymbol) usedSymbols.add(m.endI.springSymbol);
+      if (m.endJ?.condition === 'spring' && m.endJ.springSymbol) usedSymbols.add(m.endJ.springSymbol);
+    }
+    return this.springCatalog.filter(s => s.isDefault || usedSymbols.has(s.symbol));
+  }
+
   toJSON() {
     return {
       schemaVersion: this.schemaVersion,
@@ -985,8 +1008,8 @@ export class AppState {
       settings: { ...this.settings },
       levels: this.levels.map(l => ({ ...l })),
       nodes: this.nodes.map(n => ({ ...n })),
-      sectionCatalog: this.sectionCatalog.filter(s => s.isDefault).map(s => ({ ...s })),
-      springCatalog: this.springCatalog.filter(s => s.isDefault).map(s => ({ ...s })),
+      sectionCatalog: this._usedSectionCatalog().map(s => ({ ...s })),
+      springCatalog: this._usedSpringCatalog().map(s => ({ ...s })),
       members: this.members.map(m => ({
         type: m.type,
         startNodeId: m.startNodeId,
@@ -1150,6 +1173,7 @@ function normalizeCatalogSectionEntry(entry) {
     b: entry.target === 'member' ? sanitizePositiveNumber(entry.b, 200) : null,
     h: entry.target === 'member' ? sanitizePositiveNumber(entry.h, 400) : null,
     color: sanitizeColor(entry.color, defaultColorForSection(entry.target, type)),
+    memo: sanitizeText(entry.memo) || '',
   };
   return normalized;
 }

@@ -254,16 +254,15 @@ const dict = {
 <p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
-<p>CADデータ（図面情報）とユーザー定義（断面・バネ）は<b>別ファイルとして分離管理</b>されます。</p>
+<p>CADデータ（図面情報）とユーザー定義（断面・バネ）は<b>別ファイルとしても分離管理</b>できます。</p>
 <table>
-  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。カスタムユーザー定義は含まれません</td></tr>
-  <tr><td><b>CAD読込</b></td><td>ツールバーの「CAD読込」でJSONファイルを読み込み。既にロード済みのカスタム定義は維持されます</td></tr>
+  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。使用中のカスタムユーザー定義もCADファイルに含まれます（未使用の定義は含まれません）</td></tr>
+  <tr><td><b>CAD読込</b></td><td>ツールバーの「CAD読込」でJSONファイルを読み込み。既にメモリ上にあるカスタム定義は維持されます</td></tr>
   <tr><td><b>定義エクスポート</b></td><td>設定 → ユーザー定義 →「エクスポート」でカスタム定義を別ファイルに保存</td></tr>
-  <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み</td></tr>
+  <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み。CADファイルから読込済みの定義を含め、同名の定義はスキップされます</td></tr>
 </table>
-<p>定義インポート時、同名の定義が既に存在する場合はスキップされ、追加件数とスキップ件数が通知されます。</p>
+<p>定義インポート時、追加件数とスキップ件数が通知されます。断面定義・バネ定義にはメモ（説明テキスト）を付与できます。</p>
 <p>部材IDは内部管理用で、CADファイルには含まれません。旧バージョンで保存されたファイルも読み込めます。</p>
-<p><b>推奨ワークフロー:</b> ユーザー定義をインポート → CADデータを読込</p>
 `,
   },
 
@@ -520,16 +519,15 @@ const dict = {
 <p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
-<p>CAD data (drawing) and user definitions (sections/springs) are <b>managed as separate files</b>.</p>
+<p>CAD data (drawing) and user definitions (sections/springs) can also be <b>managed as separate files</b>.</p>
 <table>
-  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. Custom user definitions are not included</td></tr>
+  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. Custom definitions in use are included in the CAD file (unused definitions are excluded)</td></tr>
   <tr><td><b>Load CAD</b></td><td>Click "Load CAD" in the toolbar to load a JSON file. Existing custom definitions in memory are preserved</td></tr>
   <tr><td><b>Export Defs</b></td><td>Settings → User Definitions → "Export" to save custom definitions to a separate file</td></tr>
-  <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment</td></tr>
+  <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment. Definitions with duplicate names (including those loaded from CAD files) are skipped</td></tr>
 </table>
-<p>When importing definitions, entries with duplicate names are skipped, and the number of added and skipped items is shown.</p>
+<p>When importing, the number of added and skipped items is shown. Section and spring definitions can include a memo (description text).</p>
 <p>Member IDs are internal and are not written to CAD files. Files saved with older versions can still be loaded.</p>
-<p><b>Recommended workflow:</b> Import user definitions → Load CAD data</p>
 `,
   },
 };
