@@ -1074,13 +1074,9 @@ export class AppState {
   }
 
   _classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance = 1) {
-    const mid = {
-      x: (start.x + end.x) / 2,
-      y: (start.y + end.y) / 2,
-    };
     const edgeZ = (start.z + end.z) / 2;
-    const deltaA = this._roofInteriorZDelta(surfaceA, mid, edgeZ);
-    const deltaB = this._roofInteriorZDelta(surfaceB, mid, edgeZ);
+    const deltaA = this._roofInteriorZDelta(surfaceA, start, end, edgeZ);
+    const deltaB = this._roofInteriorZDelta(surfaceB, start, end, edgeZ);
     if (deltaA > zTolerance && deltaB > zTolerance) {
       return Math.abs(start.z - end.z) <= zTolerance ? 'roofRidge' : 'roofHip';
     }
@@ -1088,25 +1084,43 @@ export class AppState {
     return 'roofJoint';
   }
 
-  _roofInteriorZDelta(surface, edgePoint, edgeZ) {
-    const points = roofPlanPoints(surface);
-    if (points.length < 3) return 0;
-    const centroid = points.reduce((sum, point) => ({
-      x: sum.x + point.x,
-      y: sum.y + point.y,
-    }), { x: 0, y: 0 });
-    centroid.x /= points.length;
-    centroid.y /= points.length;
-    const dx = centroid.x - edgePoint.x;
-    const dy = centroid.y - edgePoint.y;
-    const length = Math.hypot(dx, dy);
-    if (length <= 0.000001) return 0;
-    const sampleDistance = Math.min(250, length * 0.5);
-    const sample = {
-      x: edgePoint.x + dx / length * sampleDistance,
-      y: edgePoint.y + dy / length * sampleDistance,
-    };
+  _roofInteriorZDelta(surface, start, end, edgeZ) {
+    const sample = this._roofInteriorSamplePoint(surface, start, end);
+    if (!sample) return 0;
     return edgeZ - roofPoint3D(this, surface, sample).z;
+  }
+
+  _roofInteriorSamplePoint(surface, start, end) {
+    const points = roofPlanPoints(surface);
+    if (points.length < 3) return null;
+    const mid = {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    };
+    const edge = this._roofPlanEdges(surface).find(candidate =>
+      sameSegment(candidate.start, candidate.end, start, end, 1)
+    );
+    if (edge) {
+      const inward = roofEdgeInwardNormal(edge.start, edge.end, points);
+      const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+      const distances = uniquePositiveNumbers([
+        Math.min(250, length * 0.25),
+        Math.min(100, length * 0.1),
+        10,
+        1,
+      ]);
+      for (const distance of distances) {
+        const sample = {
+          x: mid.x + inward.x * distance,
+          y: mid.y + inward.y * distance,
+        };
+        if (pointInPolygonInterior(sample, points)) return sample;
+      }
+    }
+
+    const centroid = polygonVertexCentroid(points);
+    if (pointInPolygonInterior(centroid, points)) return centroid;
+    return null;
   }
 
   _splitRoofEdgeMemberAtNode(node, tolerance = 1) {
@@ -1998,6 +2012,58 @@ function sameSegment(a1, a2, b1, b2, tolerance = 1) {
 
 function pointsClose(a, b, tolerance = 1) {
   return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+}
+
+function roofEdgeInwardNormal(start, end, polygon) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= 0.000001) return { x: 0, y: 0 };
+  const signedArea = polygonSignedArea2(polygon);
+  return signedArea >= 0
+    ? { x: -dy / length, y: dx / length }
+    : { x: dy / length, y: -dx / length };
+}
+
+function polygonSignedArea2(points) {
+  let area2 = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  return area2;
+}
+
+function polygonVertexCentroid(points) {
+  const sum = points.reduce((acc, point) => ({
+    x: acc.x + point.x,
+    y: acc.y + point.y,
+  }), { x: 0, y: 0 });
+  return {
+    x: sum.x / points.length,
+    y: sum.y / points.length,
+  };
+}
+
+function pointInPolygonInterior(point, points) {
+  if (points.some((start, index) => {
+    const end = points[(index + 1) % points.length];
+    return pointToSegmentDist(point.x, point.y, start.x, start.y, end.x, end.y) <= 0.001;
+  })) {
+    return false;
+  }
+  return pointInPolygon(point.x, point.y, points);
+}
+
+function uniquePositiveNumbers(values) {
+  const numbers = [];
+  for (const value of values) {
+    if (!Number.isFinite(value) || value <= 0) continue;
+    if (numbers.some(existing => Math.abs(existing - value) <= 0.001)) continue;
+    numbers.push(value);
+  }
+  return numbers;
 }
 
 function maxIdNum(items) {

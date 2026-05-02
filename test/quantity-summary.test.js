@@ -512,6 +512,16 @@ test('roof joint generation classifies valleys and respects roof groups', () => 
   assert.equal(members[0].endZ, 2800);
 });
 
+test('roof joint classification samples inward from the shared roof edge', async () => {
+  const stateSource = await readFile(new URL('../js/state.js', import.meta.url), 'utf8');
+
+  assert.match(stateSource, /_roofInteriorSamplePoint\(surface,\s*start,\s*end\)/);
+  assert.match(stateSource, /roofEdgeInwardNormal\(edge\.start,\s*edge\.end,\s*points\)/);
+  assert.match(stateSource, /pointInPolygonInterior\(sample,\s*points\)/);
+  assert.match(stateSource, /uniquePositiveNumbers\(\[/);
+  assert.doesNotMatch(stateSource, /_roofInteriorZDelta\(surface,\s*edgePoint,\s*edgeZ\)/);
+});
+
 test('roof edge generation skips shared roof group edges', () => {
   const state = new AppState();
   const left = state.addSurfaceRect(0, 0, 5000, 4000, {
