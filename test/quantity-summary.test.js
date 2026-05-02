@@ -733,6 +733,60 @@ test('gable wall generation skips shared and horizontal roof edges', () => {
   assert.equal(gableWalls.some(surface => surface.x1 === 10000 && surface.x2 === 10000), false);
 });
 
+test('eaves are generated from outer roof group edges and skip shared edges', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Main',
+  });
+
+  const eaves = state.addEavesFromRoofGroup('Main', { depth: 600 });
+
+  assert.equal(eaves.length, 6);
+  assert.equal(eaves.every(surface => surface.type === 'eave'), true);
+  assert.equal(eaves.every(surface => !Object.hasOwn(surface, 'roofGroupId')), true);
+  assert.equal(eaves.some(surface =>
+    surface.points.some((point, index) => {
+      const next = surface.points[(index + 1) % surface.points.length];
+      return point.x === 5000 && next.x === 5000 && point.y === 0 && next.y === 4000;
+    })
+  ), false);
+  assert.deepEqual(eaves[0].points, [
+    { x: 0, y: 0 },
+    { x: 5000, y: 0 },
+    { x: 5000, y: -600 },
+    { x: 0, y: -600 },
+  ]);
+});
+
+test('eave generation is idempotent for an existing roof group boundary', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+
+  const first = state.addEavesFromRoofGroup('Main', { depth: 600 });
+  const second = state.addEavesFromRoofGroup('Main', { depth: 600 });
+
+  assert.equal(first.length, 4);
+  assert.equal(second.length, 0);
+  assert.equal(state.surfaces.filter(surface => surface.type === 'eave').length, 4);
+});
+
 test('roof slope members are generated along the roof rise direction', () => {
   const state = new AppState();
   const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
