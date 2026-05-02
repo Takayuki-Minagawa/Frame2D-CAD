@@ -150,6 +150,92 @@ test('roof group ids default, serialize, and list by group', () => {
   assert.equal(restored.getRoofGroupSurfaces('RG1').length, 4);
 });
 
+test('roof planes can be generated from a rectangular source outline', () => {
+  const state = new AppState();
+  const floor = state.addSurfaceRect(0, 0, 10000, 4000, {
+    type: 'floor',
+    levelId: 'L0',
+    topLevelId: 'L1',
+  });
+
+  const roofs = state.addRoofPlanesFromSurface(floor.id, {
+    pattern: 'gableX',
+    roofGroupId: 'Auto',
+    roofSlope: 0.3,
+    roofBaseOffset: 200,
+  });
+
+  assert.equal(roofs.length, 2);
+  assert.deepEqual(roofs.map(surface => surface.roofDirection), ['xPlus', 'xMinus']);
+  assert.ok(roofs.every(surface => surface.type === 'roof'));
+  assert.ok(roofs.every(surface => surface.levelId === 'L1'));
+  assert.ok(roofs.every(surface => surface.roofGroupId === 'Auto'));
+  assert.deepEqual(roofs[0].points, [
+    { x: 0, y: 0 },
+    { x: 5000, y: 0 },
+    { x: 5000, y: 4000 },
+    { x: 0, y: 4000 },
+  ]);
+
+  const joints = state.addRoofJointMembers('Auto');
+  assert.equal(joints.length, 1);
+  assert.equal(joints[0].roofRole, 'roofRidge');
+  assert.equal(joints[0].startZ, 4500);
+  assert.equal(joints[0].endZ, 4500);
+});
+
+test('hip roof planes can be generated from the source outline', () => {
+  const state = new AppState();
+  const floor = state.addSurfaceRect(0, 0, 10000, 4000, {
+    type: 'floor',
+    levelId: 'L0',
+    topLevelId: 'L1',
+  });
+
+  const roofs = state.addRoofPlanesFromSurface(floor.id, {
+    pattern: 'hip',
+    roofGroupId: 'Hip',
+    roofSlope: 0.25,
+  });
+
+  assert.equal(roofs.length, 4);
+  assert.deepEqual(roofs.map(surface => surface.roofDirection), ['yPlus', 'xMinus', 'yMinus', 'xPlus']);
+  assert.deepEqual(roofs.map(surface => surface.points.length), [4, 3, 4, 3]);
+  assert.deepEqual(roofs[0].points.slice(2), [
+    { x: 8000, y: 2000 },
+    { x: 2000, y: 2000 },
+  ]);
+  assert.ok(roofs.every(surface => surface.roofGroupId === 'Hip'));
+});
+
+test('non-rectangular outlines generate single roof planes but skip split presets', () => {
+  const state = new AppState();
+  const source = state.addSurfacePolygon([
+    { x: 0, y: 0 },
+    { x: 6000, y: 0 },
+    { x: 6000, y: 2000 },
+    { x: 3000, y: 2000 },
+    { x: 3000, y: 5000 },
+    { x: 0, y: 5000 },
+  ], {
+    type: 'floor',
+    levelId: 'L0',
+    topLevelId: 'L1',
+  });
+
+  const split = state.addRoofPlanesFromSurface(source.id, { pattern: 'gableX', roofGroupId: 'Split' });
+  const single = state.addRoofPlanesFromSurface(source.id, {
+    pattern: 'single',
+    roofGroupId: 'Single',
+    roofDirection: 'yPlus',
+  });
+
+  assert.equal(split.length, 0);
+  assert.equal(single.length, 1);
+  assert.equal(single[0].roofDirection, 'yPlus');
+  assert.equal(single[0].points.length, 6);
+});
+
 test('eave surfaces use sloped geometry without roof grouping', () => {
   const source = new AppState();
   const eave = source.addSurfaceRect(0, 0, 3000, 1000, {
