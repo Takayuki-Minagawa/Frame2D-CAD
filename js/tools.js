@@ -488,11 +488,22 @@ export class ToolManager {
     });
   }
 
+  _getRoofOptions() {
+    if (this.state.surfaceDraftType !== 'roof') return {};
+    return {
+      roofSlope: this.state.surfaceDraftRoofSlope,
+      roofDirection: this.state.surfaceDraftRoofDirection,
+      roofBaseOffset: this.state.surfaceDraftRoofBaseOffset,
+      includeWind: true,
+    };
+  }
+
   _surfaceDown(e) {
     const snapped = this._getSnappedPos(e);
     const mode = this._getEffectiveSurfaceMode();
     const type = this.state.surfaceDraftType;
     const isWallType = type === 'wall' || type === 'exteriorWall';
+    const isRoofType = type === 'roof';
 
     if (mode === 'polyline') {
       this._surfaceStart = null;
@@ -527,6 +538,8 @@ export class ToolManager {
         this.onUpdate();
         return;
       }
+    } else if (isRoofType) {
+      topLevelId = this.state.activeLayerId || 'L0';
     } else {
       topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
     }
@@ -535,12 +548,14 @@ export class ToolManager {
 
     let surface;
     const heightOptions = this._getWallHeightOptions(topLevelId);
+    const roofOptions = this._getRoofOptions();
     if (mode === 'line') {
       surface = this.state.addSurfaceLine(start.x, start.y, end.x, end.y, {
         type: type || 'wall',
         levelId: this.state.activeLayerId || 'L0',
         topLevelId,
         ...heightOptions,
+        ...roofOptions,
       });
     } else {
       surface = this.state.addSurfaceRect(start.x, start.y, end.x, end.y, {
@@ -549,6 +564,7 @@ export class ToolManager {
         topLevelId,
         loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
         ...heightOptions,
+        ...roofOptions,
       });
     }
     this.state.selectedSurfaceId = surface.id;
@@ -630,6 +646,7 @@ export class ToolManager {
     if (this._surfacePolyline.length < 3) return;
     const type = this.state.surfaceDraftType;
     const isWallType = type === 'wall' || type === 'exteriorWall';
+    const isRoofType = type === 'roof';
 
     let topLevelId;
     if (isWallType) {
@@ -642,6 +659,8 @@ export class ToolManager {
         this.onUpdate();
         return;
       }
+    } else if (isRoofType) {
+      topLevelId = this.state.activeLayerId || 'L0';
     } else {
       topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
     }
@@ -654,6 +673,7 @@ export class ToolManager {
       topLevelId,
       loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
       ...this._getWallHeightOptions(topLevelId),
+      ...this._getRoofOptions(),
     });
     if (surface) {
       this.state.selectedSurfaceId = surface.id;

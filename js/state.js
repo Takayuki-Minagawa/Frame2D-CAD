@@ -1,5 +1,7 @@
 // state.js - Data model and state management
 
+import { normalizeRoofDirection } from './roof-geometry.js';
+
 const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
   { target: 'member', type: 'column', name: '_C', material: 'steel', b: 105, h: 105, color: '#666666', isDefault: true },
@@ -8,6 +10,7 @@ const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'surface', type: 'floor', name: '_S', material: '', b: null, h: null, color: '#67a9cf', isDefault: true },
   { target: 'surface', type: 'exteriorWall', name: '_OW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
   { target: 'surface', type: 'wall', name: '_IW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
+  { target: 'surface', type: 'roof', name: '_R', material: '', b: null, h: null, color: '#8b6f47', isDefault: true },
 ];
 
 const DEFAULT_SPRING_DEFINITIONS = [
@@ -24,7 +27,7 @@ const MEMBER_SECTION_TYPE_ALIAS = {
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 4;
+    this.schemaVersion = 5;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -64,6 +67,9 @@ export class AppState {
     this.surfaceDraftHeightMode = 'full';
     this.surfaceDraftBottomOffset = 0;
     this.surfaceDraftTopOffset = 1200;
+    this.surfaceDraftRoofSlope = 0.3;
+    this.surfaceDraftRoofDirection = 'xPlus';
+    this.surfaceDraftRoofBaseOffset = 0;
     this.loadDraftType = 'areaLoad';
 
     // Counters for ID generation
@@ -549,7 +555,13 @@ export class AppState {
       shape: raw.shape || 'rect',
       points: Array.isArray(raw.points) ? raw.points.map(p => ({ ...p })) : null,
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
+      ...this._normalizeSurfaceRoof(type, raw),
     };
+    if (!isRoofSurfaceType(type)) {
+      delete surface.roofSlope;
+      delete surface.roofDirection;
+      delete surface.roofBaseOffset;
+    }
     this._ensureSurfaceSection(surface, surface.sectionName);
     return surface;
   }
@@ -561,7 +573,7 @@ export class AppState {
         heightMode: 'custom',
         bottomOffset: 0,
         topOffset: 0,
-        includeWind: false,
+        includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : isRoofSurfaceType(type),
         includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
         unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
       };
@@ -581,6 +593,17 @@ export class AppState {
       includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
       includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
       unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+    };
+  }
+
+  _normalizeSurfaceRoof(type, options = {}) {
+    if (!isRoofSurfaceType(type)) {
+      return {};
+    }
+    return {
+      roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
+      roofDirection: normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection),
+      roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
     };
   }
 
@@ -787,6 +810,7 @@ export class AppState {
       points: null,
       shape: 'rect',
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
+      ...this._normalizeSurfaceRoof(type, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -810,6 +834,7 @@ export class AppState {
       points: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
       shape: 'line',
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
+      ...this._normalizeSurfaceRoof(type, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -839,6 +864,7 @@ export class AppState {
       points: points.map(p => ({ x: p.x, y: p.y })),
       shape: 'polygon',
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
+      ...this._normalizeSurfaceRoof(type, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -862,6 +888,9 @@ export class AppState {
     const hasUnitWeight = hasOwn(patch, 'unitWeight');
     const hasIncludeWind = hasOwn(patch, 'includeWind');
     const hasIncludeSeismicWeight = hasOwn(patch, 'includeSeismicWeight');
+    const hasRoofSlope = hasOwn(patch, 'roofSlope');
+    const hasRoofDirection = hasOwn(patch, 'roofDirection');
+    const hasRoofBaseOffset = hasOwn(patch, 'roofBaseOffset');
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
@@ -884,6 +913,15 @@ export class AppState {
     if (hasIncludeSeismicWeight) {
       patch.includeSeismicWeight = !!patch.includeSeismicWeight;
     }
+    if (hasRoofSlope) {
+      patch.roofSlope = sanitizeNonNegativeNumber(patch.roofSlope, surface.roofSlope || 0);
+    }
+    if (hasRoofDirection) {
+      patch.roofDirection = normalizeRoofDirection(patch.roofDirection);
+    }
+    if (hasRoofBaseOffset) {
+      patch.roofBaseOffset = sanitizeNumber(patch.roofBaseOffset, surface.roofBaseOffset || 0);
+    }
 
     const prospectiveType = patch.type || surface.type;
     if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
@@ -898,6 +936,15 @@ export class AppState {
     Object.assign(surface, patch);
     if (hasHeightMode && surface.heightMode !== 'custom' && isWallSurfaceType(surface.type)) {
       Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
+    }
+    if (hasType) {
+      if (isRoofSurfaceType(surface.type)) {
+        Object.assign(surface, this._normalizeSurfaceRoof(surface.type, surface));
+      } else {
+        delete surface.roofSlope;
+        delete surface.roofDirection;
+        delete surface.roofBaseOffset;
+      }
     }
     if (hasType || hasSectionName || hasColor) {
       this._ensureSurfaceSection(surface, surface.sectionName);
@@ -1169,26 +1216,34 @@ export class AppState {
         endI: { ...m.endI },
         endJ: { ...m.endJ },
       })),
-      surfaces: this.surfaces.map(s => ({
-        type: s.type,
-        sectionName: s.sectionName,
-        levelId: s.levelId,
-        topLevelId: s.topLevelId,
-        loadDirection: s.loadDirection,
-        heightMode: s.heightMode,
-        bottomOffset: s.bottomOffset,
-        topOffset: s.topOffset,
-        includeWind: s.includeWind,
-        includeSeismicWeight: s.includeSeismicWeight,
-        unitWeight: s.unitWeight,
-        color: s.color,
-        x1: s.x1,
-        y1: s.y1,
-        x2: s.x2,
-        y2: s.y2,
-        shape: s.shape,
-        points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
-      })),
+      surfaces: this.surfaces.map(s => {
+        const surface = {
+          type: s.type,
+          sectionName: s.sectionName,
+          levelId: s.levelId,
+          topLevelId: s.topLevelId,
+          loadDirection: s.loadDirection,
+          heightMode: s.heightMode,
+          bottomOffset: s.bottomOffset,
+          topOffset: s.topOffset,
+          includeWind: s.includeWind,
+          includeSeismicWeight: s.includeSeismicWeight,
+          unitWeight: s.unitWeight,
+          color: s.color,
+          x1: s.x1,
+          y1: s.y1,
+          x2: s.x2,
+          y2: s.y2,
+          shape: s.shape,
+          points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
+        };
+        if (isRoofSurfaceType(s.type)) {
+          surface.roofSlope = s.roofSlope;
+          surface.roofDirection = s.roofDirection;
+          surface.roofBaseOffset = s.roofBaseOffset;
+        }
+        return surface;
+      }),
       loads: this.loads.map(l => {
         const rest = { ...l };
         delete rest.id;
@@ -1210,10 +1265,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 4;
+    this.schemaVersion = 5;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1278,6 +1333,9 @@ export class AppState {
     this.surfaceDraftHeightMode = 'full';
     this.surfaceDraftBottomOffset = 0;
     this.surfaceDraftTopOffset = 1200;
+    this.surfaceDraftRoofSlope = 0.3;
+    this.surfaceDraftRoofDirection = 'xPlus';
+    this.surfaceDraftRoofBaseOffset = 0;
     this.loadDraftType = 'areaLoad';
 
     // Restore counters
@@ -1398,7 +1456,9 @@ function defaultColorForSection(target, type) {
     return def.color.toLowerCase();
   }
   if (target === 'surface') {
-    return normalizedType === 'floor' ? '#67a9cf' : '#b57a6b';
+    if (normalizedType === 'floor') return '#67a9cf';
+    if (normalizedType === 'roof') return '#8b6f47';
+    return '#b57a6b';
   }
   return '#666666';
 }
@@ -1410,6 +1470,10 @@ function normalizeSurfaceHeightMode(value) {
 
 export function isWallSurfaceType(type) {
   return type === 'wall' || type === 'exteriorWall';
+}
+
+export function isRoofSurfaceType(type) {
+  return type === 'roof';
 }
 
 function pointToSegmentDist(px, py, ax, ay, bx, by) {

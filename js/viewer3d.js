@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
 import { isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
@@ -226,6 +227,11 @@ export class Viewer3D {
       const base = range.bottom;
       const top = range.top;
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points) && s.points.length >= 3;
+
+      if (s.type === 'roof') {
+        this._addRoofSurface3D(s);
+        continue;
+      }
 
       if (isPolygon) {
         if (s.type === 'exteriorWall') {
@@ -580,6 +586,44 @@ export class Viewer3D {
       lineSegments.rotation.copy(mesh.rotation);
       this.surfaceGroup.add(lineSegments);
     }
+  }
+
+  _addRoofSurface3D(surface) {
+    const planPoints = roofPlanPoints(surface);
+    const vertices3D = roofVertices3D(this.state, surface);
+    if (planPoints.length < 3 || vertices3D.length !== planPoints.length) return;
+
+    const contour = planPoints.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
+    // Single-contour triangulation covers simple roof outlines; complex roofs with holes should be split first.
+    const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
+    if (!triangles.length) return;
+
+    const positions = [];
+    for (const tri of triangles) {
+      for (const idx of tri) {
+        const v = vertices3D[idx];
+        positions.push(v.x / 1000, v.z / 1000, -v.y / 1000);
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(resolveSurfaceColor(surface)),
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.58,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    this.surfaceGroup.add(mesh);
+
+    const outlinePoints = vertices3D.map(v => new THREE.Vector3(v.x / 1000, v.z / 1000, -v.y / 1000));
+    outlinePoints.push(outlinePoints[0].clone());
+    const outlineGeo = new THREE.BufferGeometry().setFromPoints(outlinePoints);
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
+    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
   _addSupport3D(sup, y) {

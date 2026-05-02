@@ -51,6 +51,7 @@
           <option value="floor" data-i18n="floor">床</option>
           <option value="exteriorWall" data-i18n="exteriorWall">外壁</option>
           <option value="wall" data-i18n="wall">壁</option>
+          <option value="roof" data-i18n="roof">屋根</option>
         </select>
       </label>
       <label id="label-surface-mode" class="grid-label">
@@ -88,6 +89,23 @@
       <label id="label-wall-top-offset" class="grid-label">
         <span data-i18n="wallTopOffset">上端</span>
         <input id="input-wall-top-offset" type="number" step="100" value="1200">
+      </label>
+      <label id="label-roof-slope" class="grid-label">
+        <span data-i18n="roofSlope">屋根勾配</span>
+        <input id="input-roof-slope" type="number" min="0" step="0.01" value="0.3">
+      </label>
+      <label id="label-roof-direction" class="grid-label">
+        <span data-i18n="roofDirection">登り方向</span>
+        <select id="sel-roof-direction">
+          <option value="xPlus" data-i18n="roofDirXPlus">+X</option>
+          <option value="xMinus" data-i18n="roofDirXMinus">-X</option>
+          <option value="yPlus" data-i18n="roofDirYPlus">+Y</option>
+          <option value="yMinus" data-i18n="roofDirYMinus">-Y</option>
+        </select>
+      </label>
+      <label id="label-roof-base-offset" class="grid-label">
+        <span data-i18n="roofBaseOffset">基準高さ</span>
+        <input id="input-roof-base-offset" type="number" step="100" value="0">
       </label>
     </div>
     <div id="tool-opts-load" class="tool-opts">
