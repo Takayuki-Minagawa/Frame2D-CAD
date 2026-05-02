@@ -2,7 +2,7 @@
 
 import { drawGrid } from './grid.js';
 import { roofSlopeArrow } from './roof-geometry.js';
-import { isSlopedSurfaceType, offsetPolygonOutward } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 
 export class Canvas2D {
@@ -319,7 +319,7 @@ export class Canvas2D {
     const wallOffset = this.state.settings.wallDisplayOffset || 120;
 
     for (const s of this.state.surfaces) {
-      const isWall = s.type === 'wall' || s.type === 'exteriorWall';
+      const isWall = isWallSurfaceType(s.type);
       const isSelected = s.id === this.state.selectedSurfaceId;
       const surfaceColor = resolveSurfaceColor(s);
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);

@@ -1,7 +1,7 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t } from './i18n.js';
-import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
+import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 import {
   computeQuantitySummary,
   computeSurfaceWeightAreaM2,
@@ -481,6 +481,7 @@ export class UI {
 
     const isWall = isWallSurfaceType(surface.type);
     const isRoof = surface.type === 'roof';
+    const isGableWall = isGableWallSurfaceType(surface.type);
     const isSloped = isSlopedSurfaceType(surface.type);
     const isWindSurface = isWall || isSloped;
     const area = computeSurfaceWeightAreaM2(this.state, surface);
@@ -542,6 +543,18 @@ export class UI {
         <label>${t('wallVerticalRange')}</label>
         <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
       </div>
+      ${isGableWall ? `
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('gableStartTopOffset')} (mm)</label>
+          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(gableTopOffset(surface, 'gableStartTopOffset'))}" step="100">
+        </div>
+        <div class="prop-group">
+          <label>${t('gableEndTopOffset')} (mm)</label>
+          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
+        </div>
+      </div>
+      ` : ''}
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('windAreaX')} (m²)</label>
@@ -603,6 +616,9 @@ export class UI {
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
       </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
+      </div>
       ` : ''}
       ` : ''}
       <div class="prop-group">
@@ -662,6 +678,8 @@ export class UI {
     bind('prop-roof-direction', 'roofDirection');
     bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
     bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || 'RG1');
+    bind('prop-gable-start-top-offset', 'gableStartTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableStartTopOffset')));
+    bind('prop-gable-end-top-offset', 'gableEndTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableEndTopOffset')));
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
@@ -690,6 +708,14 @@ export class UI {
       const count = members.length;
       if (count > 0) {
         this._showInlineNotice(container, t('roofGeneratedJointMembers').replace('{n}', String(count)));
+      }
+    });
+    document.getElementById('btn-roof-gable-walls')?.addEventListener('click', () => {
+      const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || 'RG1');
+      this.callbacks.onPropertyChange?.(surface.id);
+      const count = walls.length;
+      if (count > 0) {
+        this._showInlineNotice(container, t('roofGeneratedGableWalls').replace('{n}', String(count)));
       }
     });
 
@@ -1017,6 +1043,21 @@ function capitalize(value) {
 function readNumberInput(input, fallback) {
   const n = Number(input?.value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function gableTopOffset(surface, key) {
+  return finiteValue(surface?.[key], surface?.topOffset);
+}
+
+function finiteValue(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') {
+    const fallbackNumber = Number(fallback);
+    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
+  }
+  const n = Number(value);
+  if (Number.isFinite(n)) return n;
+  const fallbackNumber = Number(fallback);
+  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }
 
 function markInputInvalid(input, message) {
