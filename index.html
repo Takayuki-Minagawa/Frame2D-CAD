@@ -72,6 +72,23 @@
         <span data-i18n="topLayer">上端レイヤー</span>
         <select id="sel-top-layer"></select>
       </label>
+      <label id="label-wall-height-mode" class="grid-label">
+        <span data-i18n="wallHeightMode">壁高さ</span>
+        <select id="sel-wall-height-mode">
+          <option value="full" data-i18n="wallHeightFull">全高</option>
+          <option value="waist" data-i18n="wallHeightWaist">腰壁</option>
+          <option value="hanging" data-i18n="wallHeightHanging">垂れ壁</option>
+          <option value="custom" data-i18n="wallHeightCustom">任意</option>
+        </select>
+      </label>
+      <label id="label-wall-bottom-offset" class="grid-label">
+        <span data-i18n="wallBottomOffset">下端</span>
+        <input id="input-wall-bottom-offset" type="number" step="100" value="0">
+      </label>
+      <label id="label-wall-top-offset" class="grid-label">
+        <span data-i18n="wallTopOffset">上端</span>
+        <input id="input-wall-top-offset" type="number" step="100" value="1200">
+      </label>
     </div>
     <div id="tool-opts-load" class="tool-opts">
       <label class="grid-label">
@@ -140,6 +157,8 @@
     <div id="prop-content">
       <p class="prop-placeholder" data-i18n="noSelection">未選択</p>
     </div>
+    <h2 data-i18n="quantitySummary">集計</h2>
+    <div id="quantity-content"></div>
   </aside>
 
   <!-- Help Modal -->

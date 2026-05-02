@@ -15,6 +15,8 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 線材（梁 / 柱 / 水平ブレース / 鉛直ブレース）の作成・選択・移動・削除
 - 面材（床 / 外壁 / 壁）の作成・選択・削除（矩形2点指定 / ポリライン閉合）
 - 外壁ラインをポリラインで入力し、閉合してポリゴン化（レイヤー管理）
+- 壁の高さ種別（全高 / 腰壁 / 垂れ壁 / 任意）を入力し、下端・上端高さを編集
+- X方向/Y方向の風圧用投影面積と、面材単位重量による地震用重量を集計
 - 荷重（面荷重 / 線荷重 / 点荷重）の作成・選択・編集・削除
 - 支点（境界条件）の配置・編集・削除（6自由度: DX/DY/DZ + RX/RY/RZ をチェックボックスで指定、ピン/剛/全解除プリセット付き）
 - 支点の表示/非表示切替（「支点表示」チェックボックス。非表示時は2D/3D描画とクリック選択をスキップ）
@@ -28,7 +30,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - ツール選択コンボボックスで要素 / 線材 / 面材 / 荷重 / 支点を切替
 - プロパティパネルで線材/面材/荷重/支点属性を編集
 - 線材: 断面、始点/終点座標(X,Y)、端部条件 I/J（ピン / 剛 / バネ）、バネ記号を編集
-- 面材: 断面、床のみ荷重方向を編集
+- 面材: 断面、床のみ荷重方向、壁の高さ、単位重量、風圧/地震重量対象を編集
 - 荷重: 座標、荷重値、色などを編集
 - 種別・レイヤー・断面寸法・断面色は表示専用（断面定義から自動反映）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
@@ -155,7 +157,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "meta": {
     "name": "sample",
     "unit": "mm",
@@ -197,7 +199,28 @@ app.js ─┬─ state.js      Data model (AppState)
       "endJ": { "condition": "rigid", "springSymbol": null }
     }
   ],
-  "surfaces": [ ... ],
+  "surfaces": [
+    {
+      "type": "wall",
+      "sectionName": "_IW",
+      "levelId": "L0",
+      "topLevelId": "L1",
+      "loadDirection": "twoWay",
+      "heightMode": "waist",
+      "bottomOffset": 0,
+      "topOffset": 1200,
+      "includeWind": true,
+      "includeSeismicWeight": true,
+      "unitWeight": 500,
+      "color": "#b57a6b",
+      "x1": 0,
+      "y1": 0,
+      "x2": 5000,
+      "y2": 0,
+      "shape": "line",
+      "points": [{ "x": 0, "y": 0 }, { "x": 5000, "y": 0 }]
+    }
+  ],
   "loads": [ ... ],
   "supports": [
     {
