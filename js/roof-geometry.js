@@ -87,10 +87,15 @@ export function roofSlopeMemberSegments(surface, options = {}) {
   const segments = [];
   for (const station of stations) {
     const hits = linePolygonIntersections(points, normal, slope, station);
-    for (let i = 0; i + 1 < hits.length; i += 2) {
+    for (let i = 0; i + 1 < hits.length; i++) {
       const start = hits[i].point;
       const end = hits[i + 1].point;
       if (Math.hypot(end.x - start.x, end.y - start.y) < minLength) continue;
+      const midpoint = {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+      };
+      if (!pointInPolygonInterior(midpoint, points)) continue;
       segments.push({ start, end, station });
     }
   }
@@ -180,6 +185,36 @@ function linePolygonIntersections(points, normal, slope, station) {
 function addUniqueHit(hits, hit) {
   if (hits.some(existing => Math.abs(existing.t - hit.t) <= EPS)) return;
   hits.push(hit);
+}
+
+function pointInPolygonInterior(point, polygon) {
+  if (pointOnPolygonBoundary(point, polygon)) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const crosses = (a.y > point.y) !== (b.y > point.y);
+    if (!crosses) continue;
+    const xAtY = (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
+    if (point.x < xAtY) inside = !inside;
+  }
+  return inside;
+}
+
+function pointOnPolygonBoundary(point, polygon) {
+  return polygon.some((start, index) => {
+    const end = polygon[(index + 1) % polygon.length];
+    return pointToSegmentDist(point, start, end) <= EPS;
+  });
+}
+
+function pointToSegmentDist(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= EPS) return Math.hypot(point.x - start.x, point.y - start.y);
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / len2));
+  return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
 function dot2(point, vector) {
