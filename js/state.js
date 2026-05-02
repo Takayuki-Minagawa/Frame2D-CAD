@@ -816,7 +816,7 @@ export class AppState {
 
     const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
     const nodes = vertices.map(v => this.findNodeAt(v.x, v.y, nodeTolerance) || this.addNode(v.x, v.y));
-    const members = [];
+    let members = [];
     for (let i = 0; i < vertices.length; i++) {
       const a = vertices[i];
       const b = vertices[(i + 1) % vertices.length];
@@ -833,6 +833,12 @@ export class AppState {
         sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
       });
       members.push(member);
+    }
+    for (const node of [...this.nodes]) {
+      const split = this._splitRoofEdgeMemberAtNode(node, nodeTolerance);
+      if (!split) continue;
+      members = members.filter(member => member.id !== split.removedId);
+      members.push(...split.members);
     }
     return members;
   }
@@ -863,9 +869,66 @@ export class AppState {
         roofRole: options.roofRole || 'roofSlopeBeam',
         sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
       });
+      this._splitRoofEdgeMemberAtNode(startNode, nodeTolerance);
+      this._splitRoofEdgeMemberAtNode(endNode, nodeTolerance);
       members.push(member);
     }
     return members;
+  }
+
+  _splitRoofEdgeMemberAtNode(node, tolerance = 1) {
+    const edge = this.members.find(member => {
+      if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return false;
+      if (member.startNodeId === node.id || member.endNodeId === node.id) return false;
+      const startNode = this.getNode(member.startNodeId);
+      const endNode = this.getNode(member.endNodeId);
+      if (!startNode || !endNode) return false;
+      const t = segmentParameter(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y);
+      return t > 0.000001 && t < 0.999999 &&
+        pointToSegmentDist(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y) <= tolerance;
+    });
+    if (!edge) return null;
+
+    const startNode = this.getNode(edge.startNodeId);
+    const endNode = this.getNode(edge.endNodeId);
+    const t = segmentParameter(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y);
+    const startZ = this._memberEndpointZ(edge, 'startZ');
+    const endZ = this._memberEndpointZ(edge, 'endZ');
+    const splitZ = startZ + (endZ - startZ) * t;
+    const first = this._cloneRoofEdgeSegment(edge, edge.startNodeId, node.id, startZ, splitZ);
+    const second = this._cloneRoofEdgeSegment(edge, node.id, edge.endNodeId, splitZ, endZ);
+    this.members = this.members.filter(member => member.id !== edge.id);
+    if (this.selectedMemberId === edge.id) this.selectedMemberId = null;
+    this.members.push(first, second);
+    return {
+      removedId: edge.id,
+      members: [first, second],
+    };
+  }
+
+  _cloneRoofEdgeSegment(source, startNodeId, endNodeId, startZ, endZ) {
+    const member = this.addMember(startNodeId, endNodeId, {
+      type: source.type,
+      levelId: source.levelId,
+      topLevelId: source.topLevelId,
+      geometryMode: 'explicit3d',
+      startZ,
+      endZ,
+      roofRole: source.roofRole,
+      sectionName: source.sectionName,
+      bracePattern: source.bracePattern,
+      endI: source.endI,
+      endJ: source.endJ,
+    });
+    this.members = this.members.filter(existing => existing.id !== member.id);
+    return member;
+  }
+
+  _memberEndpointZ(member, key) {
+    const value = Number(member[key]);
+    if (Number.isFinite(value)) return value;
+    const level = this.levels.find(l => l.id === member.levelId);
+    return sanitizeNumber(level?.z, 0);
   }
 
   // --- Surfaces ---
@@ -1584,6 +1647,14 @@ function pointToSegmentDist(px, py, ax, ay, bx, by) {
   let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function segmentParameter(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return 0;
+  return ((px - ax) * dx + (py - ay) * dy) / lenSq;
 }
 
 function maxIdNum(items) {
