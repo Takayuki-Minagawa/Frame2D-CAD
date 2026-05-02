@@ -9,11 +9,14 @@ test('README and in-app help document the roof workflow', async () => {
   assert.match(readme, /## Roof Workflow/);
   assert.match(readme, /roofGroupId/);
   assert.match(readme, /棟\/谷\/隅木/);
+  assert.match(readme, /外周庇/);
   assert.match(readme, /屋根部材の役割別本数・延長/);
 
   assert.match(i18n, /<h3>屋根入力ワークフロー<\/h3>/);
   assert.match(i18n, /<h3>Roof Workflow<\/h3>/);
   assert.match(i18n, /roofGroupId/);
   assert.match(i18n, /Generate ridge\/valley\/hip members/);
+  assert.match(i18n, /Generate Eaves/);
+  assert.match(i18n, /generate eaves and gable walls/);
   assert.match(i18n, /数量集計で投影面積、地震用重量、屋根部材の役割別延長/);
 });
