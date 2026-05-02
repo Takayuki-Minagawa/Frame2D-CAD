@@ -823,6 +823,7 @@ export class AppState {
     for (let i = 0; i < vertices.length; i++) {
       const a = vertices[i];
       const b = vertices[(i + 1) % vertices.length];
+      if (this._hasSharedRoofGroupEdge(surface, a, b, nodeTolerance)) continue;
       const startNode = nodes[i];
       const endNode = nodes[(i + 1) % vertices.length];
       if (startNode.id === endNode.id) continue;
@@ -879,6 +880,35 @@ export class AppState {
     return members;
   }
 
+  addRoofJointMembers(roofGroupId, options = {}) {
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    if (surfaces.length < 2) return [];
+
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
+    const members = [];
+    for (let i = 0; i < surfaces.length; i++) {
+      for (let j = i + 1; j < surfaces.length; j++) {
+        for (const edge of this._sharedRoofEdges(surfaces[i], surfaces[j], nodeTolerance, zTolerance)) {
+          const startNode = this.findNodeAt(edge.start.x, edge.start.y, nodeTolerance) || this.addNode(edge.start.x, edge.start.y);
+          const endNode = this.findNodeAt(edge.end.x, edge.end.y, nodeTolerance) || this.addNode(edge.end.x, edge.end.y);
+          if (startNode.id === endNode.id) continue;
+          this._removeRoofEdgeMembersOnSegment(edge.start, edge.end, nodeTolerance);
+          members.push(this.addMember(startNode.id, endNode.id, {
+            type: 'beam',
+            levelId: edge.surfaceA.levelId,
+            geometryMode: 'explicit3d',
+            startZ: edge.start.z,
+            endZ: edge.end.z,
+            roofRole: edge.roofRole,
+            sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
+          }));
+        }
+      }
+    }
+    return members;
+  }
+
   listRoofGroups() {
     const groups = new Map();
     for (const surface of this.surfaces) {
@@ -897,6 +927,101 @@ export class AppState {
       isRoofSurfaceType(surface.type) &&
       sanitizeRoofGroupId(surface.roofGroupId, 'RG1') === normalizedGroupId
     );
+  }
+
+  _sharedRoofEdges(surfaceA, surfaceB, tolerance = 1, zTolerance = 1) {
+    const edges = [];
+    const edgesA = this._roofPlanEdges(surfaceA);
+    const edgesB = this._roofPlanEdges(surfaceB);
+    for (const edgeA of edgesA) {
+      for (const edgeB of edgesB) {
+        if (!sameSegment(edgeA.start, edgeA.end, edgeB.start, edgeB.end, tolerance)) continue;
+        const startA = roofPoint3D(this, surfaceA, edgeA.start);
+        const endA = roofPoint3D(this, surfaceA, edgeA.end);
+        const startB = roofPoint3D(this, surfaceB, edgeA.start);
+        const endB = roofPoint3D(this, surfaceB, edgeA.end);
+        if (Math.abs(startA.z - startB.z) > zTolerance || Math.abs(endA.z - endB.z) > zTolerance) continue;
+        const start = { x: edgeA.start.x, y: edgeA.start.y, z: (startA.z + startB.z) / 2 };
+        const end = { x: edgeA.end.x, y: edgeA.end.y, z: (endA.z + endB.z) / 2 };
+        edges.push({
+          surfaceA,
+          surfaceB,
+          start,
+          end,
+          roofRole: this._classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance),
+        });
+      }
+    }
+    return edges;
+  }
+
+  _roofPlanEdges(surface) {
+    const points = roofPlanPoints(surface);
+    return points.map((start, index) => ({
+      start,
+      end: points[(index + 1) % points.length],
+    }));
+  }
+
+  _hasSharedRoofGroupEdge(surface, start, end, tolerance = 1) {
+    if (!isRoofSurfaceType(surface.type)) return false;
+    const groupSurfaces = this.getRoofGroupSurfaces(surface.roofGroupId);
+    return groupSurfaces.some(other => {
+      if (other.id === surface.id) return false;
+      return this._roofPlanEdges(other).some(edge =>
+        sameSegment(start, end, edge.start, edge.end, tolerance)
+      );
+    });
+  }
+
+  _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
+    const removedIds = new Set();
+    this.members = this.members.filter(member => {
+      if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return true;
+      const startNode = this.getNode(member.startNodeId);
+      const endNode = this.getNode(member.endNodeId);
+      if (!startNode || !endNode) return true;
+      const matches = sameSegment(start, end, startNode, endNode, tolerance);
+      if (matches) removedIds.add(member.id);
+      return !matches;
+    });
+    if (removedIds.has(this.selectedMemberId)) this.selectedMemberId = null;
+  }
+
+  _classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance = 1) {
+    const mid = {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    };
+    const edgeZ = (start.z + end.z) / 2;
+    const deltaA = this._roofInteriorZDelta(surfaceA, mid, edgeZ);
+    const deltaB = this._roofInteriorZDelta(surfaceB, mid, edgeZ);
+    if (deltaA > zTolerance && deltaB > zTolerance) {
+      return Math.abs(start.z - end.z) <= zTolerance ? 'roofRidge' : 'roofHip';
+    }
+    if (deltaA < -zTolerance && deltaB < -zTolerance) return 'roofValley';
+    return 'roofJoint';
+  }
+
+  _roofInteriorZDelta(surface, edgePoint, edgeZ) {
+    const points = roofPlanPoints(surface);
+    if (points.length < 3) return 0;
+    const centroid = points.reduce((sum, point) => ({
+      x: sum.x + point.x,
+      y: sum.y + point.y,
+    }), { x: 0, y: 0 });
+    centroid.x /= points.length;
+    centroid.y /= points.length;
+    const dx = centroid.x - edgePoint.x;
+    const dy = centroid.y - edgePoint.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0.000001) return 0;
+    const sampleDistance = Math.min(250, length * 0.5);
+    const sample = {
+      x: edgePoint.x + dx / length * sampleDistance,
+      y: edgePoint.y + dy / length * sampleDistance,
+    };
+    return edgeZ - roofPoint3D(this, surface, sample).z;
   }
 
   _splitRoofEdgeMemberAtNode(node, tolerance = 1) {
@@ -1715,6 +1840,18 @@ function segmentParameter(px, py, ax, ay, bx, by) {
   const lenSq = dx * dx + dy * dy;
   if (lenSq === 0) return 0;
   return ((px - ax) * dx + (py - ay) * dy) / lenSq;
+}
+
+function sameSegment(a1, a2, b1, b2, tolerance = 1) {
+  return (
+    pointsClose(a1, b1, tolerance) && pointsClose(a2, b2, tolerance)
+  ) || (
+    pointsClose(a1, b2, tolerance) && pointsClose(a2, b1, tolerance)
+  );
+}
+
+function pointsClose(a, b, tolerance = 1) {
+  return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
 }
 
 function maxIdNum(items) {
