@@ -4,7 +4,9 @@ import { t } from './i18n.js';
 import { resolveMemberColor, roofRoleLabelKey } from './member-style.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 import {
+  computeMemberLengthM,
   computeQuantitySummary,
+  computeSurfaceSeismicWeightN,
   computeSurfaceWeightAreaM2,
   computeSurfaceWindProjectionM2,
   resolveSurfaceVerticalRange,
@@ -1158,6 +1160,35 @@ export class UI {
           <td>${formatNumber(row.lengthM)}</td>
         </tr>
       `).join('');
+    const surfaceDetailRows = (this.state.surfaces || [])
+      .map(surface => {
+        const wind = surface.includeWind !== false
+          ? computeSurfaceWindProjectionM2(this.state, surface)
+          : { xAreaM2: 0, yAreaM2: 0 };
+        const seismicWeight = surface.includeSeismicWeight
+          ? computeSurfaceSeismicWeightN(this.state, surface)
+          : 0;
+        return `
+          <tr>
+            <td>${escapeHtml(surface.id || '-')}</td>
+            <td>${escapeHtml(t(surface.type))}</td>
+            <td>${escapeHtml(surface.levelId || '-')}</td>
+            <td>${formatNumber(wind.xAreaM2)}</td>
+            <td>${formatNumber(wind.yAreaM2)}</td>
+            <td>${formatNumber(seismicWeight)}</td>
+          </tr>
+        `;
+      }).join('');
+    const roofMemberDetailRows = (this.state.members || [])
+      .filter(member => member.roofRole)
+      .map(member => `
+        <tr>
+          <td>${escapeHtml(member.id || '-')}</td>
+          <td>${escapeHtml(t(roofRoleLabelKey(member.roofRole)))}</td>
+          <td>${escapeHtml(member.levelId || '-')}</td>
+          <td>${formatNumber(computeMemberLengthM(this.state, member))}</td>
+        </tr>
+      `).join('');
 
     container.innerHTML = `
       <table class="quantity-table">
@@ -1205,6 +1236,50 @@ export class UI {
         </tbody>
       </table>
       ` : ''}
+      <details class="quantity-detail">
+        <summary>${t('quantitySurfaceDetails')}</summary>
+        <div class="quantity-detail-scroll">
+          <table class="quantity-table quantity-detail-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>${t('propType')}</th>
+                <th>${t('quantityLevel')}</th>
+                <th>${t('windAreaX')}</th>
+                <th>${t('windAreaY')}</th>
+                <th>${t('quantitySeismicWeight')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${surfaceDetailRows || `
+              <tr>
+                <td>-</td><td>-</td><td>-</td><td>0</td><td>0</td><td>0</td>
+              </tr>`}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <details class="quantity-detail">
+        <summary>${t('quantityRoofMemberDetails')}</summary>
+        <div class="quantity-detail-scroll">
+          <table class="quantity-table quantity-detail-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>${t('quantityRoofRole')}</th>
+                <th>${t('quantityLevel')}</th>
+                <th>${t('quantityMemberLength')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${roofMemberDetailRows || `
+              <tr>
+                <td>-</td><td>-</td><td>-</td><td>0</td>
+              </tr>`}
+            </tbody>
+          </table>
+        </div>
+      </details>
       ${hasSkippedWeightSurfaces ? `<p class="quantity-note">${t('quantityNoWeight')}</p>` : ''}
     `;
   }
