@@ -278,6 +278,16 @@ const dict = {
 <p>線材の始点・終点座標は数値入力で直接編集でき、ノード位置を正確に指定できます。</p>
 <p>種別・レイヤー・幅/高さ・色は表示専用です。断面を変更すると寸法と色が自動反映され、外壁を含む面材の色は平面図と3D表示へ連動します。</p>
 
+<h3>屋根入力ワークフロー</h3>
+<ol>
+  <li>面材ツールで屋根面または庇・軒を矩形/ポリライン入力します。複雑な屋根や穴付き形状は、共有辺を持つ複数の屋根面に分けます。</li>
+  <li>同じ棟・谷・隅木を構成する屋根面には同じ <code>roofGroupId</code> を設定します。</li>
+  <li>各屋根面で勾配、登り方向、基準高さを設定し、3D表示で傾斜方向を確認します。</li>
+  <li>必要に応じて屋根面ごとに外周梁と登り梁を生成します。同一屋根グループ内の共有辺は外周梁ではなく棟/谷/隅木の対象です。</li>
+  <li>屋根グループ単位で棟/谷/隅木を生成し、外周傾斜辺から妻壁を生成します。</li>
+  <li>単位重量と風圧/地震重量の対象フラグを確認し、数量集計で投影面積、地震用重量、屋根部材の役割別延長を確認します。</li>
+</ol>
+
 <h3>表示・選択オプション</h3>
 <p>ツールバーのチェックボックスで以下を切り替えられます:</p>
 <table>
@@ -596,6 +606,16 @@ const dict = {
 </ul>
 <p>Start/end point coordinates can be edited numerically to precisely position nodes.</p>
 <p>Type, layer, width/height, and color are display-only. Changing section automatically updates dimensions and color, including surface color sync in both plan and 3D views.</p>
+
+<h3>Roof Workflow</h3>
+<ol>
+  <li>Create roof or eave surfaces with the Surface tool using rectangle or polyline mode. Split complex roofs or openings into multiple roof planes that share edges.</li>
+  <li>Assign the same <code>roofGroupId</code> to roof planes that form the same ridge, valley, or hip system.</li>
+  <li>Set slope, up direction, and base height on each roof plane, then confirm the slope direction in 3D view.</li>
+  <li>Generate edge beams and slope beams per roof plane as needed. Shared edges inside a roof group are treated as ridge/valley/hip joints, not edge beams.</li>
+  <li>Generate ridge/valley/hip members from the roof group, then generate gable walls from the sloped outer edges.</li>
+  <li>Confirm unit weight and wind/seismic flags, then review projected areas, seismic weight, and roof member lengths by role in the quantity summary.</li>
+</ol>
 
 <h3>Display &amp; Selection Options</h3>
 <p>Toggle the following options using toolbar checkboxes:</p>
