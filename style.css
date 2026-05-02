@@ -325,6 +325,24 @@ body {
   font-size: 13px;
   font-weight: 600;
 }
+.quantity-detail {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.quantity-detail summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.quantity-detail-scroll {
+  overflow-x: auto;
+  margin-top: 6px;
+}
+.quantity-detail-table {
+  min-width: 380px;
+}
 
 /* Help Modal */
 .modal-overlay {
