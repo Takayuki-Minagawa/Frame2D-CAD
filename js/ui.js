@@ -688,6 +688,17 @@ export class UI {
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
       </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-validate-group">${t('roofValidateGroup')}</button>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <button type="button" class="support-preset-btn" id="btn-roof-remove-generated">${t('roofRemoveGenerated')}</button>
+        </div>
+        <div class="prop-group">
+          <button type="button" class="support-preset-btn" id="btn-roof-regenerate">${t('roofRegenerateGenerated')}</button>
+        </div>
+      </div>
       ` : ''}
       ` : ''}
       ${windProjectionFields}
@@ -781,6 +792,29 @@ export class UI {
       const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || 'RG1');
       this.callbacks.onPropertyChange?.(surface.id);
       this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
+    });
+    document.getElementById('btn-roof-validate-group')?.addEventListener('click', () => {
+      const result = this.state.validateRoofGroup(surface.roofGroupId || 'RG1');
+      const message = result.issues.length
+        ? t('roofValidationIssues').replace('{n}', String(result.issues.length))
+        : t('roofValidationOk');
+      this._showInlineNotice(container, message);
+    });
+    document.getElementById('btn-roof-remove-generated')?.addEventListener('click', () => {
+      const removed = this.state.removeRoofGeneratedElements(surface.roofGroupId || 'RG1');
+      this.callbacks.onPropertyChange?.(surface.id);
+      this._showGenerationNotice(container, removed.total, 'roofRemovedGenerated');
+    });
+    document.getElementById('btn-roof-regenerate')?.addEventListener('click', () => {
+      const spacingEl = document.getElementById('prop-roof-framing-spacing');
+      const depthEl = document.getElementById('prop-roof-eave-depth');
+      const spacing = Math.max(1, readNumberInput(spacingEl, 910));
+      const depth = Math.max(1, readNumberInput(depthEl, 600));
+      if (spacingEl) spacingEl.value = String(spacing);
+      if (depthEl) depthEl.value = String(depth);
+      const result = this.state.regenerateRoofGeneratedElements(surface.roofGroupId || 'RG1', { spacing, depth });
+      this.callbacks.onPropertyChange?.(surface.id);
+      this._showGenerationNotice(container, result.generatedTotal, 'roofRegeneratedElements');
     });
     document.getElementById('btn-auto-roof-planes')?.addEventListener('click', () => {
       const groupEl = document.getElementById('prop-auto-roof-group-id');

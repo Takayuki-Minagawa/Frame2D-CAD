@@ -60,6 +60,13 @@ const dict = {
     roofGeneratedEaves: '{n}枚の庇を生成しました。',
     roofGenerateGableWalls: '妻壁を生成',
     roofGeneratedGableWalls: '{n}枚の妻壁を生成しました。',
+    roofValidateGroup: '屋根グループを検証',
+    roofValidationOk: '屋根グループに問題は見つかりませんでした。',
+    roofValidationIssues: '{n}件の屋根グループ問題があります。',
+    roofRemoveGenerated: '生成要素を削除',
+    roofRemovedGenerated: '{n}件の生成済み屋根要素を削除しました。',
+    roofRegenerateGenerated: '生成要素を再生成',
+    roofRegeneratedElements: '{n}件の屋根要素を再生成しました。',
     export: 'CAD保存',
     import: 'CAD読込',
     cadExported: 'CADデータを保存しました。',
@@ -301,7 +308,7 @@ const dict = {
   <li>同じ棟・谷・隅木を構成する屋根面には同じ <code>roofGroupId</code> を設定します。</li>
   <li>各屋根面で勾配、登り方向、基準高さを設定し、3D表示で傾斜方向を確認します。</li>
   <li>必要に応じて屋根面ごとに外周梁と登り梁を生成します。同一屋根グループ内の共有辺は外周梁ではなく棟/谷/隅木の対象です。</li>
-  <li>屋根グループ単位で棟/谷/隅木、外周庇、外周傾斜辺からの妻壁を生成します。</li>
+  <li>屋根グループ単位で棟/谷/隅木、外周庇、外周傾斜辺からの妻壁を生成します。再生成前にはグループ検証と生成要素削除を使えます。</li>
   <li>単位重量と風圧/地震重量の対象フラグを確認し、数量集計で投影面積、地震用重量、屋根部材の役割別延長を確認します。</li>
 </ol>
 
@@ -406,6 +413,13 @@ const dict = {
     roofGeneratedEaves: '{n} eave surface(s) generated.',
     roofGenerateGableWalls: 'Generate Gable Walls',
     roofGeneratedGableWalls: '{n} gable wall(s) generated.',
+    roofValidateGroup: 'Validate Roof Group',
+    roofValidationOk: 'No roof group issues found.',
+    roofValidationIssues: '{n} roof group issue(s) found.',
+    roofRemoveGenerated: 'Remove Generated',
+    roofRemovedGenerated: '{n} generated roof element(s) removed.',
+    roofRegenerateGenerated: 'Regenerate Generated',
+    roofRegeneratedElements: '{n} roof element(s) regenerated.',
     export: 'Save CAD',
     import: 'Load CAD',
     cadExported: 'CAD data saved.',
@@ -647,7 +661,7 @@ const dict = {
   <li>Assign the same <code>roofGroupId</code> to roof planes that form the same ridge, valley, or hip system.</li>
   <li>Set slope, up direction, and base height on each roof plane, then confirm the slope direction in 3D view.</li>
   <li>Generate edge beams and slope beams per roof plane as needed. Shared edges inside a roof group are treated as ridge/valley/hip joints, not edge beams.</li>
-  <li>Generate ridge/valley/hip members from the roof group, then generate eaves and gable walls from the outer edges.</li>
+  <li>Generate ridge/valley/hip members from the roof group, then generate eaves and gable walls from the outer edges. Use group validation and generated-element removal before regenerating.</li>
   <li>Confirm unit weight and wind/seismic flags, then review projected areas, seismic weight, and roof member lengths by role in the quantity summary.</li>
 </ol>
 

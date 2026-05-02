@@ -1070,6 +1070,125 @@ export class AppState {
     );
   }
 
+  validateRoofGroup(roofGroupId, options = {}) {
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    const tolerance = sanitizeNonNegativeNumber(options.tolerance, 1);
+    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
+    const issues = [];
+    if (!surfaces.length) {
+      issues.push({ code: 'roofGroupEmpty', roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1') });
+      return { roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1'), surfaceCount: 0, issues };
+    }
+
+    for (const surface of surfaces) {
+      const points = roofPlanPoints(surface);
+      if (points.length < 3) {
+        issues.push({ code: 'roofInvalidOutline', surfaceId: surface.id });
+        continue;
+      }
+      if (polygonHasSelfIntersections(points, tolerance)) {
+        issues.push({ code: 'roofSelfIntersection', surfaceId: surface.id });
+      }
+    }
+
+    for (let i = 0; i < surfaces.length; i++) {
+      for (let j = i + 1; j < surfaces.length; j++) {
+        const edgePairs = matchingRoofPlanEdges(this._roofPlanEdges(surfaces[i]), this._roofPlanEdges(surfaces[j]), tolerance);
+        for (const { edgeA } of edgePairs) {
+          const startA = roofPoint3D(this, surfaces[i], edgeA.start);
+          const endA = roofPoint3D(this, surfaces[i], edgeA.end);
+          const startB = roofPoint3D(this, surfaces[j], edgeA.start);
+          const endB = roofPoint3D(this, surfaces[j], edgeA.end);
+          if (Math.abs(startA.z - startB.z) > zTolerance || Math.abs(endA.z - endB.z) > zTolerance) {
+            issues.push({
+              code: 'roofSharedEdgeHeightMismatch',
+              surfaceAId: surfaces[i].id,
+              surfaceBId: surfaces[j].id,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1'),
+      surfaceCount: surfaces.length,
+      issues,
+    };
+  }
+
+  removeRoofGeneratedElements(roofGroupId, options = {}) {
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    if (!surfaces.length) return { members: 0, eaves: 0, gableWalls: 0, total: 0 };
+    const tolerance = sanitizeNonNegativeNumber(options.tolerance, 1);
+    const removeMembers = hasOwn(options, 'members') ? !!options.members : true;
+    const removeEaves = hasOwn(options, 'eaves') ? !!options.eaves : true;
+    const removeGableWalls = hasOwn(options, 'gableWalls') ? !!options.gableWalls : true;
+    const outerEdges = this._roofGroupOuterEdges(surfaces, tolerance);
+
+    let members = 0;
+    if (removeMembers) {
+      const memberIds = this.members
+        .filter(member => member.roofRole && this._isRoofMemberInGroup(member, surfaces, tolerance))
+        .map(member => member.id);
+      for (const id of memberIds) {
+        this.removeMember(id);
+        members += 1;
+      }
+    }
+
+    let eaves = 0;
+    let gableWalls = 0;
+    const surfaceIds = [];
+    for (const surface of this.surfaces) {
+      if (removeEaves && isEaveSurfaceType(surface.type) && this._isEaveOnRoofOuterEdges(surface, outerEdges, tolerance)) {
+        surfaceIds.push(surface.id);
+        eaves += 1;
+      } else if (removeGableWalls && isGableWallSurfaceType(surface.type) && this._isGableOnRoofOuterEdges(surface, outerEdges, tolerance)) {
+        surfaceIds.push(surface.id);
+        gableWalls += 1;
+      }
+    }
+    for (const id of surfaceIds) {
+      this.removeSurface(id);
+    }
+
+    return {
+      members,
+      eaves,
+      gableWalls,
+      total: members + eaves + gableWalls,
+    };
+  }
+
+  regenerateRoofGeneratedElements(roofGroupId, options = {}) {
+    const removed = this.removeRoofGeneratedElements(roofGroupId, options);
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    const spacing = sanitizePositiveNumber(options.spacing, 910);
+    const depth = sanitizePositiveNumber(options.depth, 600);
+    const generated = {
+      roofEdges: 0,
+      roofSlopeBeams: 0,
+      roofJoints: 0,
+      eaves: 0,
+      gableWalls: 0,
+    };
+    for (const surface of surfaces) {
+      generated.roofEdges += this.addRoofEdgeMembers(surface.id).length;
+      generated.roofSlopeBeams += this.addRoofSlopeMembers(surface.id, { spacing }).length;
+    }
+    generated.roofJoints = this.addRoofJointMembers(roofGroupId).length;
+    generated.eaves = this.addEavesFromRoofGroup(roofGroupId, { depth }).length;
+    generated.gableWalls = this.addGableWallsFromRoofGroup(roofGroupId).length;
+    const generatedTotal = Object.values(generated).reduce((sum, count) => sum + count, 0);
+    return {
+      removed,
+      generated,
+      generatedTotal,
+      total: removed.total + generatedTotal,
+    };
+  }
+
   listRoofGroups() {
     const groups = new Map();
     for (const surface of this.surfaces) {
@@ -1156,6 +1275,54 @@ export class AppState {
       if (points.length < 2) return false;
       return sameSegment(start, end, points[0], points[1], tolerance);
     });
+  }
+
+  _roofGroupOuterEdges(surfaces, tolerance = 1) {
+    const edges = [];
+    for (const surface of surfaces) {
+      for (const edge of this._roofPlanEdges(surface)) {
+        const isShared = surfaces.some(other =>
+          other.id !== surface.id &&
+          this._roofPlanEdges(other).some(otherEdge =>
+            sameSegment(edge.start, edge.end, otherEdge.start, otherEdge.end, tolerance)
+          )
+        );
+        if (!isShared) edges.push({ ...edge, surface });
+      }
+    }
+    return edges;
+  }
+
+  _isRoofMemberInGroup(member, surfaces, tolerance = 1) {
+    const start = this.getNode(member.startNodeId);
+    const end = this.getNode(member.endNodeId);
+    if (!start || !end) return false;
+    return surfaces.some(surface =>
+      isPlanPointInOrOnRoofSurface(start, surface, tolerance) &&
+      isPlanPointInOrOnRoofSurface(end, surface, tolerance)
+    );
+  }
+
+  _isEaveOnRoofOuterEdges(surface, outerEdges, tolerance = 1) {
+    const points = roofPlanPoints(surface);
+    if (points.length < 2) return false;
+    return outerEdges.some(edge => (
+      surface.levelId === edge.surface.levelId &&
+      sameSegment(points[0], points[1], edge.start, edge.end, tolerance)
+    ));
+  }
+
+  _isGableOnRoofOuterEdges(surface, outerEdges, tolerance = 1) {
+    return outerEdges.some(edge => (
+      surface.levelId === edge.surface.levelId &&
+      sameSegment(
+        { x: surface.x1, y: surface.y1 },
+        { x: surface.x2, y: surface.y2 },
+        edge.start,
+        edge.end,
+        tolerance
+      )
+    ));
   }
 
   _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
@@ -2162,6 +2329,62 @@ function roofGenerationPlanes(points, pattern, singleDirection) {
   if (pattern === 'gableY') return gableYRoofPlanes(rect);
   if (pattern === 'hip') return hipRoofPlanes(rect);
   return [];
+}
+
+function matchingRoofPlanEdges(edgesA, edgesB, tolerance = 1) {
+  const matches = [];
+  for (const edgeA of edgesA) {
+    for (const edgeB of edgesB) {
+      if (sameSegment(edgeA.start, edgeA.end, edgeB.start, edgeB.end, tolerance)) {
+        matches.push({ edgeA, edgeB });
+      }
+    }
+  }
+  return matches;
+}
+
+function polygonHasSelfIntersections(points, tolerance = 1) {
+  for (let i = 0; i < points.length; i++) {
+    const a1 = points[i];
+    const a2 = points[(i + 1) % points.length];
+    for (let j = i + 1; j < points.length; j++) {
+      if (Math.abs(i - j) <= 1) continue;
+      if (i === 0 && j === points.length - 1) continue;
+      const b1 = points[j];
+      const b2 = points[(j + 1) % points.length];
+      if (segmentsIntersect(a1, a2, b1, b2, tolerance)) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsIntersect(a1, a2, b1, b2, tolerance = 1) {
+  const d1 = segmentDirection(a1, a2, b1);
+  const d2 = segmentDirection(a1, a2, b2);
+  const d3 = segmentDirection(b1, b2, a1);
+  const d4 = segmentDirection(b1, b2, a2);
+  if (((d1 > tolerance && d2 < -tolerance) || (d1 < -tolerance && d2 > tolerance)) &&
+    ((d3 > tolerance && d4 < -tolerance) || (d3 < -tolerance && d4 > tolerance))) {
+    return true;
+  }
+  return pointToSegmentDist(b1.x, b1.y, a1.x, a1.y, a2.x, a2.y) <= tolerance ||
+    pointToSegmentDist(b2.x, b2.y, a1.x, a1.y, a2.x, a2.y) <= tolerance ||
+    pointToSegmentDist(a1.x, a1.y, b1.x, b1.y, b2.x, b2.y) <= tolerance ||
+    pointToSegmentDist(a2.x, a2.y, b1.x, b1.y, b2.x, b2.y) <= tolerance;
+}
+
+function segmentDirection(a, b, point) {
+  return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+}
+
+function isPlanPointInOrOnRoofSurface(point, surface, tolerance = 1) {
+  const points = roofPlanPoints(surface);
+  if (points.length < 3) return false;
+  if (isInteriorPlanPoint(point, points, tolerance)) return true;
+  return points.some((start, index) => {
+    const end = points[(index + 1) % points.length];
+    return pointToSegmentDist(point.x, point.y, start.x, start.y, end.x, end.y) <= tolerance;
+  });
 }
 
 function axisAlignedRectangleFromPoints(points) {
