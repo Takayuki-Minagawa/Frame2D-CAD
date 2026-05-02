@@ -57,3 +57,15 @@ test('2D/3D renderers both use shared surface color resolver (smoke)', async () 
   assert.match(canvas2dSource, /resolveSurfaceColor\(/);
   assert.match(viewer3dSource, /resolveSurfaceColor\(/);
 });
+
+test('gable wall UI and 3D paths preserve zero top offsets', async () => {
+  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
+  const viewer3dSource = await readFile(new URL('../js/viewer3d.js', import.meta.url), 'utf8');
+  const stateSource = await readFile(new URL('../js/state.js', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(uiSource, /gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
+  assert.doesNotMatch(viewer3dSource, /gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
+  assert.doesNotMatch(stateSource, /gable(?:Start|End)TopOffset,\s*surface\.gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
+  assert.match(uiSource, /gableTopOffset\(surface,\s*'gableStartTopOffset'\)/);
+  assert.match(viewer3dSource, /finiteNumber\(surface\.gableStartTopOffset,\s*topFallback\)/);
+});

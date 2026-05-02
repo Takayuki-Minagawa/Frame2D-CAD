@@ -467,9 +467,10 @@ export class Viewer3D {
 
   _addGableWallLine3D(surface) {
     const baseZ = this.state.getLevelZ(surface.levelId);
-    const bottomY = (baseZ + Number(surface.bottomOffset || 0)) / 1000;
-    const startTopY = (baseZ + Number(surface.gableStartTopOffset || surface.topOffset || 0)) / 1000;
-    const endTopY = (baseZ + Number(surface.gableEndTopOffset || surface.topOffset || 0)) / 1000;
+    const topFallback = finiteNumber(surface.topOffset, 0);
+    const bottomY = (baseZ + finiteNumber(surface.bottomOffset, 0)) / 1000;
+    const startTopY = (baseZ + finiteNumber(surface.gableStartTopOffset, topFallback)) / 1000;
+    const endTopY = (baseZ + finiteNumber(surface.gableEndTopOffset, topFallback)) / 1000;
     if (Math.max(startTopY, endTopY) - bottomY < 0.001) return;
 
     const vertices = [
@@ -787,4 +788,15 @@ export class Viewer3D {
     }
     this.scene.add(this.gridHelper);
   }
+}
+
+function finiteNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') {
+    const fallbackNumber = Number(fallback);
+    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
+  }
+  const n = Number(value);
+  if (Number.isFinite(n)) return n;
+  const fallbackNumber = Number(fallback);
+  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }

@@ -1332,11 +1332,17 @@ export class AppState {
     if (hasRoofGroupId) {
       patch.roofGroupId = sanitizeRoofGroupId(patch.roofGroupId, surface.roofGroupId || 'RG1');
     }
+    const currentGableStartTopOffset = hasOwn(surface, 'gableStartTopOffset')
+      ? surface.gableStartTopOffset
+      : surface.topOffset;
+    const currentGableEndTopOffset = hasOwn(surface, 'gableEndTopOffset')
+      ? surface.gableEndTopOffset
+      : surface.topOffset;
     if (hasGableStartTopOffset) {
-      patch.gableStartTopOffset = sanitizeNumber(patch.gableStartTopOffset, surface.gableStartTopOffset || surface.topOffset || 0);
+      patch.gableStartTopOffset = sanitizeNumber(patch.gableStartTopOffset, currentGableStartTopOffset);
     }
     if (hasGableEndTopOffset) {
-      patch.gableEndTopOffset = sanitizeNumber(patch.gableEndTopOffset, surface.gableEndTopOffset || surface.topOffset || 0);
+      patch.gableEndTopOffset = sanitizeNumber(patch.gableEndTopOffset, currentGableEndTopOffset);
     }
 
     const prospectiveType = patch.type || surface.type;

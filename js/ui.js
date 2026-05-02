@@ -547,11 +547,11 @@ export class UI {
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('gableStartTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(surface.gableStartTopOffset || surface.topOffset || 0)}" step="100">
+          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(gableTopOffset(surface, 'gableStartTopOffset'))}" step="100">
         </div>
         <div class="prop-group">
           <label>${t('gableEndTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(surface.gableEndTopOffset || surface.topOffset || 0)}" step="100">
+          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
         </div>
       </div>
       ` : ''}
@@ -678,8 +678,8 @@ export class UI {
     bind('prop-roof-direction', 'roofDirection');
     bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
     bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || 'RG1');
-    bind('prop-gable-start-top-offset', 'gableStartTopOffset', (_value, el) => readNumberInput(el, surface.gableStartTopOffset || surface.topOffset || 0));
-    bind('prop-gable-end-top-offset', 'gableEndTopOffset', (_value, el) => readNumberInput(el, surface.gableEndTopOffset || surface.topOffset || 0));
+    bind('prop-gable-start-top-offset', 'gableStartTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableStartTopOffset')));
+    bind('prop-gable-end-top-offset', 'gableEndTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableEndTopOffset')));
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
@@ -1043,6 +1043,21 @@ function capitalize(value) {
 function readNumberInput(input, fallback) {
   const n = Number(input?.value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function gableTopOffset(surface, key) {
+  return finiteValue(surface?.[key], surface?.topOffset);
+}
+
+function finiteValue(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') {
+    const fallbackNumber = Number(fallback);
+    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
+  }
+  const n = Number(value);
+  if (Number.isFinite(n)) return n;
+  const fallbackNumber = Number(fallback);
+  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }
 
 function markInputInvalid(input, message) {
