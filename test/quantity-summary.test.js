@@ -836,3 +836,38 @@ test('roof slope member generation splits lines through re-entrant roof plans', 
     [3500, 5000, 2000, 2000, 3150, 3300],
   ]);
 });
+
+test('roof slope member generation skips spans outside a re-entrant notch boundary', () => {
+  const state = new AppState();
+  const roof = state.addSurfacePolygon([
+    { x: 0, y: 0 },
+    { x: 5000, y: 0 },
+    { x: 5000, y: 4000 },
+    { x: 3500, y: 4000 },
+    { x: 3500, y: 1000 },
+    { x: 1500, y: 1000 },
+    { x: 1500, y: 4000 },
+    { x: 0, y: 4000 },
+  ], {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.1,
+    roofDirection: 'xPlus',
+  });
+
+  const members = state.addRoofSlopeMembers(roof.id, { spacing: 1000 });
+  const spans = members.map(member => {
+    const start = state.getNode(member.startNodeId);
+    const end = state.getNode(member.endNodeId);
+    return [start.x, end.x, start.y, end.y];
+  });
+
+  assert.deepEqual(spans, [
+    [0, 1500, 1000, 1000],
+    [3500, 5000, 1000, 1000],
+    [0, 1500, 2000, 2000],
+    [3500, 5000, 2000, 2000],
+    [0, 1500, 3000, 3000],
+    [3500, 5000, 3000, 3000],
+  ]);
+});
