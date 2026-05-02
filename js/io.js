@@ -1,6 +1,12 @@
 // io.js - JSON/CSV Export / Import
 
-import { computeQuantitySummary } from './quantities.js';
+import {
+  computeMemberLengthM,
+  computeQuantitySummary,
+  computeSurfaceSeismicWeightN,
+  computeSurfaceWeightAreaM2,
+  computeSurfaceWindProjectionM2,
+} from './quantities.js';
 
 export function exportJSON(state) {
   const data = state.toJSON();
@@ -74,6 +80,84 @@ export function exportQuantitySummaryCSV(state) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `${name}_quantities_${timestamp()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function buildQuantityDetailCSV(state) {
+  const rows = [
+    [
+      'section',
+      'id',
+      'type',
+      'level',
+      'include_wind',
+      'include_seismic_weight',
+      'unit_weight',
+      'wind_x_area_m2',
+      'wind_y_area_m2',
+      'weight_area_m2',
+      'seismic_weight_N',
+      'roof_role',
+      'member_length_m',
+    ],
+  ];
+  for (const surface of state.surfaces || []) {
+    const wind = surface.includeWind !== false
+      ? computeSurfaceWindProjectionM2(state, surface)
+      : { xAreaM2: 0, yAreaM2: 0 };
+    const weightArea = computeSurfaceWeightAreaM2(state, surface);
+    const seismicWeight = surface.includeSeismicWeight
+      ? computeSurfaceSeismicWeightN(state, surface)
+      : 0;
+    rows.push([
+      'surface',
+      surface.id || '',
+      surface.type || '',
+      surface.levelId || '',
+      surface.includeWind !== false ? 'true' : 'false',
+      surface.includeSeismicWeight ? 'true' : 'false',
+      formatCsvNumber(surface.unitWeight),
+      formatCsvNumber(wind.xAreaM2),
+      formatCsvNumber(wind.yAreaM2),
+      formatCsvNumber(weightArea),
+      formatCsvNumber(seismicWeight),
+      '',
+      '',
+    ]);
+  }
+  for (const member of state.members || []) {
+    if (!member.roofRole) continue;
+    rows.push([
+      'roof_member',
+      member.id || '',
+      member.type || '',
+      member.levelId || '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      member.roofRole,
+      formatCsvNumber(computeMemberLengthM(state, member)),
+    ]);
+  }
+  return `${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
+
+export function exportQuantityDetailCSV(state) {
+  const csv = buildQuantityDetailCSV(state);
+  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const name = state.meta?.name || 'lineframe';
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name}_quantity_details_${timestamp()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
