@@ -1,5 +1,7 @@
 // roof-geometry.js - shared roof plane geometry helpers
 
+import { pointInPolygonInterior } from './geometry-utils.js';
+
 const MM2_TO_M2 = 1 / 1000000;
 const ROOF_DIRECTIONS = new Set(['xPlus', 'xMinus', 'yPlus', 'yMinus']);
 const EPS = 1e-6;
@@ -185,36 +187,6 @@ function linePolygonIntersections(points, normal, slope, station) {
 function addUniqueHit(hits, hit) {
   if (hits.some(existing => Math.abs(existing.t - hit.t) <= EPS)) return;
   hits.push(hit);
-}
-
-function pointInPolygonInterior(point, polygon) {
-  if (pointOnPolygonBoundary(point, polygon)) return false;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const a = polygon[i];
-    const b = polygon[j];
-    const crosses = (a.y > point.y) !== (b.y > point.y);
-    if (!crosses) continue;
-    const xAtY = (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x;
-    if (point.x < xAtY) inside = !inside;
-  }
-  return inside;
-}
-
-function pointOnPolygonBoundary(point, polygon) {
-  return polygon.some((start, index) => {
-    const end = polygon[(index + 1) % polygon.length];
-    return pointToSegmentDist(point, start, end) <= EPS;
-  });
-}
-
-function pointToSegmentDist(point, start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= EPS) return Math.hypot(point.x - start.x, point.y - start.y);
-  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / len2));
-  return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
 function dot2(point, vector) {

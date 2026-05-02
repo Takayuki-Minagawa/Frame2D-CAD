@@ -1,5 +1,11 @@
 // state.js - Data model and state management
 
+import {
+  edgeInwardNormal,
+  pointInPolygonInterior as isInteriorPlanPoint,
+  polygonVertexCentroid,
+  uniquePositiveNumbers,
+} from './geometry-utils.js';
 import { normalizeRoofDirection, roofPlanPoints, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
 
 const DEFAULT_SECTION_DEFINITIONS = [
@@ -1101,7 +1107,7 @@ export class AppState {
       sameSegment(candidate.start, candidate.end, start, end, 1)
     );
     if (edge) {
-      const inward = roofEdgeInwardNormal(edge.start, edge.end, points);
+      const inward = edgeInwardNormal(edge.start, edge.end, points);
       const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
       const distances = uniquePositiveNumbers([
         Math.min(250, length * 0.25),
@@ -1114,12 +1120,12 @@ export class AppState {
           x: mid.x + inward.x * distance,
           y: mid.y + inward.y * distance,
         };
-        if (pointInPolygonInterior(sample, points)) return sample;
+        if (isInteriorPlanPoint(sample, points, 0.001)) return sample;
       }
     }
 
     const centroid = polygonVertexCentroid(points);
-    if (pointInPolygonInterior(centroid, points)) return centroid;
+    if (isInteriorPlanPoint(centroid, points, 0.001)) return centroid;
     return null;
   }
 
@@ -2012,58 +2018,6 @@ function sameSegment(a1, a2, b1, b2, tolerance = 1) {
 
 function pointsClose(a, b, tolerance = 1) {
   return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
-}
-
-function roofEdgeInwardNormal(start, end, polygon) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= 0.000001) return { x: 0, y: 0 };
-  const signedArea = polygonSignedArea2(polygon);
-  return signedArea >= 0
-    ? { x: -dy / length, y: dx / length }
-    : { x: dy / length, y: -dx / length };
-}
-
-function polygonSignedArea2(points) {
-  let area2 = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    area2 += a.x * b.y - b.x * a.y;
-  }
-  return area2;
-}
-
-function polygonVertexCentroid(points) {
-  const sum = points.reduce((acc, point) => ({
-    x: acc.x + point.x,
-    y: acc.y + point.y,
-  }), { x: 0, y: 0 });
-  return {
-    x: sum.x / points.length,
-    y: sum.y / points.length,
-  };
-}
-
-function pointInPolygonInterior(point, points) {
-  if (points.some((start, index) => {
-    const end = points[(index + 1) % points.length];
-    return pointToSegmentDist(point.x, point.y, start.x, start.y, end.x, end.y) <= 0.001;
-  })) {
-    return false;
-  }
-  return pointInPolygon(point.x, point.y, points);
-}
-
-function uniquePositiveNumbers(values) {
-  const numbers = [];
-  for (const value of values) {
-    if (!Number.isFinite(value) || value <= 0) continue;
-    if (numbers.some(existing => Math.abs(existing - value) <= 0.001)) continue;
-    numbers.push(value);
-  }
-  return numbers;
 }
 
 function maxIdNum(items) {
