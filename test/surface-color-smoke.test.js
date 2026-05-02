@@ -69,3 +69,17 @@ test('gable wall UI and 3D paths preserve zero top offsets', async () => {
   assert.match(uiSource, /gableTopOffset\(surface,\s*'gableStartTopOffset'\)/);
   assert.match(viewer3dSource, /finiteNumber\(surface\.gableStartTopOffset,\s*topFallback\)/);
 });
+
+test('surface property panel separates gable wall height controls and calculated wind fields', async () => {
+  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
+  const i18nSource = await readFile(new URL('../js/i18n.js', import.meta.url), 'utf8');
+
+  assert.match(uiSource, /const isRectangularWall = isWall && !isGableWall;/);
+  assert.match(uiSource, /\$\{isRectangularWall \? `/);
+  assert.match(uiSource, /id="prop-gable-bottom-offset"/);
+  assert.match(uiSource, /bindGableWallOffsets/);
+  assert.match(uiSource, /const windProjectionFields = isWindSurface \? `/);
+  assert.match(uiSource, /\$\{windProjectionFields\}/);
+  assert.match(i18nSource, /calculatedWindArea/);
+  assert.match(i18nSource, /gableInvalidTop/);
+});
