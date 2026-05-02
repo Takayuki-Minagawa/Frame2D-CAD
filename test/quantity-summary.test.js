@@ -51,7 +51,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 5);
+  assert.equal(data.schemaVersion, 6);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -83,7 +83,7 @@ test('roof plane fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 5);
+  assert.equal(data.schemaVersion, 6);
   assert.equal(data.surfaces[0].type, 'roof');
   assert.equal(data.surfaces[0].roofSlope, 0.25);
   assert.equal(data.surfaces[0].roofDirection, 'yMinus');
@@ -241,4 +241,44 @@ test('roof planes use sloped actual area and vertical projected wind areas', () 
   const summary = computeQuantitySummary(state);
   assert.equal(Number(summary.totals.seismicWeightN.toFixed(3)), 10440.307);
   assert.equal(summary.totals.windXAreaM2, 6);
+});
+
+test('roof edge members are generated with explicit 3D endpoints', () => {
+  const state = new AppState();
+  const existingCorner = state.addNode(0, 0);
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofBaseOffset: 200,
+  });
+
+  const members = state.addRoofEdgeMembers(roof.id);
+  assert.equal(members.length, 4);
+  assert.equal(state.nodes.length, 4);
+  assert.equal(members[0].startNodeId, existingCorner.id);
+  const connectedNodeIds = new Set(members.flatMap(member => [member.startNodeId, member.endNodeId]));
+  assert.equal(connectedNodeIds.size, 4);
+  for (const nodeId of connectedNodeIds) {
+    const useCount = members.filter(member => member.startNodeId === nodeId || member.endNodeId === nodeId).length;
+    assert.equal(useCount, 2);
+  }
+  assert.ok(members.every(member => member.geometryMode === 'explicit3d'));
+  assert.ok(members.every(member => member.roofRole === 'roofEdge'));
+  assert.equal(members[0].startZ, 3000);
+  assert.equal(members[0].endZ, 4500);
+
+  const data = state.toJSON();
+  assert.equal(data.schemaVersion, 6);
+  assert.equal(data.members[0].geometryMode, 'explicit3d');
+  assert.equal(data.members[0].startZ, 3000);
+  assert.equal(data.members[0].endZ, 4500);
+  assert.equal(data.members[0].roofRole, 'roofEdge');
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.equal(restored.members[0].geometryMode, 'explicit3d');
+  assert.equal(restored.members[0].startZ, 3000);
+  assert.equal(restored.members[0].endZ, 4500);
 });

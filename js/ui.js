@@ -305,7 +305,10 @@ export class UI {
       const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
       lengthDisplay = (bottomLevel && topLevel) ? `${Math.abs(topLevel.z - bottomLevel.z)} mm` : '?';
     } else {
-      const len = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y)) : '?';
+      const dz = member.geometryMode === 'explicit3d'
+        ? (Number(member.endZ || 0) - Number(member.startZ || 0))
+        : 0;
+      const len = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y, dz)) : '?';
       lengthDisplay = `${len} mm`;
     }
 
@@ -579,6 +582,9 @@ export class UI {
           <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
         </div>
       </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
+      </div>
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
@@ -639,6 +645,14 @@ export class UI {
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
+    document.getElementById('btn-roof-edge-members')?.addEventListener('click', () => {
+      const members = this.state.addRoofEdgeMembers(surface.id);
+      this.callbacks.onPropertyChange?.(surface.id);
+      const count = members.length;
+      if (count > 0) {
+        this._showInlineNotice(container, t('roofGeneratedMembers').replace('{n}', String(count)));
+      }
+    });
 
     const bindWallHeightOffsets = () => {
       const bottomEl = document.getElementById('prop-wall-bottom-offset');
@@ -664,6 +678,13 @@ export class UI {
       topEl.addEventListener('change', apply);
     };
     bindWallHeightOffsets();
+  }
+
+  _showInlineNotice(container, message) {
+    const notice = document.createElement('p');
+    notice.className = 'quantity-note';
+    notice.textContent = message;
+    container.appendChild(notice);
   }
 
   _renderLoadProperties(container) {

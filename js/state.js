@@ -1,6 +1,6 @@
 // state.js - Data model and state management
 
-import { normalizeRoofDirection } from './roof-geometry.js';
+import { normalizeRoofDirection, roofVertices3D } from './roof-geometry.js';
 
 const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
@@ -20,6 +20,7 @@ const DEFAULT_SPRING_DEFINITIONS = [
 const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(s => s.name));
 const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
 const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
+const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
 const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
@@ -27,7 +28,7 @@ const MEMBER_SECTION_TYPE_ALIAS = {
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 5;
+    this.schemaVersion = 6;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -514,6 +515,10 @@ export class AppState {
       material: sanitizeText(raw.material) || 'steel',
       color: raw.color || '#666666',
       topLevelId: raw.topLevelId || null,
+      geometryMode: normalizeMemberGeometryMode(raw.geometryMode),
+      startZ: sanitizeOptionalNumber(raw.startZ),
+      endZ: sanitizeOptionalNumber(raw.endZ),
+      roofRole: sanitizeText(raw.roofRole) || null,
       bracePattern: raw.bracePattern || 'single',
       endI: this._normalizeMemberEnd(raw.endI || raw.iEnd),
       endJ: this._normalizeMemberEnd(raw.endJ || raw.jEnd),
@@ -684,6 +689,10 @@ export class AppState {
       material: 'steel',
       color: options.color || '#666666',
       topLevelId: options.topLevelId || null,
+      geometryMode: normalizeMemberGeometryMode(options.geometryMode),
+      startZ: sanitizeOptionalNumber(options.startZ),
+      endZ: sanitizeOptionalNumber(options.endZ),
+      roofRole: sanitizeText(options.roofRole) || null,
       bracePattern: options.bracePattern || 'single',
       endI: this._normalizeMemberEnd(options.endI),
       endJ: this._normalizeMemberEnd(options.endJ),
@@ -709,6 +718,10 @@ export class AppState {
     const hasColor = hasOwn(patch, 'color');
     const hasEndI = hasOwn(patch, 'endI');
     const hasEndJ = hasOwn(patch, 'endJ');
+    const hasGeometryMode = hasOwn(patch, 'geometryMode');
+    const hasStartZ = hasOwn(patch, 'startZ');
+    const hasEndZ = hasOwn(patch, 'endZ');
+    const hasRoofRole = hasOwn(patch, 'roofRole');
 
     if (hasSection) {
       Object.assign(member.section, patch.section || {});
@@ -726,6 +739,18 @@ export class AppState {
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
+    }
+    if (hasGeometryMode) {
+      patch.geometryMode = normalizeMemberGeometryMode(patch.geometryMode);
+    }
+    if (hasStartZ) {
+      patch.startZ = sanitizeOptionalNumber(patch.startZ);
+    }
+    if (hasEndZ) {
+      patch.endZ = sanitizeOptionalNumber(patch.endZ);
+    }
+    if (hasRoofRole) {
+      patch.roofRole = sanitizeText(patch.roofRole) || null;
     }
 
     Object.assign(member, patch);
@@ -781,6 +806,35 @@ export class AppState {
       }
     }
     return closest;
+  }
+
+  addRoofEdgeMembers(surfaceId, options = {}) {
+    const surface = this.getSurface(surfaceId);
+    if (!surface || !isRoofSurfaceType(surface.type)) return [];
+    const vertices = roofVertices3D(this, surface);
+    if (vertices.length < 3) return [];
+
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const nodes = vertices.map(v => this.findNodeAt(v.x, v.y, nodeTolerance) || this.addNode(v.x, v.y));
+    const members = [];
+    for (let i = 0; i < vertices.length; i++) {
+      const a = vertices[i];
+      const b = vertices[(i + 1) % vertices.length];
+      const startNode = nodes[i];
+      const endNode = nodes[(i + 1) % vertices.length];
+      if (startNode.id === endNode.id) continue;
+      const member = this.addMember(startNode.id, endNode.id, {
+        type: 'beam',
+        levelId: surface.levelId,
+        geometryMode: 'explicit3d',
+        startZ: a.z,
+        endZ: b.z,
+        roofRole: options.roofRole || 'roofEdge',
+        sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
+      });
+      members.push(member);
+    }
+    return members;
   }
 
   // --- Surfaces ---
@@ -1212,6 +1266,10 @@ export class AppState {
         levelId: m.levelId,
         color: m.color,
         topLevelId: m.topLevelId,
+        geometryMode: m.geometryMode,
+        startZ: m.startZ,
+        endZ: m.endZ,
+        roofRole: m.roofRole,
         bracePattern: m.bracePattern,
         endI: { ...m.endI },
         endJ: { ...m.endJ },
@@ -1265,10 +1323,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 5;
+    this.schemaVersion = 6;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1434,6 +1492,12 @@ function sanitizeNumber(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function sanitizeOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -1466,6 +1530,11 @@ function defaultColorForSection(target, type) {
 function normalizeSurfaceHeightMode(value) {
   const text = sanitizeText(value);
   return SURFACE_HEIGHT_MODES.has(text) ? text : 'full';
+}
+
+function normalizeMemberGeometryMode(value) {
+  const text = sanitizeText(value);
+  return MEMBER_GEOMETRY_MODES.has(text) ? text : 'level';
 }
 
 export function isWallSurfaceType(type) {
