@@ -1,6 +1,6 @@
 // state.js - Data model and state management
 
-import { normalizeRoofDirection, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
+import { normalizeRoofDirection, roofPlanPoints, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
 
 const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
@@ -834,7 +834,7 @@ export class AppState {
       });
       members.push(member);
     }
-    for (const node of [...this.nodes]) {
+    for (const node of this._roofSlopeBoundaryNodes(surface, nodeTolerance)) {
       const split = this._splitRoofEdgeMemberAtNode(node, nodeTolerance);
       if (!split) continue;
       members = members.filter(member => member.id !== split.removedId);
@@ -895,19 +895,18 @@ export class AppState {
     const startZ = this._memberEndpointZ(edge, 'startZ');
     const endZ = this._memberEndpointZ(edge, 'endZ');
     const splitZ = startZ + (endZ - startZ) * t;
-    const first = this._cloneRoofEdgeSegment(edge, edge.startNodeId, node.id, startZ, splitZ);
-    const second = this._cloneRoofEdgeSegment(edge, node.id, edge.endNodeId, splitZ, endZ);
     this.members = this.members.filter(member => member.id !== edge.id);
     if (this.selectedMemberId === edge.id) this.selectedMemberId = null;
-    this.members.push(first, second);
+    const first = this._addRoofEdgeSegment(edge, edge.startNodeId, node.id, startZ, splitZ);
+    const second = this._addRoofEdgeSegment(edge, node.id, edge.endNodeId, splitZ, endZ);
     return {
       removedId: edge.id,
       members: [first, second],
     };
   }
 
-  _cloneRoofEdgeSegment(source, startNodeId, endNodeId, startZ, endZ) {
-    const member = this.addMember(startNodeId, endNodeId, {
+  _addRoofEdgeSegment(source, startNodeId, endNodeId, startZ, endZ) {
+    return this.addMember(startNodeId, endNodeId, {
       type: source.type,
       levelId: source.levelId,
       topLevelId: source.topLevelId,
@@ -920,8 +919,6 @@ export class AppState {
       endI: source.endI,
       endJ: source.endJ,
     });
-    this.members = this.members.filter(existing => existing.id !== member.id);
-    return member;
   }
 
   _memberEndpointZ(member, key) {
@@ -929,6 +926,29 @@ export class AppState {
     if (Number.isFinite(value)) return value;
     const level = this.levels.find(l => l.id === member.levelId);
     return sanitizeNumber(level?.z, 0);
+  }
+
+  _roofSlopeBoundaryNodes(surface, tolerance = 1) {
+    const nodeIds = new Set();
+    for (const member of this.members) {
+      if (member.roofRole !== 'roofSlopeBeam' || member.geometryMode !== 'explicit3d') continue;
+      for (const nodeId of [member.startNodeId, member.endNodeId]) {
+        const node = this.getNode(nodeId);
+        if (node && this._isNodeOnRoofBoundary(surface, node, tolerance)) {
+          nodeIds.add(nodeId);
+        }
+      }
+    }
+    return [...nodeIds].map(id => this.getNode(id)).filter(Boolean);
+  }
+
+  _isNodeOnRoofBoundary(surface, node, tolerance = 1) {
+    const points = roofPlanPoints(surface);
+    if (points.length < 3) return false;
+    return points.some((point, index) => {
+      const next = points[(index + 1) % points.length];
+      return pointToSegmentDist(node.x, node.y, point.x, point.y, next.x, next.y) <= tolerance;
+    });
   }
 
   // --- Surfaces ---

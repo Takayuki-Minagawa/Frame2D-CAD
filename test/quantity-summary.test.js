@@ -360,6 +360,24 @@ test('roof edge members split around existing roof slope endpoints', () => {
   }
 });
 
+test('roof edge generation does not split around unrelated boundary nodes', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofBaseOffset: 200,
+  });
+  state.addNode(0, 1000);
+
+  const generatedEdges = state.addRoofEdgeMembers(roof.id);
+  const edgeMembers = state.members.filter(member => member.roofRole === 'roofEdge');
+
+  assert.equal(generatedEdges.length, 4);
+  assert.equal(edgeMembers.length, 4);
+});
+
 test('roof slope member generation falls back to a center line for narrow roofs', () => {
   const state = new AppState();
   const roof = state.addSurfaceRect(0, 0, 500, 5000, {
