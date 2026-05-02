@@ -1,6 +1,7 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
+import { resolveMemberColor } from './member-style.js';
 import { roofSlopeArrow } from './roof-geometry.js';
 import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
@@ -124,7 +125,7 @@ export class Canvas2D {
       const s2 = this.worldToScreen(n2.x, n2.y);
 
       ctx.save();
-      ctx.strokeStyle = isSelected ? selectedColor : (m.color || memberDefault);
+      ctx.strokeStyle = isSelected ? selectedColor : resolveMemberColor(m);
       ctx.lineWidth = isSelected ? 3 : 2;
       if (m.type === 'brace' || m.type === 'hbrace') {
         ctx.setLineDash([7, 4]);

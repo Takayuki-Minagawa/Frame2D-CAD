@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { resolveMemberColor } from './member-style.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
@@ -325,7 +326,7 @@ export class Viewer3D {
 
       const geometry = new THREE.BoxGeometry(length, h, b);
       const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(m.color || '#666666'),
+        color: new THREE.Color(resolveMemberColor(m)),
         wireframe: this.showWireframe,
       });
       const mesh = new THREE.Mesh(geometry, material);

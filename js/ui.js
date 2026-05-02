@@ -1,6 +1,7 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t } from './i18n.js';
+import { resolveMemberColor, roofRoleLabelKey } from './member-style.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 import {
   computeQuantitySummary,
@@ -406,8 +407,14 @@ export class UI {
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
-        <input type="color" value="${member.color}" disabled>
+        <input type="color" value="${resolveMemberColor(member)}" disabled>
       </div>
+      ${member.roofRole ? `
+      <div class="prop-group">
+        <label>${t('roofRole')}</label>
+        <input type="text" value="${escapeHtml(t(roofRoleLabelKey(member.roofRole)))}" disabled>
+      </div>
+      ` : ''}
       <div class="prop-group">
         <label>${t('propLength')}</label>
         <input type="text" value="${lengthDisplay}" disabled>
@@ -964,6 +971,14 @@ export class UI {
           <td>${formatNumber(row.seismicWeightN)}</td>
         </tr>
       `).join('');
+    const roofMemberRows = summary.roofMembers.rows
+      .map(row => `
+        <tr>
+          <td>${escapeHtml(t(roofRoleLabelKey(row.roofRole)))}</td>
+          <td>${row.count}</td>
+          <td>${formatNumber(row.lengthM)}</td>
+        </tr>
+      `).join('');
 
     container.innerHTML = `
       <table class="quantity-table">
@@ -991,6 +1006,26 @@ export class UI {
           </tr>
         </tbody>
       </table>
+      ${roofMemberRows ? `
+      <h3 class="quantity-subtitle">${t('quantityRoofMembers')}</h3>
+      <table class="quantity-table">
+        <thead>
+          <tr>
+            <th>${t('quantityRoofRole')}</th>
+            <th>${t('quantityMemberCount')}</th>
+            <th>${t('quantityMemberLength')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${roofMemberRows}
+          <tr>
+            <th>${t('quantityTotal')}</th>
+            <th>${summary.roofMembers.totals.count}</th>
+            <th>${formatNumber(summary.roofMembers.totals.lengthM)}</th>
+          </tr>
+        </tbody>
+      </table>
+      ` : ''}
       ${hasSkippedWeightSurfaces ? `<p class="quantity-note">${t('quantityNoWeight')}</p>` : ''}
     `;
   }
