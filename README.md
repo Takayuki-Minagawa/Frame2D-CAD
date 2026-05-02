@@ -18,6 +18,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 壁の高さ種別（全高 / 腰壁 / 垂れ壁 / 任意）を入力し、下端・上端高さを編集
 - 屋根面を矩形/ポリラインで入力し、勾配・登り方向・基準高さを設定
 - 屋根面から外周梁を生成し、3D明示座標を持つ斜め部材として表示
+- 屋根面からピッチ指定の登り梁を生成し、勾配方向の3D明示座標部材として表示
 - X方向/Y方向の風圧用投影面積と、面材単位重量による地震用重量を集計
 - 荷重（面荷重 / 線荷重 / 点荷重）の作成・選択・編集・削除
 - 支点（境界条件）の配置・編集・削除（6自由度: DX/DY/DZ + RX/RY/RZ をチェックボックスで指定、ピン/剛/全解除プリセット付き）
@@ -33,6 +34,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - プロパティパネルで線材/面材/荷重/支点属性を編集
 - 線材: 断面、始点/終点座標(X,Y)、端部条件 I/J（ピン / 剛 / バネ）、バネ記号を編集
 - 面材: 断面、床のみ荷重方向、壁の高さ、屋根勾配、単位重量、風圧/地震重量対象を編集
+- 屋根面: 外周梁と登り梁をプロパティパネルから生成
 - 荷重: 座標、荷重値、色などを編集
 - 種別・レイヤー・断面寸法・断面色は表示専用（断面定義から自動反映）
 - 床スラブの荷重方向（X / Y / 2方向）を矢印表示
@@ -44,7 +46,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 線材を断面寸法（b x h）を反映した直方体として3D表示
 - 面材（床スラブを水平面、壁を鉛直面）として3D表示
 - 屋根面を勾配付きの傾斜面として3D表示
-- 3D明示座標を持つ屋根外周梁を傾斜部材として3D表示
+- 3D明示座標を持つ屋根外周梁・登り梁を傾斜部材として3D表示
 - 荷重（面荷重=赤スラブ、線荷重=オレンジ線、点荷重=紫球体）を3D表示
 - 支点を3D表示（固定=コーン+プレート、ローラー/部分拘束=コーン+球体）
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
@@ -122,6 +124,7 @@ Frame2D-CAD/
 ├── js/
 │   ├── app.js          # App init / Module wiring / Theme / Lang / Help
 │   ├── state.js        # Data model (nodes, members, surfaces, loads, supports, layers) / CRUD / JSON serialization
+│   ├── roof-geometry.js # Shared roof plane geometry / projected areas / generated member lines
 │   ├── history.js      # Undo/Redo (snapshot, max 50)
 │   ├── grid.js         # Grid drawing / Snap calculation
 │   ├── canvas2d.js     # 2D canvas (pan/zoom camera, rendering)
