@@ -14,6 +14,7 @@ export class UI {
   constructor(state, callbacks) {
     this.state = state;
     this.callbacks = callbacks;
+    this._quantitySummaryLastKey = null;
 
     this._setupToolbar();
     this.refreshLayerSelectors();
@@ -274,7 +275,7 @@ export class UI {
   }
 
   updatePropertyPanel() {
-    this._renderQuantitySummary();
+    this.refreshQuantitySummary();
     const container = document.getElementById('prop-content');
 
     if (this.state.selectedSupportId) {
@@ -1004,6 +1005,22 @@ export class UI {
     });
   }
 
+  refreshQuantitySummary({ force = false } = {}) {
+    const key = this._quantitySummaryStateKey();
+    if (!force && key === this._quantitySummaryLastKey) return;
+    this._quantitySummaryLastKey = key;
+    this._renderQuantitySummary();
+  }
+
+  _quantitySummaryStateKey() {
+    return JSON.stringify({
+      levels: this.state.levels,
+      nodes: this.state.nodes,
+      members: this.state.members,
+      surfaces: this.state.surfaces,
+    });
+  }
+
   _renderQuantitySummary() {
     const container = document.getElementById('quantity-content');
     if (!container) return;
@@ -1098,6 +1115,7 @@ export class UI {
     this.refreshLayerSelectors();
     this._updateToolUI();
     this.updateStatusBar();
+    this.refreshQuantitySummary({ force: true });
     this.updatePropertyPanel();
   }
 }
