@@ -40,6 +40,13 @@ const dict = {
     roofDirXMinus: '-X',
     roofDirYPlus: '+Y',
     roofDirYMinus: '-Y',
+    roofAutoGenerate: '屋根面自動生成',
+    roofPatternSingle: '片流れ/単一面',
+    roofPatternGableX: '切妻（X棟）',
+    roofPatternGableY: '切妻（Y棟）',
+    roofPatternHip: '寄棟',
+    roofGeneratePlanes: '屋根面を生成',
+    roofGeneratedPlanes: '{n}枚の屋根面を生成しました。',
     roofGenerateEdgeMembers: '外周梁を生成',
     roofGeneratedMembers: '{n}本の屋根外周梁を生成しました。',
     roofGeneratedNone: '生成対象はありませんでした。',
@@ -290,7 +297,7 @@ const dict = {
 
 <h3>屋根入力ワークフロー</h3>
 <ol>
-  <li>面材ツールで屋根面または庇・軒を矩形/ポリライン入力します。複雑な屋根や穴付き形状は、共有辺を持つ複数の屋根面に分けます。</li>
+  <li>床・外壁などの輪郭を選択して屋根面を自動生成するか、面材ツールで屋根面または庇・軒を矩形/ポリライン入力します。複雑な屋根や穴付き形状は、共有辺を持つ複数の屋根面に分けます。</li>
   <li>同じ棟・谷・隅木を構成する屋根面には同じ <code>roofGroupId</code> を設定します。</li>
   <li>各屋根面で勾配、登り方向、基準高さを設定し、3D表示で傾斜方向を確認します。</li>
   <li>必要に応じて屋根面ごとに外周梁と登り梁を生成します。同一屋根グループ内の共有辺は外周梁ではなく棟/谷/隅木の対象です。</li>
@@ -379,6 +386,13 @@ const dict = {
     roofDirXMinus: '-X',
     roofDirYPlus: '+Y',
     roofDirYMinus: '-Y',
+    roofAutoGenerate: 'Auto-generate Roof Planes',
+    roofPatternSingle: 'Single Plane',
+    roofPatternGableX: 'Gable (X Ridge)',
+    roofPatternGableY: 'Gable (Y Ridge)',
+    roofPatternHip: 'Hip',
+    roofGeneratePlanes: 'Generate Roof Planes',
+    roofGeneratedPlanes: '{n} roof plane(s) generated.',
     roofGenerateEdgeMembers: 'Generate Edge Beams',
     roofGeneratedMembers: '{n} roof edge beam(s) generated.',
     roofGeneratedNone: 'No target elements were generated.',
@@ -629,7 +643,7 @@ const dict = {
 
 <h3>Roof Workflow</h3>
 <ol>
-  <li>Create roof or eave surfaces with the Surface tool using rectangle or polyline mode. Split complex roofs or openings into multiple roof planes that share edges.</li>
+  <li>Select a floor or exterior wall outline to auto-generate roof planes, or create roof/eave surfaces manually with the Surface tool. Split complex roofs or openings into multiple roof planes that share edges.</li>
   <li>Assign the same <code>roofGroupId</code> to roof planes that form the same ridge, valley, or hip system.</li>
   <li>Set slope, up direction, and base height on each roof plane, then confirm the slope direction in 3D view.</li>
   <li>Generate edge beams and slope beams per roof plane as needed. Shared edges inside a roof group are treated as ridge/valley/hip joints, not edge beams.</li>

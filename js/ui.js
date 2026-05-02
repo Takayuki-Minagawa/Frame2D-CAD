@@ -502,6 +502,7 @@ export class UI {
     const isRectangularWall = isWall && !isGableWall;
     const isSloped = isSlopedSurfaceType(surface.type);
     const isWindSurface = isWall || isSloped;
+    const canGenerateRoof = (surface.type === 'floor' || surface.type === 'exteriorWall') && surface.shape !== 'line';
     const area = computeSurfaceWeightAreaM2(this.state, surface);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
     const typeLabel = t(surface.type);
@@ -533,6 +534,45 @@ export class UI {
         </div>
       </div>
     ` : '';
+    const roofAutoGenerationFields = canGenerateRoof ? `
+      <div class="prop-group">
+        <label>${t('roofAutoGenerate')}</label>
+        <select id="prop-auto-roof-pattern">
+          <option value="single">${t('roofPatternSingle')}</option>
+          <option value="gableX">${t('roofPatternGableX')}</option>
+          <option value="gableY">${t('roofPatternGableY')}</option>
+          <option value="hip">${t('roofPatternHip')}</option>
+        </select>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofGroupId')}</label>
+          <input type="text" id="prop-auto-roof-group-id" value="${escapeHtml(this.state.surfaceDraftRoofGroupId || 'RG1')}">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofSlope')}</label>
+          <input type="number" id="prop-auto-roof-slope" value="${this.state.surfaceDraftRoofSlope || 0.3}" min="0" step="0.01">
+        </div>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofBaseOffset')} (mm)</label>
+          <input type="number" id="prop-auto-roof-base-offset" value="${Math.round(this.state.surfaceDraftRoofBaseOffset || 0)}" step="100">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofDirection')}</label>
+          <select id="prop-auto-roof-direction">
+            <option value="xPlus" ${this.state.surfaceDraftRoofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
+            <option value="xMinus" ${this.state.surfaceDraftRoofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
+            <option value="yPlus" ${this.state.surfaceDraftRoofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
+            <option value="yMinus" ${this.state.surfaceDraftRoofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
+          </select>
+        </div>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-auto-roof-planes">${t('roofGeneratePlanes')}</button>
+      </div>
+    ` : '';
 
     container.innerHTML = `
       <div class="prop-group">
@@ -557,6 +597,7 @@ export class UI {
         </select>
       </div>
       ` : ''}
+      ${roofAutoGenerationFields}
       ${isRectangularWall ? `
       <div class="prop-group">
         <label>${t('wallHeightMode')}</label>
@@ -740,6 +781,33 @@ export class UI {
       const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || 'RG1');
       this.callbacks.onPropertyChange?.(surface.id);
       this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
+    });
+    document.getElementById('btn-auto-roof-planes')?.addEventListener('click', () => {
+      const groupEl = document.getElementById('prop-auto-roof-group-id');
+      const slopeEl = document.getElementById('prop-auto-roof-slope');
+      const baseOffsetEl = document.getElementById('prop-auto-roof-base-offset');
+      const directionEl = document.getElementById('prop-auto-roof-direction');
+      const pattern = document.getElementById('prop-auto-roof-pattern')?.value || 'single';
+      const roofGroupId = String(groupEl?.value || '').trim() || 'RG1';
+      const roofSlope = Math.max(0, readNumberInput(slopeEl, this.state.surfaceDraftRoofSlope || 0.3));
+      const roofBaseOffset = readNumberInput(baseOffsetEl, this.state.surfaceDraftRoofBaseOffset || 0);
+      const roofDirection = directionEl?.value || this.state.surfaceDraftRoofDirection || 'xPlus';
+      if (groupEl) groupEl.value = roofGroupId;
+      if (slopeEl) slopeEl.value = String(roofSlope);
+      if (baseOffsetEl) baseOffsetEl.value = String(roofBaseOffset);
+      this.state.surfaceDraftRoofGroupId = roofGroupId;
+      this.state.surfaceDraftRoofSlope = roofSlope;
+      this.state.surfaceDraftRoofBaseOffset = roofBaseOffset;
+      this.state.surfaceDraftRoofDirection = roofDirection;
+      const roofs = this.state.addRoofPlanesFromSurface(surface.id, {
+        pattern,
+        roofGroupId,
+        roofSlope,
+        roofBaseOffset,
+        roofDirection,
+      });
+      this.callbacks.onPropertyChange?.(surface.id);
+      this._showGenerationNotice(container, roofs.length, 'roofGeneratedPlanes');
     });
 
     const bindWallHeightOffsets = () => {
