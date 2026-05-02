@@ -306,13 +306,15 @@ const dict = {
 
 <h3>屋根入力ワークフロー</h3>
 <ol>
-  <li>床・外壁などの輪郭を選択して屋根面を自動生成するか、面材ツールで屋根面または庇・軒を矩形/ポリライン入力します。複雑な屋根や穴付き形状は、共有辺を持つ複数の屋根面に分けます。</li>
+  <li>床・外壁などの輪郭を選択して屋根面を自動生成するか、面材ツールで屋根面または庇・軒を矩形/ポリライン入力します。自動生成は片流れ、切妻X棟、切妻Y棟、寄棟を選べます。</li>
+  <li>切妻/寄棟の自動生成は軸に平行な矩形輪郭が対象です。複雑な屋根や穴付き形状は、共有辺を持つ複数の屋根面に分けます。</li>
   <li>同じ棟・谷・隅木を構成する屋根面には同じ <code>roofGroupId</code> を設定します。</li>
   <li>各屋根面で勾配、登り方向、基準高さを設定し、3D表示で傾斜方向を確認します。</li>
   <li>必要に応じて屋根面ごとに外周梁と登り梁を生成します。同一屋根グループ内の共有辺は外周梁ではなく棟/谷/隅木の対象です。</li>
-  <li>屋根グループ単位で棟/谷/隅木、外周庇、外周傾斜辺からの妻壁を生成します。再生成前にはグループ検証と生成要素削除を使えます。</li>
-  <li>単位重量と風圧/地震重量の対象フラグを確認し、数量集計で投影面積、地震用重量、屋根部材の役割別延長を確認します。</li>
+  <li>屋根グループ単位で棟/谷/隅木、外周庇、外周傾斜辺からの妻壁を生成します。再生成前にはグループ検証で自己交差や共有辺高さ不一致を確認し、生成済み要素を削除してから再生成できます。</li>
+  <li>単位重量と風圧/地震重量の対象フラグを確認し、数量集計で投影面積、地震用重量、屋根部材の役割別延長を確認します。面材明細と屋根部材明細はパネル内で展開でき、集計CSV/詳細CSVとして出力できます。</li>
 </ol>
+<p>片流れ/単一面は矩形とポリゴン輪郭に対応します。切妻X棟、切妻Y棟、寄棟は軸に平行な矩形輪郭に対応し、非矩形・回転矩形・穴付き形状では生成されません。</p>
 
 <h3>表示・選択オプション</h3>
 <p>ツールバーのチェックボックスで以下を切り替えられます:</p>
@@ -661,13 +663,15 @@ const dict = {
 
 <h3>Roof Workflow</h3>
 <ol>
-  <li>Select a floor or exterior wall outline to auto-generate roof planes, or create roof/eave surfaces manually with the Surface tool. Split complex roofs or openings into multiple roof planes that share edges.</li>
+  <li>Select a floor or exterior wall outline to auto-generate roof planes, or create roof/eave surfaces manually with the Surface tool. Auto-generation supports single-plane, X-ridge gable, Y-ridge gable, and hip presets.</li>
+  <li>Gable and hip auto-generation require axis-aligned rectangular outlines. Split complex roofs or openings into multiple roof planes that share edges.</li>
   <li>Assign the same <code>roofGroupId</code> to roof planes that form the same ridge, valley, or hip system.</li>
   <li>Set slope, up direction, and base height on each roof plane, then confirm the slope direction in 3D view.</li>
   <li>Generate edge beams and slope beams per roof plane as needed. Shared edges inside a roof group are treated as ridge/valley/hip joints, not edge beams.</li>
-  <li>Generate ridge/valley/hip members from the roof group, then generate eaves and gable walls from the outer edges. Use group validation and generated-element removal before regenerating.</li>
-  <li>Confirm unit weight and wind/seismic flags, then review projected areas, seismic weight, and roof member lengths by role in the quantity summary.</li>
+  <li>Generate ridge/valley/hip members from the roof group, then generate eaves and gable walls from the outer edges. Validate self-intersections and shared-edge height mismatches before removing and regenerating generated elements.</li>
+  <li>Confirm unit weight and wind/seismic flags, then review projected areas, seismic weight, and roof member lengths by role in the quantity summary. Expand surface and roof member detail tables, or export summary/detail CSV files.</li>
 </ol>
+<p>Single-plane generation supports rectangular and polygon outlines. X-ridge gable, Y-ridge gable, and hip presets support axis-aligned rectangles only; non-rectangular, rotated, or opening-based shapes should be split into roof planes first.</p>
 
 <h3>Display &amp; Selection Options</h3>
 <p>Toggle the following options using toolbar checkboxes:</p>
