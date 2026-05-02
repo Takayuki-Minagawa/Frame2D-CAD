@@ -110,6 +110,10 @@ export class UI {
       this.state.surfaceDraftRoofBaseOffset = readNumberInput(e.target, this.state.surfaceDraftRoofBaseOffset || 0);
       e.target.value = String(this.state.surfaceDraftRoofBaseOffset);
     });
+    document.getElementById('input-roof-group-id').addEventListener('change', e => {
+      this.state.surfaceDraftRoofGroupId = String(e.target.value || '').trim() || 'RG1';
+      e.target.value = this.state.surfaceDraftRoofGroupId;
+    });
 
     // Load type
     document.getElementById('sel-load-type').addEventListener('change', e => {
@@ -175,6 +179,7 @@ export class UI {
     const type = this.state.surfaceDraftType;
     const isFloor = type === 'floor';
     const isWall = isWallSurfaceType(type);
+    const isRoof = type === 'roof';
     const isSloped = isSlopedSurfaceType(type);
     const modeLabel = document.getElementById('label-surface-mode');
     const loadDirLabel = document.getElementById('label-load-direction');
@@ -185,6 +190,7 @@ export class UI {
     const roofSlopeLabel = document.getElementById('label-roof-slope');
     const roofDirectionLabel = document.getElementById('label-roof-direction');
     const roofBaseOffsetLabel = document.getElementById('label-roof-base-offset');
+    const roofGroupLabel = document.getElementById('label-roof-group-id');
     if (modeLabel) modeLabel.style.display = (isFloor || isSloped) ? '' : 'none';
     if (loadDirLabel) loadDirLabel.style.display = isFloor ? '' : 'none';
     if (topLayerLabel) topLayerLabel.style.display = 'none';
@@ -194,6 +200,7 @@ export class UI {
     if (roofSlopeLabel) roofSlopeLabel.style.display = isSloped ? '' : 'none';
     if (roofDirectionLabel) roofDirectionLabel.style.display = isSloped ? '' : 'none';
     if (roofBaseOffsetLabel) roofBaseOffsetLabel.style.display = isSloped ? '' : 'none';
+    if (roofGroupLabel) roofGroupLabel.style.display = isRoof ? '' : 'none';
     this._syncWallHeightInputs(false);
     this._syncRoofInputs();
   }
@@ -231,9 +238,11 @@ export class UI {
     const slopeEl = document.getElementById('input-roof-slope');
     const directionEl = document.getElementById('sel-roof-direction');
     const baseOffsetEl = document.getElementById('input-roof-base-offset');
+    const groupEl = document.getElementById('input-roof-group-id');
     if (slopeEl) slopeEl.value = String(this.state.surfaceDraftRoofSlope || 0);
     if (directionEl) directionEl.value = this.state.surfaceDraftRoofDirection || 'xPlus';
     if (baseOffsetEl) baseOffsetEl.value = String(this.state.surfaceDraftRoofBaseOffset || 0);
+    if (groupEl) groupEl.value = this.state.surfaceDraftRoofGroupId || 'RG1';
   }
 
   refreshLayerSelectors() {
