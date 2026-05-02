@@ -1120,10 +1120,8 @@ export class AppState {
     return this.surfaces.some(surface => {
       if (!isEaveSurfaceType(surface.type) || surface.levelId !== levelId) return false;
       const points = roofPlanPoints(surface);
-      return points.some((point, index) => {
-        const next = points[(index + 1) % points.length];
-        return sameSegment(start, end, point, next, tolerance);
-      });
+      if (points.length < 2) return false;
+      return sameSegment(start, end, points[0], points[1], tolerance);
     });
   }
 
