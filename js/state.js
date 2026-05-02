@@ -1,6 +1,6 @@
 // state.js - Data model and state management
 
-import { normalizeRoofDirection, roofVertices3D } from './roof-geometry.js';
+import { normalizeRoofDirection, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
 
 const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
@@ -830,6 +830,37 @@ export class AppState {
         startZ: a.z,
         endZ: b.z,
         roofRole: options.roofRole || 'roofEdge',
+        sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
+      });
+      members.push(member);
+    }
+    return members;
+  }
+
+  addRoofSlopeMembers(surfaceId, options = {}) {
+    const surface = this.getSurface(surfaceId);
+    if (!surface || !isRoofSurfaceType(surface.type)) return [];
+    const segments = roofSlopeMemberSegments(surface, {
+      spacing: options.spacing,
+      minLength: options.minLength,
+    });
+    if (!segments.length) return [];
+
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const members = [];
+    for (const segment of segments) {
+      const startPoint = roofPoint3D(this, surface, segment.start);
+      const endPoint = roofPoint3D(this, surface, segment.end);
+      const startNode = this.findNodeAt(startPoint.x, startPoint.y, nodeTolerance) || this.addNode(startPoint.x, startPoint.y);
+      const endNode = this.findNodeAt(endPoint.x, endPoint.y, nodeTolerance) || this.addNode(endPoint.x, endPoint.y);
+      if (startNode.id === endNode.id) continue;
+      const member = this.addMember(startNode.id, endNode.id, {
+        type: 'beam',
+        levelId: surface.levelId,
+        geometryMode: 'explicit3d',
+        startZ: startPoint.z,
+        endZ: endPoint.z,
+        roofRole: options.roofRole || 'roofSlopeBeam',
         sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
       });
       members.push(member);

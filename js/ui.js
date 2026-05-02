@@ -585,6 +585,13 @@ export class UI {
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
       </div>
+      <div class="prop-group">
+        <label>${t('roofFramingSpacing')} (mm)</label>
+        <input type="number" id="prop-roof-framing-spacing" value="910" min="1" step="10">
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-slope-members">${t('roofGenerateSlopeMembers')}</button>
+      </div>
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
@@ -651,6 +658,17 @@ export class UI {
       const count = members.length;
       if (count > 0) {
         this._showInlineNotice(container, t('roofGeneratedMembers').replace('{n}', String(count)));
+      }
+    });
+    document.getElementById('btn-roof-slope-members')?.addEventListener('click', () => {
+      const spacingEl = document.getElementById('prop-roof-framing-spacing');
+      const spacing = Math.max(1, readNumberInput(spacingEl, 910));
+      if (spacingEl) spacingEl.value = String(spacing);
+      const members = this.state.addRoofSlopeMembers(surface.id, { spacing });
+      this.callbacks.onPropertyChange?.(surface.id);
+      const count = members.length;
+      if (count > 0) {
+        this._showInlineNotice(container, t('roofGeneratedSlopeMembers').replace('{n}', String(count)));
       }
     });
 

@@ -282,3 +282,84 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(restored.members[0].startZ, 3000);
   assert.equal(restored.members[0].endZ, 4500);
 });
+
+test('roof slope members are generated along the roof rise direction', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofBaseOffset: 200,
+  });
+
+  const members = state.addRoofSlopeMembers(roof.id, { spacing: 1000 });
+  assert.equal(members.length, 3);
+  assert.equal(state.nodes.length, 6);
+  assert.ok(members.every(member => member.geometryMode === 'explicit3d'));
+  assert.ok(members.every(member => member.roofRole === 'roofSlopeBeam'));
+
+  for (const member of members) {
+    const start = state.getNode(member.startNodeId);
+    const end = state.getNode(member.endNodeId);
+    assert.equal(start.x, 0);
+    assert.equal(end.x, 5000);
+    assert.equal(start.y, end.y);
+    assert.ok([1000, 2000, 3000].includes(start.y));
+    assert.equal(member.startZ, 3000);
+    assert.equal(member.endZ, 4500);
+  }
+});
+
+test('roof slope member generation falls back to a center line for narrow roofs', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 500, 5000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.2,
+    roofDirection: 'yMinus',
+  });
+
+  const members = state.addRoofSlopeMembers(roof.id, { spacing: 1000 });
+  assert.equal(members.length, 1);
+  const start = state.getNode(members[0].startNodeId);
+  const end = state.getNode(members[0].endNodeId);
+  assert.equal(start.x, 250);
+  assert.equal(end.x, 250);
+  assert.equal(start.y, 5000);
+  assert.equal(end.y, 0);
+  assert.equal(members[0].startZ, 2800);
+  assert.equal(members[0].endZ, 3800);
+});
+
+test('roof slope member generation splits lines through re-entrant roof plans', () => {
+  const state = new AppState();
+  const roof = state.addSurfacePolygon([
+    { x: 0, y: 0 },
+    { x: 5000, y: 0 },
+    { x: 5000, y: 4000 },
+    { x: 3500, y: 4000 },
+    { x: 3500, y: 1000 },
+    { x: 1500, y: 1000 },
+    { x: 1500, y: 4000 },
+    { x: 0, y: 4000 },
+  ], {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.1,
+    roofDirection: 'xPlus',
+  });
+
+  const members = state.addRoofSlopeMembers(roof.id, { spacing: 2000 });
+  assert.equal(members.length, 2);
+
+  const spans = members.map(member => {
+    const start = state.getNode(member.startNodeId);
+    const end = state.getNode(member.endNodeId);
+    return [start.x, end.x, start.y, end.y, member.startZ, member.endZ];
+  });
+  assert.deepEqual(spans, [
+    [0, 1500, 2000, 2000, 2800, 2950],
+    [3500, 5000, 2000, 2000, 3150, 3300],
+  ]);
+});

@@ -2,6 +2,7 @@
 
 const MM2_TO_M2 = 1 / 1000000;
 const ROOF_DIRECTIONS = new Set(['xPlus', 'xMinus', 'yPlus', 'yMinus']);
+const EPS = 1e-6;
 
 export function normalizeRoofDirection(value) {
   return ROOF_DIRECTIONS.has(value) ? value : 'xPlus';
@@ -55,12 +56,45 @@ export function roofVertices3D(state, surface) {
   const points = roofPlanPoints(surface);
   if (points.length < 3) return [];
   const bounds = roofPlanBounds(points);
+  return points.map(point => roofPoint3D(state, surface, point, bounds));
+}
+
+export function roofPoint3D(state, surface, point, bounds = null) {
+  const b = bounds || roofPlanBounds(roofPlanPoints(surface));
   const baseZ = getLevelZ(state, surface.levelId) + finiteNumber(surface.roofBaseOffset, 0);
-  return points.map(point => ({
-    x: point.x,
-    y: point.y,
-    z: baseZ + roofHeightAtPoint(surface, point, bounds),
-  }));
+  return {
+    x: finiteNumber(point.x, 0),
+    y: finiteNumber(point.y, 0),
+    z: baseZ + roofHeightAtPoint(surface, point, b),
+  };
+}
+
+export function roofSlopeMemberSegments(surface, options = {}) {
+  const points = roofPlanPoints(surface);
+  if (points.length < 3) return [];
+
+  const spacing = positiveNumber(options.spacing, 910);
+  const minLength = Math.max(0, finiteNumber(options.minLength, 1));
+  const includeBoundary = !!options.includeBoundary;
+  const slope = roofSlopeVector(surface.roofDirection);
+  const normal = { x: -slope.y, y: slope.x };
+  const offsets = points.map(point => dot2(point, normal));
+  const minOffset = Math.min(...offsets);
+  const maxOffset = Math.max(...offsets);
+  if (!Number.isFinite(minOffset) || !Number.isFinite(maxOffset) || maxOffset - minOffset <= EPS) return [];
+
+  const stations = roofSlopeMemberStations(minOffset, maxOffset, spacing, includeBoundary);
+  const segments = [];
+  for (const station of stations) {
+    const hits = linePolygonIntersections(points, normal, slope, station);
+    for (let i = 0; i + 1 < hits.length; i += 2) {
+      const start = hits[i].point;
+      const end = hits[i + 1].point;
+      if (Math.hypot(end.x - start.x, end.y - start.y) < minLength) continue;
+      segments.push({ start, end, station });
+    }
+  }
+  return segments;
 }
 
 export function roofPlanAreaM2(surface) {
@@ -97,6 +131,61 @@ export function roofSlopeArrow(surface) {
   return { x1: cx - span / 2, y1: cy, x2: cx + span / 2, y2: cy };
 }
 
+function roofSlopeVector(direction) {
+  const dir = normalizeRoofDirection(direction);
+  if (dir === 'xMinus') return { x: -1, y: 0 };
+  if (dir === 'yPlus') return { x: 0, y: 1 };
+  if (dir === 'yMinus') return { x: 0, y: -1 };
+  return { x: 1, y: 0 };
+}
+
+function roofSlopeMemberStations(minOffset, maxOffset, spacing, includeBoundary) {
+  const stations = [];
+  const start = includeBoundary ? minOffset : minOffset + spacing;
+  for (let station = start; station < maxOffset - EPS; station += spacing) {
+    if (station > minOffset + EPS || includeBoundary) stations.push(station);
+  }
+  if (includeBoundary && (stations.length === 0 || Math.abs(stations[stations.length - 1] - maxOffset) > EPS)) {
+    stations.push(maxOffset);
+  }
+  if (!includeBoundary && stations.length === 0) {
+    stations.push((minOffset + maxOffset) / 2);
+  }
+  return stations;
+}
+
+function linePolygonIntersections(points, normal, slope, station) {
+  const hits = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const offsetA = dot2(a, normal);
+    const offsetB = dot2(b, normal);
+    const span = offsetB - offsetA;
+    if (Math.abs(span) <= EPS) continue;
+    const ratio = (station - offsetA) / span;
+    if (ratio < -EPS || ratio > 1 + EPS) continue;
+    const point = {
+      x: a.x + (b.x - a.x) * ratio,
+      y: a.y + (b.y - a.y) * ratio,
+    };
+    addUniqueHit(hits, {
+      point,
+      t: dot2(point, slope),
+    });
+  }
+  return hits.sort((a, b) => a.t - b.t);
+}
+
+function addUniqueHit(hits, hit) {
+  if (hits.some(existing => Math.abs(existing.t - hit.t) <= EPS)) return;
+  hits.push(hit);
+}
+
+function dot2(point, vector) {
+  return finiteNumber(point.x, 0) * vector.x + finiteNumber(point.y, 0) * vector.y;
+}
+
 function getLevelZ(state, levelId) {
   const level = (state.levels || []).find(l => l.id === levelId);
   return finiteNumber(level?.z, 0);
@@ -116,4 +205,9 @@ function signedArea2(points, aKey, bKey) {
 function finiteNumber(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function positiveNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
