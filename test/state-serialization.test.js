@@ -7,6 +7,23 @@ function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
+test('loadJSON accepts supported schema versions and rejects future versions', () => {
+  const source = new AppState();
+  const currentData = source.toJSON();
+  const currentVersion = currentData.schemaVersion;
+
+  for (let version = 1; version <= currentVersion; version++) {
+    const restored = new AppState();
+    restored.loadJSON({ ...currentData, schemaVersion: version });
+    assert.equal(restored.schemaVersion, currentVersion);
+  }
+
+  assert.throws(
+    () => new AppState().loadJSON({ ...currentData, schemaVersion: currentVersion + 1 }),
+    /Unsupported schema version/
+  );
+});
+
 test('toJSON omits runtime IDs for members, surfaces, and loads', () => {
   const state = new AppState();
 
