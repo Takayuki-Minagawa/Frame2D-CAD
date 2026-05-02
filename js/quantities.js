@@ -138,14 +138,7 @@ export function computeSurfaceWindProjectionM2(state, surface) {
   if (height <= 0) return { xAreaM2: 0, yAreaM2: 0 };
 
   if (surface.type === 'exteriorWall' && surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
-    // Closed exterior walls are treated as an overall projected elevation envelope,
-    // not a sum of individual wall faces. This intentionally uses plan extents and
-    // may overestimate highly re-entrant outlines until true silhouette logic exists.
-    const bounds = pointBounds(surface.points);
-    return {
-      xAreaM2: Math.max(0, bounds.maxY - bounds.minY) * height * MM2_TO_M2,
-      yAreaM2: Math.max(0, bounds.maxX - bounds.minX) * height * MM2_TO_M2,
-    };
+    return computeExteriorWallPolygonWindProjectionM2(surface, height);
   }
 
   let xAreaMm2 = 0;
@@ -195,6 +188,44 @@ function computeGableWallWindProjectionM2(state, surface) {
     xAreaM2: xAreaMm2 * MM2_TO_M2,
     yAreaM2: yAreaMm2 * MM2_TO_M2,
   };
+}
+
+function computeExteriorWallPolygonWindProjectionM2(surface, height) {
+  const segments = surfacePlanSegments(surface);
+  return {
+    xAreaM2: projectedSegmentUnionLengthMm(segments, 'y') * height * MM2_TO_M2,
+    yAreaM2: projectedSegmentUnionLengthMm(segments, 'x') * height * MM2_TO_M2,
+  };
+}
+
+function projectedSegmentUnionLengthMm(segments, coordinateKey) {
+  const intervals = [];
+  for (const seg of segments) {
+    const a = finiteNumber(seg.a[coordinateKey], 0);
+    const b = finiteNumber(seg.b[coordinateKey], a);
+    if (Math.abs(b - a) <= 0.001) continue;
+    intervals.push(a < b ? [a, b] : [b, a]);
+  }
+  return intervalUnionLengthMm(intervals);
+}
+
+function intervalUnionLengthMm(intervals) {
+  if (intervals.length === 0) return 0;
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let length = 0;
+  let [start, end] = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const [nextStart, nextEnd] = sorted[i];
+    if (nextStart <= end + 0.001) {
+      end = Math.max(end, nextEnd);
+    } else {
+      length += Math.max(0, end - start);
+      start = nextStart;
+      end = nextEnd;
+    }
+  }
+  length += Math.max(0, end - start);
+  return length;
 }
 
 function gableWallAreaM2(state, surface) {
@@ -282,20 +313,6 @@ function getStoryHeight(state, levelId, topLevelId) {
   const base = getLevelZ(state, levelId);
   const top = getLevelZ(state, topLevelId);
   return Math.max(0, top - base);
-}
-
-function pointBounds(points) {
-  return points.reduce((bounds, point) => ({
-    minX: Math.min(bounds.minX, finiteNumber(point.x, 0)),
-    maxX: Math.max(bounds.maxX, finiteNumber(point.x, 0)),
-    minY: Math.min(bounds.minY, finiteNumber(point.y, 0)),
-    maxY: Math.max(bounds.maxY, finiteNumber(point.y, 0)),
-  }), {
-    minX: Infinity,
-    maxX: -Infinity,
-    minY: Infinity,
-    maxY: -Infinity,
-  });
 }
 
 function signedPolygonArea2(points) {

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import { AppState } from '../js/state.js';
 import {
@@ -324,6 +325,33 @@ test('wind projection uses direction-specific projected areas', () => {
     xAreaM2: 11.2,
     yAreaM2: 14,
   });
+});
+
+test('exterior wall polygon wind projection uses the segment silhouette once per axis', async () => {
+  const state = new AppState();
+  const reentrant = state.addSurfacePolygon([
+    { x: 0, y: 0 },
+    { x: 6000, y: 0 },
+    { x: 6000, y: 2000 },
+    { x: 3000, y: 2000 },
+    { x: 3000, y: 5000 },
+    { x: 0, y: 5000 },
+  ], {
+    type: 'exteriorWall',
+    levelId: 'L0',
+    topLevelId: 'L1',
+  });
+
+  assert.deepEqual(computeSurfaceWindProjectionM2(state, reentrant), {
+    xAreaM2: 14,
+    yAreaM2: 16.8,
+  });
+
+  const quantitiesSource = await readFile(new URL('../js/quantities.js', import.meta.url), 'utf8');
+  assert.match(quantitiesSource, /computeExteriorWallPolygonWindProjectionM2/);
+  assert.match(quantitiesSource, /projectedSegmentUnionLengthMm\(segments,\s*'y'\)/);
+  assert.match(quantitiesSource, /projectedSegmentUnionLengthMm\(segments,\s*'x'\)/);
+  assert.doesNotMatch(quantitiesSource, /pointBounds/);
 });
 
 test('seismic weight summary uses surface area times unit weight', () => {
