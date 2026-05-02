@@ -638,6 +638,13 @@ export class UI {
         <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
       </div>
       <div class="prop-group">
+        <label>${t('roofEaveDepth')} (mm)</label>
+        <input type="number" id="prop-roof-eave-depth" value="600" min="1" step="50">
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-eaves">${t('roofGenerateEaves')}</button>
+      </div>
+      <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
       </div>
       ` : ''}
@@ -728,6 +735,17 @@ export class UI {
       const count = members.length;
       if (count > 0) {
         this._showInlineNotice(container, t('roofGeneratedJointMembers').replace('{n}', String(count)));
+      }
+    });
+    document.getElementById('btn-roof-eaves')?.addEventListener('click', () => {
+      const depthEl = document.getElementById('prop-roof-eave-depth');
+      const depth = Math.max(1, readNumberInput(depthEl, 600));
+      if (depthEl) depthEl.value = String(depth);
+      const eaves = this.state.addEavesFromRoofGroup(surface.roofGroupId || 'RG1', { depth });
+      this.callbacks.onPropertyChange?.(surface.id);
+      const count = eaves.length;
+      if (count > 0) {
+        this._showInlineNotice(container, t('roofGeneratedEaves').replace('{n}', String(count)));
       }
     });
     document.getElementById('btn-roof-gable-walls')?.addEventListener('click', () => {
