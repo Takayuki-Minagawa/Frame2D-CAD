@@ -11,6 +11,7 @@ const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'surface', type: 'exteriorWall', name: '_OW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
   { target: 'surface', type: 'wall', name: '_IW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
   { target: 'surface', type: 'roof', name: '_R', material: '', b: null, h: null, color: '#8b6f47', isDefault: true },
+  { target: 'surface', type: 'eave', name: '_E', material: '', b: null, h: null, color: '#4f9a8a', isDefault: true },
 ];
 
 const DEFAULT_SPRING_DEFINITIONS = [
@@ -28,7 +29,7 @@ const MEMBER_SECTION_TYPE_ALIAS = {
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 7;
+    this.schemaVersion = 8;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -563,10 +564,12 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
       ...this._normalizeSurfaceRoof(type, raw),
     };
-    if (!isRoofSurfaceType(type)) {
+    if (!isSlopedSurfaceType(type)) {
       delete surface.roofSlope;
       delete surface.roofDirection;
       delete surface.roofBaseOffset;
+    }
+    if (!isRoofSurfaceType(type)) {
       delete surface.roofGroupId;
     }
     this._ensureSurfaceSection(surface, surface.sectionName);
@@ -580,7 +583,7 @@ export class AppState {
         heightMode: 'custom',
         bottomOffset: 0,
         topOffset: 0,
-        includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : isRoofSurfaceType(type),
+        includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : isSlopedSurfaceType(type),
         includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
         unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
       };
@@ -604,15 +607,18 @@ export class AppState {
   }
 
   _normalizeSurfaceRoof(type, options = {}) {
-    if (!isRoofSurfaceType(type)) {
+    if (!isSlopedSurfaceType(type)) {
       return {};
     }
-    return {
+    const roofFields = {
       roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
       roofDirection: normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection),
       roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
-      roofGroupId: sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1'),
     };
+    if (isRoofSurfaceType(type)) {
+      roofFields.roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1');
+    }
+    return roofFields;
   }
 
   // --- Nodes ---
@@ -1113,7 +1119,7 @@ export class AppState {
     const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
     const surface = {
       id,
-      type, // floor | wall | exteriorWall
+      type,
       sectionName: sanitizeText(options.sectionName) || '',
       levelId,
       topLevelId,
@@ -1244,10 +1250,12 @@ export class AppState {
     }
 
     const prospectiveType = patch.type || surface.type;
-    if (!isRoofSurfaceType(prospectiveType)) {
+    if (!isSlopedSurfaceType(prospectiveType)) {
       delete patch.roofSlope;
       delete patch.roofDirection;
       delete patch.roofBaseOffset;
+    }
+    if (!isRoofSurfaceType(prospectiveType)) {
       delete patch.roofGroupId;
     }
     if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
@@ -1264,12 +1272,14 @@ export class AppState {
       Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
     }
     if (hasType) {
-      if (isRoofSurfaceType(surface.type)) {
+      if (isSlopedSurfaceType(surface.type)) {
         Object.assign(surface, this._normalizeSurfaceRoof(surface.type, surface));
       } else {
         delete surface.roofSlope;
         delete surface.roofDirection;
         delete surface.roofBaseOffset;
+      }
+      if (!isRoofSurfaceType(surface.type)) {
         delete surface.roofGroupId;
       }
     }
@@ -1568,10 +1578,12 @@ export class AppState {
           shape: s.shape,
           points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
         };
-        if (isRoofSurfaceType(s.type)) {
+        if (isSlopedSurfaceType(s.type)) {
           surface.roofSlope = s.roofSlope;
           surface.roofDirection = s.roofDirection;
           surface.roofBaseOffset = s.roofBaseOffset;
+        }
+        if (isRoofSurfaceType(s.type)) {
           surface.roofGroupId = sanitizeRoofGroupId(s.roofGroupId, 'RG1');
         }
         return surface;
@@ -1597,10 +1609,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 7;
+    this.schemaVersion = 8;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1801,6 +1813,7 @@ function defaultColorForSection(target, type) {
   if (target === 'surface') {
     if (normalizedType === 'floor') return '#67a9cf';
     if (normalizedType === 'roof') return '#8b6f47';
+    if (normalizedType === 'eave') return '#4f9a8a';
     return '#b57a6b';
   }
   return '#666666';
@@ -1822,6 +1835,10 @@ export function isWallSurfaceType(type) {
 
 export function isRoofSurfaceType(type) {
   return type === 'roof';
+}
+
+export function isSlopedSurfaceType(type) {
+  return type === 'roof' || type === 'eave';
 }
 
 function pointToSegmentDist(px, py, ax, ay, bx, by) {

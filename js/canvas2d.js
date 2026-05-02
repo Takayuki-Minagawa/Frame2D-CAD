@@ -2,7 +2,7 @@
 
 import { drawGrid } from './grid.js';
 import { roofSlopeArrow } from './roof-geometry.js';
-import { offsetPolygonOutward } from './state.js';
+import { isSlopedSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 
 export class Canvas2D {
@@ -335,7 +335,7 @@ export class Canvas2D {
         } else {
           this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
         }
-        if (s.type === 'roof') this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
+        if (isSlopedSurfaceType(s.type)) this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
         continue;
       }
 
@@ -369,7 +369,7 @@ export class Canvas2D {
 
       if (s.type === 'floor') {
         this._drawLoadArrow(ctx, sx, sy, sw, sh, s.loadDirection);
-      } else if (s.type === 'roof') {
+      } else if (isSlopedSurfaceType(s.type)) {
         this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
       }
     }

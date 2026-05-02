@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
-import { isWallSurfaceType, offsetPolygonOutward } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
 
@@ -228,7 +228,7 @@ export class Viewer3D {
       const top = range.top;
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points) && s.points.length >= 3;
 
-      if (s.type === 'roof') {
+      if (isSlopedSurfaceType(s.type)) {
         this._addRoofSurface3D(s);
         continue;
       }

@@ -9,6 +9,7 @@ export function isHexColor(value) {
 export function defaultSurfaceColorForType(type) {
   if (type === 'floor') return '#67a9cf';
   if (type === 'roof') return '#8b6f47';
+  if (type === 'eave') return '#4f9a8a';
   return '#b57a6b';
 }
 
