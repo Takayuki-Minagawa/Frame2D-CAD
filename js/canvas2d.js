@@ -125,7 +125,7 @@ export class Canvas2D {
       const s2 = this.worldToScreen(n2.x, n2.y);
 
       ctx.save();
-      ctx.strokeStyle = isSelected ? selectedColor : (resolveMemberColor(m) || memberDefault);
+      ctx.strokeStyle = isSelected ? selectedColor : resolveMemberColor(m);
       ctx.lineWidth = isSelected ? 3 : 2;
       if (m.type === 'brace' || m.type === 'hbrace') {
         ctx.setLineDash([7, 4]);

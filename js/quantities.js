@@ -17,6 +17,13 @@ export function resolveSurfaceVerticalRange(state, surface) {
   return { bottom, top, height, bottomOffset, topOffset };
 }
 
+/**
+ * Summarizes surface quantities and roof framing quantities.
+ *
+ * Surface totals keep wind projected areas and seismic weight together because
+ * they share the same per-level rollup. Roof member counts/lengths are exposed
+ * under roofMembers so callers do not mix area, force, and linear quantities.
+ */
 export function computeQuantitySummary(state) {
   const levels = [...(state.levels || [])].sort((a, b) => a.z - b.z);
   const byLevel = new Map(levels.map(level => [
