@@ -823,6 +823,7 @@ export class AppState {
     for (let i = 0; i < vertices.length; i++) {
       const a = vertices[i];
       const b = vertices[(i + 1) % vertices.length];
+      if (this._hasSharedRoofGroupEdge(surface, a, b, nodeTolerance)) continue;
       const startNode = nodes[i];
       const endNode = nodes[(i + 1) % vertices.length];
       if (startNode.id === endNode.id) continue;
@@ -892,6 +893,7 @@ export class AppState {
           const startNode = this.findNodeAt(edge.start.x, edge.start.y, nodeTolerance) || this.addNode(edge.start.x, edge.start.y);
           const endNode = this.findNodeAt(edge.end.x, edge.end.y, nodeTolerance) || this.addNode(edge.end.x, edge.end.y);
           if (startNode.id === endNode.id) continue;
+          this._removeRoofEdgeMembersOnSegment(edge.start, edge.end, nodeTolerance);
           members.push(this.addMember(startNode.id, endNode.id, {
             type: 'beam',
             levelId: edge.surfaceA.levelId,
@@ -959,6 +961,31 @@ export class AppState {
       start,
       end: points[(index + 1) % points.length],
     }));
+  }
+
+  _hasSharedRoofGroupEdge(surface, start, end, tolerance = 1) {
+    if (!isRoofSurfaceType(surface.type)) return false;
+    const groupSurfaces = this.getRoofGroupSurfaces(surface.roofGroupId);
+    return groupSurfaces.some(other => {
+      if (other.id === surface.id) return false;
+      return this._roofPlanEdges(other).some(edge =>
+        sameSegment(start, end, edge.start, edge.end, tolerance)
+      );
+    });
+  }
+
+  _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
+    const removedIds = new Set();
+    this.members = this.members.filter(member => {
+      if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return true;
+      const startNode = this.getNode(member.startNodeId);
+      const endNode = this.getNode(member.endNodeId);
+      if (!startNode || !endNode) return true;
+      const matches = sameSegment(start, end, startNode, endNode, tolerance);
+      if (matches) removedIds.add(member.id);
+      return !matches;
+    });
+    if (removedIds.has(this.selectedMemberId)) this.selectedMemberId = null;
   }
 
   _classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance = 1) {
