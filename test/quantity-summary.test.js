@@ -51,7 +51,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 6);
+  assert.equal(data.schemaVersion, 7);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -77,17 +77,19 @@ test('roof plane fields survive CAD serialization', () => {
     roofSlope: 0.25,
     roofDirection: 'yMinus',
     roofBaseOffset: 900,
+    roofGroupId: 'MainRoof',
     includeWind: true,
     includeSeismicWeight: true,
     unitWeight: 700,
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 6);
+  assert.equal(data.schemaVersion, 7);
   assert.equal(data.surfaces[0].type, 'roof');
   assert.equal(data.surfaces[0].roofSlope, 0.25);
   assert.equal(data.surfaces[0].roofDirection, 'yMinus');
   assert.equal(data.surfaces[0].roofBaseOffset, 900);
+  assert.equal(data.surfaces[0].roofGroupId, 'MainRoof');
 
   const restored = new AppState();
   restored.loadJSON(data);
@@ -96,8 +98,53 @@ test('roof plane fields survive CAD serialization', () => {
   assert.equal(restored.surfaces[0].roofSlope, 0.25);
   assert.equal(restored.surfaces[0].roofDirection, 'yMinus');
   assert.equal(restored.surfaces[0].roofBaseOffset, 900);
+  assert.equal(restored.surfaces[0].roofGroupId, 'MainRoof');
   assert.equal(restored.surfaces[0].includeWind, true);
   assert.equal(restored.surfaces[0].includeSeismicWeight, true);
+});
+
+test('roof group ids default, serialize, and list by group', () => {
+  const source = new AppState();
+  const a = source.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofGroupId: 'A',
+  });
+  source.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofGroupId: 'A',
+  });
+  source.addSurfaceRect(0, 5000, 5000, 9000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofGroupId: 'B',
+  });
+  source.addSurfaceRect(0, 10000, 5000, 14000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofGroupId: '',
+  });
+
+  assert.equal(a.roofGroupId, 'A');
+  assert.deepEqual(source.listRoofGroups().map(group => [group.id, group.surfaces.length]), [
+    ['A', 2],
+    ['B', 1],
+    ['RG1', 1],
+  ]);
+
+  const data = source.toJSON();
+  assert.equal(data.surfaces[0].roofGroupId, 'A');
+  assert.equal(data.surfaces[3].roofGroupId, 'RG1');
+
+  const restored = new AppState();
+  restored.loadJSON({
+    ...data,
+    schemaVersion: 6,
+    surfaces: data.surfaces.map(({ roofGroupId, ...surface }) => surface),
+  });
+  assert.equal(restored.surfaces[0].roofGroupId, 'RG1');
+  assert.equal(restored.getRoofGroupSurfaces('RG1').length, 4);
 });
 
 test('non-roof surfaces omit roof-only fields', () => {
@@ -113,6 +160,7 @@ test('non-roof surfaces omit roof-only fields', () => {
   assert.equal(Object.hasOwn(data.surfaces[0], 'roofSlope'), false);
   assert.equal(Object.hasOwn(data.surfaces[0], 'roofDirection'), false);
   assert.equal(Object.hasOwn(data.surfaces[0], 'roofBaseOffset'), false);
+  assert.equal(Object.hasOwn(data.surfaces[0], 'roofGroupId'), false);
 
   const restored = new AppState();
   restored.loadJSON({
@@ -122,11 +170,13 @@ test('non-roof surfaces omit roof-only fields', () => {
       roofSlope: null,
       roofDirection: null,
       roofBaseOffset: null,
+      roofGroupId: null,
     }],
   });
 
   assert.equal(Object.hasOwn(restored.surfaces[0], 'roofSlope'), false);
   assert.equal(Object.hasOwn(restored.toJSON().surfaces[0], 'roofSlope'), false);
+  assert.equal(Object.hasOwn(restored.toJSON().surfaces[0], 'roofGroupId'), false);
 });
 
 test('invalid custom wall offsets are rejected instead of being clamped to 1mm height', () => {
@@ -270,7 +320,7 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(members[0].endZ, 4500);
 
   const data = state.toJSON();
-  assert.equal(data.schemaVersion, 6);
+  assert.equal(data.schemaVersion, 7);
   assert.equal(data.members[0].geometryMode, 'explicit3d');
   assert.equal(data.members[0].startZ, 3000);
   assert.equal(data.members[0].endZ, 4500);

@@ -572,6 +572,10 @@ export class UI {
           <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
         </select>
       </div>
+      <div class="prop-group">
+        <label>${t('roofGroupId')}</label>
+        <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || 'RG1')}">
+      </div>
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('windAreaX')} (m²)</label>
@@ -649,6 +653,7 @@ export class UI {
     bind('prop-roof-slope', 'roofSlope', (_value, el) => Math.max(0, readNumberInput(el, surface.roofSlope || 0)));
     bind('prop-roof-direction', 'roofDirection');
     bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
+    bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || 'RG1');
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');

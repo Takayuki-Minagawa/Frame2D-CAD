@@ -28,7 +28,7 @@ const MEMBER_SECTION_TYPE_ALIAS = {
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 6;
+    this.schemaVersion = 7;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -71,6 +71,7 @@ export class AppState {
     this.surfaceDraftRoofSlope = 0.3;
     this.surfaceDraftRoofDirection = 'xPlus';
     this.surfaceDraftRoofBaseOffset = 0;
+    this.surfaceDraftRoofGroupId = 'RG1';
     this.loadDraftType = 'areaLoad';
 
     // Counters for ID generation
@@ -566,6 +567,7 @@ export class AppState {
       delete surface.roofSlope;
       delete surface.roofDirection;
       delete surface.roofBaseOffset;
+      delete surface.roofGroupId;
     }
     this._ensureSurfaceSection(surface, surface.sectionName);
     return surface;
@@ -609,6 +611,7 @@ export class AppState {
       roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
       roofDirection: normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection),
       roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
+      roofGroupId: sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1'),
     };
   }
 
@@ -876,6 +879,26 @@ export class AppState {
     return members;
   }
 
+  listRoofGroups() {
+    const groups = new Map();
+    for (const surface of this.surfaces) {
+      if (!isRoofSurfaceType(surface.type)) continue;
+      const groupId = sanitizeRoofGroupId(surface.roofGroupId, 'RG1');
+      const group = groups.get(groupId) || { id: groupId, surfaces: [] };
+      group.surfaces.push(surface);
+      groups.set(groupId, group);
+    }
+    return [...groups.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  getRoofGroupSurfaces(groupId) {
+    const normalizedGroupId = sanitizeRoofGroupId(groupId, 'RG1');
+    return this.surfaces.filter(surface =>
+      isRoofSurfaceType(surface.type) &&
+      sanitizeRoofGroupId(surface.roofGroupId, 'RG1') === normalizedGroupId
+    );
+  }
+
   _splitRoofEdgeMemberAtNode(node, tolerance = 1) {
     const edge = this.members.find(member => {
       if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return false;
@@ -1059,6 +1082,7 @@ export class AppState {
     const hasRoofSlope = hasOwn(patch, 'roofSlope');
     const hasRoofDirection = hasOwn(patch, 'roofDirection');
     const hasRoofBaseOffset = hasOwn(patch, 'roofBaseOffset');
+    const hasRoofGroupId = hasOwn(patch, 'roofGroupId');
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
@@ -1090,8 +1114,17 @@ export class AppState {
     if (hasRoofBaseOffset) {
       patch.roofBaseOffset = sanitizeNumber(patch.roofBaseOffset, surface.roofBaseOffset || 0);
     }
+    if (hasRoofGroupId) {
+      patch.roofGroupId = sanitizeRoofGroupId(patch.roofGroupId, surface.roofGroupId || 'RG1');
+    }
 
     const prospectiveType = patch.type || surface.type;
+    if (!isRoofSurfaceType(prospectiveType)) {
+      delete patch.roofSlope;
+      delete patch.roofDirection;
+      delete patch.roofBaseOffset;
+      delete patch.roofGroupId;
+    }
     if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
       const prospectiveBottom = hasBottomOffset ? patch.bottomOffset : surface.bottomOffset;
       const prospectiveTop = hasTopOffset ? patch.topOffset : surface.topOffset;
@@ -1112,6 +1145,7 @@ export class AppState {
         delete surface.roofSlope;
         delete surface.roofDirection;
         delete surface.roofBaseOffset;
+        delete surface.roofGroupId;
       }
     }
     if (hasType || hasSectionName || hasColor) {
@@ -1413,6 +1447,7 @@ export class AppState {
           surface.roofSlope = s.roofSlope;
           surface.roofDirection = s.roofDirection;
           surface.roofBaseOffset = s.roofBaseOffset;
+          surface.roofGroupId = sanitizeRoofGroupId(s.roofGroupId, 'RG1');
         }
         return surface;
       }),
@@ -1437,10 +1472,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 6;
+    this.schemaVersion = 7;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1508,6 +1543,7 @@ export class AppState {
     this.surfaceDraftRoofSlope = 0.3;
     this.surfaceDraftRoofDirection = 'xPlus';
     this.surfaceDraftRoofBaseOffset = 0;
+    this.surfaceDraftRoofGroupId = 'RG1';
     this.loadDraftType = 'areaLoad';
 
     // Restore counters
@@ -1614,6 +1650,10 @@ function sanitizeOptionalNumber(value) {
 
 function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function sanitizeRoofGroupId(value, fallback = 'RG1') {
+  return sanitizeText(value) || sanitizeText(fallback) || 'RG1';
 }
 
 function sanitizeColor(value, fallback) {
