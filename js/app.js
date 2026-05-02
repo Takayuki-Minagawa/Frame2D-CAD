@@ -5,7 +5,14 @@ import { History } from './history.js';
 import { Canvas2D } from './canvas2d.js';
 import { ToolManager } from './tools.js';
 import { UI } from './ui.js';
-import { exportJSON, importJSON, exportQuantitySummaryCSV, exportUserDefs, importUserDefs } from './io.js';
+import {
+  exportJSON,
+  importJSON,
+  exportQuantityDetailCSV,
+  exportQuantitySummaryCSV,
+  exportUserDefs,
+  importUserDefs,
+} from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
 
 // --- Initialize ---
@@ -111,6 +118,11 @@ document.getElementById('btn-export').addEventListener('click', () => {
 document.getElementById('btn-quantity-export')?.addEventListener('click', () => {
   exportQuantitySummaryCSV(state);
   showNotice(t('quantityCsvExported'), 'success');
+});
+
+document.getElementById('btn-quantity-detail-export')?.addEventListener('click', () => {
+  exportQuantityDetailCSV(state);
+  showNotice(t('quantityDetailCsvExported'), 'success');
 });
 
 document.getElementById('btn-import-trigger').addEventListener('click', () => {
