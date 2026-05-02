@@ -557,6 +557,11 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
       ...this._normalizeSurfaceRoof(type, raw),
     };
+    if (!isRoofSurfaceType(type)) {
+      delete surface.roofSlope;
+      delete surface.roofDirection;
+      delete surface.roofBaseOffset;
+    }
     this._ensureSurfaceSection(surface, surface.sectionName);
     return surface;
   }
@@ -593,11 +598,7 @@ export class AppState {
 
   _normalizeSurfaceRoof(type, options = {}) {
     if (!isRoofSurfaceType(type)) {
-      return {
-        roofSlope: null,
-        roofDirection: null,
-        roofBaseOffset: null,
-      };
+      return {};
     }
     return {
       roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
@@ -937,7 +938,13 @@ export class AppState {
       Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
     }
     if (hasType) {
-      Object.assign(surface, this._normalizeSurfaceRoof(surface.type, surface));
+      if (isRoofSurfaceType(surface.type)) {
+        Object.assign(surface, this._normalizeSurfaceRoof(surface.type, surface));
+      } else {
+        delete surface.roofSlope;
+        delete surface.roofDirection;
+        delete surface.roofBaseOffset;
+      }
     }
     if (hasType || hasSectionName || hasColor) {
       this._ensureSurfaceSection(surface, surface.sectionName);
@@ -1209,29 +1216,34 @@ export class AppState {
         endI: { ...m.endI },
         endJ: { ...m.endJ },
       })),
-      surfaces: this.surfaces.map(s => ({
-        type: s.type,
-        sectionName: s.sectionName,
-        levelId: s.levelId,
-        topLevelId: s.topLevelId,
-        loadDirection: s.loadDirection,
-        heightMode: s.heightMode,
-        bottomOffset: s.bottomOffset,
-        topOffset: s.topOffset,
-        includeWind: s.includeWind,
-        includeSeismicWeight: s.includeSeismicWeight,
-        unitWeight: s.unitWeight,
-        roofSlope: s.roofSlope,
-        roofDirection: s.roofDirection,
-        roofBaseOffset: s.roofBaseOffset,
-        color: s.color,
-        x1: s.x1,
-        y1: s.y1,
-        x2: s.x2,
-        y2: s.y2,
-        shape: s.shape,
-        points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
-      })),
+      surfaces: this.surfaces.map(s => {
+        const surface = {
+          type: s.type,
+          sectionName: s.sectionName,
+          levelId: s.levelId,
+          topLevelId: s.topLevelId,
+          loadDirection: s.loadDirection,
+          heightMode: s.heightMode,
+          bottomOffset: s.bottomOffset,
+          topOffset: s.topOffset,
+          includeWind: s.includeWind,
+          includeSeismicWeight: s.includeSeismicWeight,
+          unitWeight: s.unitWeight,
+          color: s.color,
+          x1: s.x1,
+          y1: s.y1,
+          x2: s.x2,
+          y2: s.y2,
+          shape: s.shape,
+          points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
+        };
+        if (isRoofSurfaceType(s.type)) {
+          surface.roofSlope = s.roofSlope;
+          surface.roofDirection = s.roofDirection;
+          surface.roofBaseOffset = s.roofBaseOffset;
+        }
+        return surface;
+      }),
       loads: this.loads.map(l => {
         const rest = { ...l };
         delete rest.id;

@@ -594,6 +594,7 @@ export class Viewer3D {
     if (planPoints.length < 3 || vertices3D.length !== planPoints.length) return;
 
     const contour = planPoints.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
+    // Single-contour triangulation covers simple roof outlines; complex roofs with holes should be split first.
     const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
     if (!triangles.length) return;
 

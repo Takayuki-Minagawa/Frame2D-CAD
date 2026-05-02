@@ -100,6 +100,35 @@ test('roof plane fields survive CAD serialization', () => {
   assert.equal(restored.surfaces[0].includeSeismicWeight, true);
 });
 
+test('non-roof surfaces omit roof-only fields', () => {
+  const source = new AppState();
+  source.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'floor',
+    levelId: 'L1',
+    includeSeismicWeight: true,
+    unitWeight: 300,
+  });
+
+  const data = source.toJSON();
+  assert.equal(Object.hasOwn(data.surfaces[0], 'roofSlope'), false);
+  assert.equal(Object.hasOwn(data.surfaces[0], 'roofDirection'), false);
+  assert.equal(Object.hasOwn(data.surfaces[0], 'roofBaseOffset'), false);
+
+  const restored = new AppState();
+  restored.loadJSON({
+    ...data,
+    surfaces: [{
+      ...data.surfaces[0],
+      roofSlope: null,
+      roofDirection: null,
+      roofBaseOffset: null,
+    }],
+  });
+
+  assert.equal(Object.hasOwn(restored.surfaces[0], 'roofSlope'), false);
+  assert.equal(Object.hasOwn(restored.toJSON().surfaces[0], 'roofSlope'), false);
+});
+
 test('invalid custom wall offsets are rejected instead of being clamped to 1mm height', () => {
   const state = new AppState();
   const wall = state.addSurfaceLine(0, 0, 5000, 0, {

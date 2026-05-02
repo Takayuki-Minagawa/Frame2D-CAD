@@ -616,7 +616,7 @@ export class UI {
       const el = document.getElementById(id);
       if (!el) return;
       el.addEventListener('change', () => {
-        this.state.updateSurface(surface.id, { [key]: transform(el.value) });
+        this.state.updateSurface(surface.id, { [key]: transform(el.value, el) });
         this.callbacks.onPropertyChange?.(surface.id);
       });
     };
@@ -633,10 +633,10 @@ export class UI {
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
     bind('prop-wall-height-mode', 'heightMode');
-    bind('prop-roof-slope', 'roofSlope', parseFloat);
+    bind('prop-roof-slope', 'roofSlope', (_value, el) => Math.max(0, readNumberInput(el, surface.roofSlope || 0)));
     bind('prop-roof-direction', 'roofDirection');
-    bind('prop-roof-base-offset', 'roofBaseOffset', parseFloat);
-    bind('prop-surface-unit-weight', 'unitWeight', parseFloat);
+    bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
+    bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
 
