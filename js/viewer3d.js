@@ -302,9 +302,15 @@ export class Viewer3D {
 
       const level = this.state.levels.find(l => l.id === m.levelId);
       const y = (level ? level.z : 0) / 1000;
+      const startY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.startZ))
+        ? Number(m.startZ) / 1000
+        : y;
+      const endY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.endZ))
+        ? Number(m.endZ) / 1000
+        : y;
 
-      const start = new THREE.Vector3(n1.x / 1000, y, -n1.y / 1000);
-      const end = new THREE.Vector3(n2.x / 1000, y, -n2.y / 1000);
+      const start = new THREE.Vector3(n1.x / 1000, startY, -n1.y / 1000);
+      const end = new THREE.Vector3(n2.x / 1000, endY, -n2.y / 1000);
 
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
@@ -324,8 +330,11 @@ export class Viewer3D {
       mid.y += h / 2;
       mesh.position.copy(mid);
 
-      const angle = Math.atan2(direction.z, direction.x);
-      mesh.rotation.y = -angle;
+      const quat = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(1, 0, 0),
+        direction.clone().normalize()
+      );
+      mesh.quaternion.copy(quat);
 
       this.memberGroup.add(mesh);
 
