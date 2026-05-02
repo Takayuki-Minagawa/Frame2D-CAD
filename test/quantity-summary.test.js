@@ -69,6 +69,43 @@ test('wall height and weight fields survive CAD serialization', () => {
   assert.equal(restored.surfaces[0].unitWeight, 450);
 });
 
+test('invalid custom wall offsets are rejected instead of being clamped to 1mm height', () => {
+  const state = new AppState();
+  const wall = state.addSurfaceLine(0, 0, 5000, 0, {
+    type: 'wall',
+    levelId: 'L0',
+    topLevelId: 'L1',
+    heightMode: 'custom',
+    bottomOffset: 0,
+    topOffset: 1200,
+  });
+
+  state.updateSurface(wall.id, { bottomOffset: 1500 });
+  assert.equal(wall.bottomOffset, 0);
+  assert.equal(wall.topOffset, 1200);
+  assert.equal(wall.heightMode, 'custom');
+
+  state.updateSurface(wall.id, { topOffset: -100 });
+  assert.equal(wall.bottomOffset, 0);
+  assert.equal(wall.topOffset, 1200);
+});
+
+test('floor surfaces keep wall-only height and wind fields inert', () => {
+  const state = new AppState();
+  const floor = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'floor',
+    levelId: 'L0',
+    heightMode: 'waist',
+    bottomOffset: 300,
+    topOffset: 1200,
+  });
+
+  assert.equal(floor.heightMode, 'custom');
+  assert.equal(floor.bottomOffset, 0);
+  assert.equal(floor.topOffset, 0);
+  assert.equal(floor.includeWind, false);
+});
+
 test('wind projection uses direction-specific projected areas', () => {
   const state = new AppState();
   const wall = state.addSurfaceLine(0, 0, 5000, 0, {

@@ -77,6 +77,9 @@ export function computeSurfaceWindProjectionM2(state, surface) {
   if (height <= 0) return { xAreaM2: 0, yAreaM2: 0 };
 
   if (surface.type === 'exteriorWall' && surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
+    // Closed exterior walls are treated as an overall projected elevation envelope,
+    // not a sum of individual wall faces. This intentionally uses plan extents and
+    // may overestimate highly re-entrant outlines until true silhouette logic exists.
     const bounds = pointBounds(surface.points);
     return {
       xAreaM2: Math.max(0, bounds.maxY - bounds.minY) * height * MM2_TO_M2,

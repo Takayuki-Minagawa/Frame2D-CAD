@@ -162,11 +162,12 @@ export class AppState {
 
     if (heightMode === 'custom') {
       const bottomOffset = sanitizeNumber(options.bottomOffset, this.surfaceDraftBottomOffset || 0);
-      const topOffset = sanitizeNumber(options.topOffset, this.surfaceDraftTopOffset || Math.max(1200, storyHeight));
+      const fallbackTopOffset = Math.max(bottomOffset + 1, this.surfaceDraftTopOffset || storyHeight || 1200);
+      const topOffset = sanitizeNumber(options.topOffset, fallbackTopOffset);
       return {
         heightMode,
         bottomOffset,
-        topOffset: topOffset > bottomOffset ? topOffset : bottomOffset + 1,
+        topOffset: topOffset > bottomOffset ? topOffset : fallbackTopOffset,
       };
     }
 
@@ -555,18 +556,29 @@ export class AppState {
 
   _normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options = {}) {
     const isWallType = isWallSurfaceType(type);
+    if (!isWallType) {
+      return {
+        heightMode: 'custom',
+        bottomOffset: 0,
+        topOffset: 0,
+        includeWind: false,
+        includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
+        unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+      };
+    }
+
     const offsets = this.getSurfaceHeightOffsets({
-      heightMode: options.heightMode || (isWallType ? 'full' : 'custom'),
+      heightMode: options.heightMode || 'full',
       levelId,
       topLevelId,
       bottomOffset: options.bottomOffset,
       topOffset: options.topOffset,
     });
     return {
-      heightMode: isWallType ? offsets.heightMode : 'custom',
-      bottomOffset: isWallType ? offsets.bottomOffset : sanitizeNumber(options.bottomOffset, 0),
-      topOffset: isWallType ? offsets.topOffset : sanitizeNumber(options.topOffset, 0),
-      includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : isWallType,
+      heightMode: offsets.heightMode,
+      bottomOffset: offsets.bottomOffset,
+      topOffset: offsets.topOffset,
+      includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
       includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
       unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
     };
@@ -872,13 +884,20 @@ export class AppState {
     if (hasIncludeSeismicWeight) {
       patch.includeSeismicWeight = !!patch.includeSeismicWeight;
     }
+
+    const prospectiveType = patch.type || surface.type;
+    if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
+      const prospectiveBottom = hasBottomOffset ? patch.bottomOffset : surface.bottomOffset;
+      const prospectiveTop = hasTopOffset ? patch.topOffset : surface.topOffset;
+      if (prospectiveTop <= prospectiveBottom) {
+        if (hasBottomOffset) delete patch.bottomOffset;
+        if (hasTopOffset) delete patch.topOffset;
+      }
+    }
+
     Object.assign(surface, patch);
     if (hasHeightMode && surface.heightMode !== 'custom' && isWallSurfaceType(surface.type)) {
       Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
-    }
-    if (isWallSurfaceType(surface.type) && surface.topOffset <= surface.bottomOffset) {
-      surface.topOffset = surface.bottomOffset + 1;
-      surface.heightMode = 'custom';
     }
     if (hasType || hasSectionName || hasColor) {
       this._ensureSurfaceSection(surface, surface.sectionName);

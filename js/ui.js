@@ -83,9 +83,17 @@ export class UI {
     const onWallOffsetChange = () => {
       const bottomEl = document.getElementById('input-wall-bottom-offset');
       const topEl = document.getElementById('input-wall-top-offset');
+      const bottomOffset = readNumberInput(bottomEl, this.state.surfaceDraftBottomOffset || 0);
+      const topOffset = readNumberInput(topEl, this.state.surfaceDraftTopOffset || 1200);
+      if (topOffset <= bottomOffset) {
+        markInputInvalid(topEl, t('wallInvalidHeight'));
+        return;
+      }
+      clearInputInvalid(bottomEl);
+      clearInputInvalid(topEl);
       this.state.surfaceDraftHeightMode = 'custom';
-      this.state.surfaceDraftBottomOffset = parseFloat(bottomEl?.value || '0');
-      this.state.surfaceDraftTopOffset = parseFloat(topEl?.value || '1200');
+      this.state.surfaceDraftBottomOffset = bottomOffset;
+      this.state.surfaceDraftTopOffset = topOffset;
       this._syncWallHeightInputs(false);
     };
     document.getElementById('input-wall-bottom-offset').addEventListener('change', onWallOffsetChange);
@@ -563,11 +571,34 @@ export class UI {
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
     bind('prop-wall-height-mode', 'heightMode');
-    bind('prop-wall-bottom-offset', 'bottomOffset', parseFloat);
-    bind('prop-wall-top-offset', 'topOffset', parseFloat);
     bind('prop-surface-unit-weight', 'unitWeight', parseFloat);
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
+
+    const bindWallHeightOffsets = () => {
+      const bottomEl = document.getElementById('prop-wall-bottom-offset');
+      const topEl = document.getElementById('prop-wall-top-offset');
+      if (!bottomEl || !topEl) return;
+      const apply = () => {
+        const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
+        const topOffset = readNumberInput(topEl, surface.topOffset || 0);
+        if (topOffset <= bottomOffset) {
+          markInputInvalid(topEl, t('wallInvalidHeight'));
+          return;
+        }
+        clearInputInvalid(bottomEl);
+        clearInputInvalid(topEl);
+        this.state.updateSurface(surface.id, {
+          heightMode: 'custom',
+          bottomOffset,
+          topOffset,
+        });
+        this.callbacks.onPropertyChange?.(surface.id);
+      };
+      bottomEl.addEventListener('change', apply);
+      topEl.addEventListener('change', apply);
+    };
+    bindWallHeightOffsets();
   }
 
   _renderLoadProperties(container) {
@@ -769,6 +800,9 @@ export class UI {
     const container = document.getElementById('quantity-content');
     if (!container) return;
     const summary = computeQuantitySummary(this.state);
+    const hasSkippedWeightSurfaces = (this.state.surfaces || []).some(surface =>
+      surface.includeSeismicWeight && !(Number(surface.unitWeight) > 0)
+    );
     const rows = summary.levels
       .filter(row => row.windXAreaM2 || row.windYAreaM2 || row.seismicWeightN)
       .map(row => `
@@ -787,7 +821,7 @@ export class UI {
             <th>${t('quantityLevel')}</th>
             <th>${t('windAreaX')}</th>
             <th>${t('windAreaY')}</th>
-            <th>${t('seismicWeight')}</th>
+            <th>${t('quantitySeismicWeight')}</th>
           </tr>
         </thead>
         <tbody>
@@ -806,7 +840,7 @@ export class UI {
           </tr>
         </tbody>
       </table>
-      <p class="quantity-note">${t('quantityNoWeight')}</p>
+      ${hasSkippedWeightSurfaces ? `<p class="quantity-note">${t('quantityNoWeight')}</p>` : ''}
     `;
   }
 
@@ -844,6 +878,7 @@ function escapeHtml(value) {
 function formatNumber(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '0';
+  if (n === 0) return '0';
   if (Math.abs(n) >= 100) return n.toFixed(0);
   if (Math.abs(n) >= 10) return n.toFixed(1);
   return n.toFixed(2);
@@ -852,4 +887,22 @@ function formatNumber(value) {
 function capitalize(value) {
   const text = String(value || '');
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
+
+function readNumberInput(input, fallback) {
+  const n = Number(input?.value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function markInputInvalid(input, message) {
+  if (!input) return;
+  input.classList.add('input-error');
+  input.setCustomValidity(message);
+  input.reportValidity();
+}
+
+function clearInputInvalid(input) {
+  if (!input) return;
+  input.classList.remove('input-error');
+  input.setCustomValidity('');
 }
