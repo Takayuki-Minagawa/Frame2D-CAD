@@ -787,6 +787,32 @@ test('eave generation is idempotent for an existing roof group boundary', () => 
   assert.equal(state.surfaces.filter(surface => surface.type === 'eave').length, 4);
 });
 
+test('eave dedupe only considers the generated inner edge', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfacePolygon([
+    { x: 0, y: -600 },
+    { x: 5000, y: -600 },
+    { x: 5000, y: 0 },
+    { x: 0, y: 0 },
+  ], {
+    type: 'eave',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+  });
+
+  const eaves = state.addEavesFromRoofGroup('Main', { depth: 600 });
+
+  assert.equal(eaves.length, 4);
+});
+
 test('roof slope members are generated along the roof rise direction', () => {
   const state = new AppState();
   const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
