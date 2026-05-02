@@ -713,10 +713,7 @@ export class UI {
     document.getElementById('btn-roof-edge-members')?.addEventListener('click', () => {
       const members = this.state.addRoofEdgeMembers(surface.id);
       this.callbacks.onPropertyChange?.(surface.id);
-      const count = members.length;
-      if (count > 0) {
-        this._showInlineNotice(container, t('roofGeneratedMembers').replace('{n}', String(count)));
-      }
+      this._showGenerationNotice(container, members.length, 'roofGeneratedMembers');
     });
     document.getElementById('btn-roof-slope-members')?.addEventListener('click', () => {
       const spacingEl = document.getElementById('prop-roof-framing-spacing');
@@ -724,18 +721,12 @@ export class UI {
       if (spacingEl) spacingEl.value = String(spacing);
       const members = this.state.addRoofSlopeMembers(surface.id, { spacing });
       this.callbacks.onPropertyChange?.(surface.id);
-      const count = members.length;
-      if (count > 0) {
-        this._showInlineNotice(container, t('roofGeneratedSlopeMembers').replace('{n}', String(count)));
-      }
+      this._showGenerationNotice(container, members.length, 'roofGeneratedSlopeMembers');
     });
     document.getElementById('btn-roof-joint-members')?.addEventListener('click', () => {
       const members = this.state.addRoofJointMembers(surface.roofGroupId || 'RG1');
       this.callbacks.onPropertyChange?.(surface.id);
-      const count = members.length;
-      if (count > 0) {
-        this._showInlineNotice(container, t('roofGeneratedJointMembers').replace('{n}', String(count)));
-      }
+      this._showGenerationNotice(container, members.length, 'roofGeneratedJointMembers');
     });
     document.getElementById('btn-roof-eaves')?.addEventListener('click', () => {
       const depthEl = document.getElementById('prop-roof-eave-depth');
@@ -743,18 +734,12 @@ export class UI {
       if (depthEl) depthEl.value = String(depth);
       const eaves = this.state.addEavesFromRoofGroup(surface.roofGroupId || 'RG1', { depth });
       this.callbacks.onPropertyChange?.(surface.id);
-      const count = eaves.length;
-      if (count > 0) {
-        this._showInlineNotice(container, t('roofGeneratedEaves').replace('{n}', String(count)));
-      }
+      this._showGenerationNotice(container, eaves.length, 'roofGeneratedEaves');
     });
     document.getElementById('btn-roof-gable-walls')?.addEventListener('click', () => {
       const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || 'RG1');
       this.callbacks.onPropertyChange?.(surface.id);
-      const count = walls.length;
-      if (count > 0) {
-        this._showInlineNotice(container, t('roofGeneratedGableWalls').replace('{n}', String(count)));
-      }
+      this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
     });
 
     const bindWallHeightOffsets = () => {
@@ -826,6 +811,13 @@ export class UI {
     notice.className = 'quantity-note';
     notice.textContent = message;
     container.appendChild(notice);
+  }
+
+  _showGenerationNotice(container, count, messageKey) {
+    const message = count > 0
+      ? t(messageKey).replace('{n}', String(count))
+      : t('roofGeneratedNone');
+    this._showInlineNotice(container, message);
   }
 
   _renderLoadProperties(container) {
