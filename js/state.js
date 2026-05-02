@@ -1037,6 +1037,39 @@ export class AppState {
     return eaves;
   }
 
+  addRoofPlanesFromSurface(sourceSurfaceId, options = {}) {
+    const source = this.getSurface(sourceSurfaceId);
+    const points = surfaceOutlinePoints(source);
+    if (points.length < 3) return [];
+
+    const pattern = normalizeRoofGenerationPattern(options.pattern);
+    const direction = normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection);
+    const planes = roofGenerationPlanes(points, pattern, direction);
+    if (!planes.length) return [];
+
+    const levelId = options.levelId || source.topLevelId || source.levelId || this.activeLayerId || 'L0';
+    const roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1');
+    const common = {
+      type: 'roof',
+      levelId,
+      topLevelId: options.topLevelId || levelId,
+      roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
+      roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
+      roofGroupId,
+      includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
+      includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
+      unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+      sectionName: options.sectionName || this.getDefaultSectionName('surface', 'roof'),
+    };
+
+    return planes.map(plane =>
+      this.addSurfacePolygon(plane.points, {
+        ...common,
+        roofDirection: plane.roofDirection,
+      })
+    );
+  }
+
   listRoofGroups() {
     const groups = new Map();
     for (const surface of this.surfaces) {
@@ -2038,6 +2071,12 @@ function normalizeMemberGeometryMode(value) {
   return MEMBER_GEOMETRY_MODES.has(text) ? text : 'level';
 }
 
+function normalizeRoofGenerationPattern(value) {
+  const text = sanitizeText(value);
+  if (text === 'gableX' || text === 'gableY' || text === 'hip') return text;
+  return 'single';
+}
+
 export function isWallSurfaceType(type) {
   return type === 'wall' || type === 'exteriorWall' || type === 'gableWall';
 }
@@ -2086,6 +2125,202 @@ function sameSegment(a1, a2, b1, b2, tolerance = 1) {
 
 function pointsClose(a, b, tolerance = 1) {
   return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
+}
+
+function surfaceOutlinePoints(surface) {
+  if (!surface) return [];
+  if (surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
+    return surface.points.map(point => ({
+      x: sanitizeNumber(point.x, 0),
+      y: sanitizeNumber(point.y, 0),
+    }));
+  }
+  if (surface.shape === 'rect') {
+    const x1 = sanitizeNumber(surface.x1, 0);
+    const y1 = sanitizeNumber(surface.y1, 0);
+    const x2 = sanitizeNumber(surface.x2, x1);
+    const y2 = sanitizeNumber(surface.y2, y1);
+    if (Math.abs(x2 - x1) <= 0.001 || Math.abs(y2 - y1) <= 0.001) return [];
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 },
+    ];
+  }
+  return [];
+}
+
+function roofGenerationPlanes(points, pattern, singleDirection) {
+  if (pattern === 'single') {
+    return [{ points: points.map(point => ({ ...point })), roofDirection: singleDirection }];
+  }
+
+  const rect = axisAlignedRectangleFromPoints(points);
+  if (!rect) return [];
+  if (pattern === 'gableX') return gableXRoofPlanes(rect);
+  if (pattern === 'gableY') return gableYRoofPlanes(rect);
+  if (pattern === 'hip') return hipRoofPlanes(rect);
+  return [];
+}
+
+function axisAlignedRectangleFromPoints(points) {
+  if (!Array.isArray(points) || points.length !== 4) return null;
+  const xs = [...new Set(points.map(point => roundedKey(point.x)))].map(Number).sort((a, b) => a - b);
+  const ys = [...new Set(points.map(point => roundedKey(point.y)))].map(Number).sort((a, b) => a - b);
+  if (xs.length !== 2 || ys.length !== 2) return null;
+  const [minX, maxX] = xs;
+  const [minY, maxY] = ys;
+  if (maxX - minX <= 0.001 || maxY - minY <= 0.001) return null;
+  const corners = new Set([
+    `${roundedKey(minX)},${roundedKey(minY)}`,
+    `${roundedKey(maxX)},${roundedKey(minY)}`,
+    `${roundedKey(maxX)},${roundedKey(maxY)}`,
+    `${roundedKey(minX)},${roundedKey(maxY)}`,
+  ]);
+  const isRectangle = points.every(point => corners.has(`${roundedKey(point.x)},${roundedKey(point.y)}`));
+  return isRectangle ? { minX, maxX, minY, maxY } : null;
+}
+
+function gableXRoofPlanes(rect) {
+  const midX = (rect.minX + rect.maxX) / 2;
+  return [
+    {
+      roofDirection: 'xPlus',
+      points: [
+        { x: rect.minX, y: rect.minY },
+        { x: midX, y: rect.minY },
+        { x: midX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY },
+      ],
+    },
+    {
+      roofDirection: 'xMinus',
+      points: [
+        { x: midX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: rect.maxY },
+        { x: midX, y: rect.maxY },
+      ],
+    },
+  ];
+}
+
+function gableYRoofPlanes(rect) {
+  const midY = (rect.minY + rect.maxY) / 2;
+  return [
+    {
+      roofDirection: 'yPlus',
+      points: [
+        { x: rect.minX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: midY },
+        { x: rect.minX, y: midY },
+      ],
+    },
+    {
+      roofDirection: 'yMinus',
+      points: [
+        { x: rect.minX, y: midY },
+        { x: rect.maxX, y: midY },
+        { x: rect.maxX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY },
+      ],
+    },
+  ];
+}
+
+function hipRoofPlanes(rect) {
+  const width = rect.maxX - rect.minX;
+  const height = rect.maxY - rect.minY;
+  const midX = (rect.minX + rect.maxX) / 2;
+  const midY = (rect.minY + rect.maxY) / 2;
+
+  if (width >= height) {
+    const inset = height / 2;
+    const ridgeStart = { x: Math.min(midX, rect.minX + inset), y: midY };
+    const ridgeEnd = { x: Math.max(midX, rect.maxX - inset), y: midY };
+    return [
+      {
+        roofDirection: 'yPlus',
+        points: [
+          { x: rect.minX, y: rect.minY },
+          { x: rect.maxX, y: rect.minY },
+          ridgeEnd,
+          ridgeStart,
+        ],
+      },
+      {
+        roofDirection: 'xMinus',
+        points: [
+          { x: rect.maxX, y: rect.minY },
+          { x: rect.maxX, y: rect.maxY },
+          ridgeEnd,
+        ],
+      },
+      {
+        roofDirection: 'yMinus',
+        points: [
+          { x: rect.maxX, y: rect.maxY },
+          { x: rect.minX, y: rect.maxY },
+          ridgeStart,
+          ridgeEnd,
+        ],
+      },
+      {
+        roofDirection: 'xPlus',
+        points: [
+          { x: rect.minX, y: rect.maxY },
+          { x: rect.minX, y: rect.minY },
+          ridgeStart,
+        ],
+      },
+    ];
+  }
+
+  const inset = width / 2;
+  const ridgeStart = { x: midX, y: Math.min(midY, rect.minY + inset) };
+  const ridgeEnd = { x: midX, y: Math.max(midY, rect.maxY - inset) };
+  return [
+    {
+      roofDirection: 'xPlus',
+      points: [
+        { x: rect.minX, y: rect.minY },
+        ridgeStart,
+        ridgeEnd,
+        { x: rect.minX, y: rect.maxY },
+      ],
+    },
+    {
+      roofDirection: 'yPlus',
+      points: [
+        { x: rect.minX, y: rect.minY },
+        { x: rect.maxX, y: rect.minY },
+        ridgeStart,
+      ],
+    },
+    {
+      roofDirection: 'xMinus',
+      points: [
+        { x: rect.maxX, y: rect.minY },
+        { x: rect.maxX, y: rect.maxY },
+        ridgeEnd,
+        ridgeStart,
+      ],
+    },
+    {
+      roofDirection: 'yMinus',
+      points: [
+        { x: rect.maxX, y: rect.maxY },
+        { x: rect.minX, y: rect.maxY },
+        ridgeEnd,
+      ],
+    },
+  ];
+}
+
+function roundedKey(value) {
+  return String(Number(sanitizeNumber(value, 0).toFixed(6)));
 }
 
 function maxIdNum(items) {
