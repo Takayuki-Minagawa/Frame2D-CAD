@@ -333,6 +333,66 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(restored.members[0].endZ, 4500);
 });
 
+test('roof joint members are generated from shared roof group edges', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Main',
+  });
+
+  const members = state.addRoofJointMembers('Main');
+  assert.equal(members.length, 1);
+  assert.equal(members[0].roofRole, 'roofRidge');
+  assert.equal(members[0].geometryMode, 'explicit3d');
+  assert.equal(members[0].startZ, 4300);
+  assert.equal(members[0].endZ, 4300);
+  const start = state.getNode(members[0].startNodeId);
+  const end = state.getNode(members[0].endNodeId);
+  assert.equal(start.x, 5000);
+  assert.equal(end.x, 5000);
+});
+
+test('roof joint generation classifies valleys and respects roof groups', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(10000, 0, 15000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Other',
+  });
+
+  const members = state.addRoofJointMembers('Main');
+  assert.equal(members.length, 1);
+  assert.equal(members[0].roofRole, 'roofValley');
+  assert.equal(members[0].startZ, 2800);
+  assert.equal(members[0].endZ, 2800);
+});
+
 test('roof slope members are generated along the roof rise direction', () => {
   const state = new AppState();
   const roof = state.addSurfaceRect(0, 0, 5000, 4000, {

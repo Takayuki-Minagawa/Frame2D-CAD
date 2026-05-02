@@ -596,6 +596,9 @@ export class UI {
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-slope-members">${t('roofGenerateSlopeMembers')}</button>
       </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
+      </div>
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
@@ -674,6 +677,14 @@ export class UI {
       const count = members.length;
       if (count > 0) {
         this._showInlineNotice(container, t('roofGeneratedSlopeMembers').replace('{n}', String(count)));
+      }
+    });
+    document.getElementById('btn-roof-joint-members')?.addEventListener('click', () => {
+      const members = this.state.addRoofJointMembers(surface.roofGroupId || 'RG1');
+      this.callbacks.onPropertyChange?.(surface.id);
+      const count = members.length;
+      if (count > 0) {
+        this._showInlineNotice(container, t('roofGeneratedJointMembers').replace('{n}', String(count)));
       }
     });
 
