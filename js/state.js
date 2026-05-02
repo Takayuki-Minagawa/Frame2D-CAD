@@ -30,13 +30,17 @@ const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.
 const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
+const CURRENT_SCHEMA_VERSION = 9;
+const SUPPORTED_SCHEMA_VERSIONS = new Set(
+  Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, index) => index + 1)
+);
 const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
 };
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 9;
+    this.schemaVersion = CURRENT_SCHEMA_VERSION;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -1753,10 +1757,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9)) {
+    if (!data || !isSupportedSchemaVersion(version)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 9;
+    this.schemaVersion = CURRENT_SCHEMA_VERSION;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1906,6 +1910,10 @@ function isSameSectionDefinition(a, b) {
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function isSupportedSchemaVersion(version) {
+  return Number.isInteger(version) && SUPPORTED_SCHEMA_VERSIONS.has(version);
 }
 
 function sanitizePositiveNumber(value, fallback) {
