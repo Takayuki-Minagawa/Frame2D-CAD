@@ -137,8 +137,11 @@ export function computeSurfaceWindProjectionM2(state, surface) {
   const { height } = resolveSurfaceVerticalRange(state, surface);
   if (height <= 0) return { xAreaM2: 0, yAreaM2: 0 };
 
-  if (surface.type === 'exteriorWall' && surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
-    return computeExteriorWallPolygonWindProjectionM2(surface, height);
+  if (surface.type === 'exteriorWall' && (
+    surface.shape === 'rect' ||
+    (surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3)
+  )) {
+    return computeExteriorWallWindProjectionM2(surface, height);
   }
 
   let xAreaMm2 = 0;
@@ -190,7 +193,7 @@ function computeGableWallWindProjectionM2(state, surface) {
   };
 }
 
-function computeExteriorWallPolygonWindProjectionM2(surface, height) {
+function computeExteriorWallWindProjectionM2(surface, height) {
   const segments = surfacePlanSegments(surface);
   return {
     xAreaM2: projectedSegmentUnionLengthMm(segments, 'y') * height * MM2_TO_M2,

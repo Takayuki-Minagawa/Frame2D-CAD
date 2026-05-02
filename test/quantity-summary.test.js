@@ -325,6 +325,16 @@ test('wind projection uses direction-specific projected areas', () => {
     xAreaM2: 11.2,
     yAreaM2: 14,
   });
+
+  const rectExterior = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'exteriorWall',
+    levelId: 'L0',
+    topLevelId: 'L1',
+  });
+  assert.deepEqual(computeSurfaceWindProjectionM2(state, rectExterior), {
+    xAreaM2: 11.2,
+    yAreaM2: 14,
+  });
 });
 
 test('exterior wall polygon wind projection uses the segment silhouette once per axis', async () => {
@@ -348,7 +358,7 @@ test('exterior wall polygon wind projection uses the segment silhouette once per
   });
 
   const quantitiesSource = await readFile(new URL('../js/quantities.js', import.meta.url), 'utf8');
-  assert.match(quantitiesSource, /computeExteriorWallPolygonWindProjectionM2/);
+  assert.match(quantitiesSource, /computeExteriorWallWindProjectionM2/);
   assert.match(quantitiesSource, /projectedSegmentUnionLengthMm\(segments,\s*'y'\)/);
   assert.match(quantitiesSource, /projectedSegmentUnionLengthMm\(segments,\s*'x'\)/);
   assert.doesNotMatch(quantitiesSource, /pointBounds/);
