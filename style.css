@@ -320,6 +320,11 @@ body {
   line-height: 1.4;
   margin-top: 8px;
 }
+.quantity-subtitle {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
 
 /* Help Modal */
 .modal-overlay {

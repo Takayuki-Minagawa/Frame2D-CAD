@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import { AppState } from '../js/state.js';
 import {
+  computeMemberLengthM,
   computeQuantitySummary,
+  computeRoofMemberSummary,
   computeSurfaceWeightAreaM2,
   computeSurfaceWindProjectionM2,
   resolveSurfaceVerticalRange,
@@ -544,6 +546,50 @@ test('roof joint generation replaces duplicate roof edge members on shared edges
   assert.equal(joints[0].roofRole, 'roofRidge');
   assert.equal(state.members.filter(member => member.roofRole === 'roofEdge').length, 0);
   assert.equal(state.members.filter(member => member.roofRole === 'roofRidge').length, 1);
+});
+
+test('roof member summary groups counts and explicit 3D lengths by role', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(3000, 4000);
+  const n3 = state.addNode(3000, 0);
+  const n4 = state.addNode(6000, 0);
+
+  const edge = state.addMember(n1.id, n2.id, {
+    type: 'beam',
+    levelId: 'L1',
+    geometryMode: 'explicit3d',
+    startZ: 2800,
+    endZ: 2800,
+    roofRole: 'roofEdge',
+  });
+  state.addMember(n2.id, n3.id, {
+    type: 'beam',
+    levelId: 'L1',
+    geometryMode: 'explicit3d',
+    startZ: 2800,
+    endZ: 5800,
+    roofRole: 'roofEdge',
+  });
+  state.addMember(n3.id, n4.id, {
+    type: 'beam',
+    levelId: 'L1',
+    geometryMode: 'explicit3d',
+    startZ: 2800,
+    endZ: 6800,
+    roofRole: 'roofRidge',
+  });
+  state.addMember(n1.id, n4.id, { type: 'beam', levelId: 'L1' });
+
+  assert.equal(computeMemberLengthM(state, edge), 5);
+  const summary = computeRoofMemberSummary(state);
+  assert.deepEqual(summary.rows.map(row => [row.roofRole, row.count, Number(row.lengthM.toFixed(3))]), [
+    ['roofEdge', 2, 10],
+    ['roofRidge', 1, 5],
+  ]);
+  assert.equal(summary.totals.count, 3);
+  assert.equal(summary.totals.lengthM, 15);
+  assert.equal(computeQuantitySummary(state).roofMembers.totals.count, 3);
 });
 
 test('gable walls are generated from sloped outer roof group edges', () => {

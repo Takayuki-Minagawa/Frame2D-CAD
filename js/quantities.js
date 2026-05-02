@@ -1,5 +1,6 @@
 // quantities.js - projected wind areas and seismic weight summaries
 
+import { ROOF_MEMBER_ROLE_ORDER } from './member-style.js';
 import { roofActualAreaM2, roofProjectionAreasM2 } from './roof-geometry.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
@@ -69,7 +70,57 @@ export function computeQuantitySummary(state) {
   return {
     levels: Array.from(byLevel.values()),
     totals,
+    roofMembers: computeRoofMemberSummary(state),
   };
+}
+
+export function computeRoofMemberSummary(state) {
+  const byRole = new Map();
+  const ensureRole = roofRole => {
+    if (!byRole.has(roofRole)) {
+      byRole.set(roofRole, {
+        roofRole,
+        count: 0,
+        lengthM: 0,
+      });
+    }
+    return byRole.get(roofRole);
+  };
+
+  for (const member of state.members || []) {
+    if (!member.roofRole) continue;
+    const row = ensureRole(member.roofRole);
+    row.count += 1;
+    row.lengthM += computeMemberLengthM(state, member);
+  }
+
+  const rows = [...byRole.values()].sort((a, b) => (
+    roofRoleSortIndex(a.roofRole) - roofRoleSortIndex(b.roofRole) ||
+    a.roofRole.localeCompare(b.roofRole)
+  ));
+  return {
+    rows,
+    totals: {
+      count: rows.reduce((sum, row) => sum + row.count, 0),
+      lengthM: rows.reduce((sum, row) => sum + row.lengthM, 0),
+    },
+  };
+}
+
+export function computeMemberLengthM(state, member) {
+  const startNode = getNode(state, member.startNodeId);
+  const endNode = getNode(state, member.endNodeId);
+  if (!startNode || !endNode) return 0;
+  const dx = finiteNumber(endNode.x, 0) - finiteNumber(startNode.x, 0);
+  const dy = finiteNumber(endNode.y, 0) - finiteNumber(startNode.y, 0);
+  const levelZ = getLevelZ(state, member.levelId);
+  const startZ = member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.startZ))
+    ? Number(member.startZ)
+    : levelZ;
+  const endZ = member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.endZ))
+    ? Number(member.endZ)
+    : levelZ;
+  return Math.hypot(dx, dy, endZ - startZ) / 1000;
 }
 
 export function computeSurfaceWindProjectionM2(state, surface) {
@@ -209,6 +260,15 @@ function surfacePlanSegments(surface) {
 function getLevelZ(state, levelId) {
   const level = (state.levels || []).find(l => l.id === levelId);
   return finiteNumber(level?.z, 0);
+}
+
+function getNode(state, nodeId) {
+  return (state.nodes || []).find(node => node.id === nodeId) || null;
+}
+
+function roofRoleSortIndex(roofRole) {
+  const index = ROOF_MEMBER_ROLE_ORDER.indexOf(roofRole);
+  return index >= 0 ? index : ROOF_MEMBER_ROLE_ORDER.length;
 }
 
 function getStoryHeight(state, levelId, topLevelId) {
