@@ -990,6 +990,53 @@ export class AppState {
     return walls;
   }
 
+  addEavesFromRoofGroup(roofGroupId, options = {}) {
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    if (!surfaces.length) return [];
+
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const depth = sanitizePositiveNumber(options.depth, 600);
+    const eaves = [];
+    for (const surface of surfaces) {
+      const points = roofPlanPoints(surface);
+      if (points.length < 3) continue;
+      for (const edge of this._roofPlanEdges(surface)) {
+        if (this._hasSharedRoofGroupEdge(surface, edge.start, edge.end, nodeTolerance)) continue;
+        if (this._hasEaveOnInnerSegment(surface.levelId, edge.start, edge.end, nodeTolerance)) continue;
+        const inward = edgeInwardNormal(edge.start, edge.end, points);
+        const outward = { x: -inward.x, y: -inward.y };
+        const outerStart = {
+          x: edge.start.x + outward.x * depth,
+          y: edge.start.y + outward.y * depth,
+        };
+        const outerEnd = {
+          x: edge.end.x + outward.x * depth,
+          y: edge.end.y + outward.y * depth,
+        };
+        const eave = this.addSurfacePolygon([
+          edge.start,
+          edge.end,
+          outerEnd,
+          outerStart,
+        ], {
+          type: 'eave',
+          levelId: surface.levelId,
+          topLevelId: surface.topLevelId || surface.levelId,
+          loadDirection: surface.loadDirection,
+          roofSlope: surface.roofSlope,
+          roofDirection: surface.roofDirection,
+          roofBaseOffset: surface.roofBaseOffset,
+          includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
+          includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
+          unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+          sectionName: options.sectionName || this.getDefaultSectionName('surface', 'eave'),
+        });
+        eaves.push(eave);
+      }
+    }
+    return eaves;
+  }
+
   listRoofGroups() {
     const groups = new Map();
     for (const surface of this.surfaces) {
@@ -1067,6 +1114,17 @@ export class AppState {
         tolerance
       )
     ));
+  }
+
+  _hasEaveOnInnerSegment(levelId, start, end, tolerance = 1) {
+    return this.surfaces.some(surface => {
+      if (!isEaveSurfaceType(surface.type) || surface.levelId !== levelId) return false;
+      const points = roofPlanPoints(surface);
+      return points.some((point, index) => {
+        const next = points[(index + 1) % points.length];
+        return sameSegment(start, end, point, next, tolerance);
+      });
+    });
   }
 
   _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
@@ -1992,6 +2050,10 @@ export function isRoofSurfaceType(type) {
 
 export function isGableWallSurfaceType(type) {
   return type === 'gableWall';
+}
+
+export function isEaveSurfaceType(type) {
+  return type === 'eave';
 }
 
 export function isSlopedSurfaceType(type) {
