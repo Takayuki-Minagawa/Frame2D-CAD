@@ -2,6 +2,7 @@
 
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
+import { isSlopedSurfaceType } from './state.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
@@ -489,7 +490,7 @@ export class ToolManager {
   }
 
   _getRoofOptions() {
-    if (this.state.surfaceDraftType !== 'roof') return {};
+    if (!isSlopedSurfaceType(this.state.surfaceDraftType)) return {};
     return {
       roofSlope: this.state.surfaceDraftRoofSlope,
       roofDirection: this.state.surfaceDraftRoofDirection,
@@ -503,7 +504,7 @@ export class ToolManager {
     const mode = this._getEffectiveSurfaceMode();
     const type = this.state.surfaceDraftType;
     const isWallType = type === 'wall' || type === 'exteriorWall';
-    const isRoofType = type === 'roof';
+    const isSlopedType = isSlopedSurfaceType(type);
 
     if (mode === 'polyline') {
       this._surfaceStart = null;
@@ -538,7 +539,7 @@ export class ToolManager {
         this.onUpdate();
         return;
       }
-    } else if (isRoofType) {
+    } else if (isSlopedType) {
       topLevelId = this.state.activeLayerId || 'L0';
     } else {
       topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
@@ -646,7 +647,7 @@ export class ToolManager {
     if (this._surfacePolyline.length < 3) return;
     const type = this.state.surfaceDraftType;
     const isWallType = type === 'wall' || type === 'exteriorWall';
-    const isRoofType = type === 'roof';
+    const isSlopedType = isSlopedSurfaceType(type);
 
     let topLevelId;
     if (isWallType) {
@@ -659,7 +660,7 @@ export class ToolManager {
         this.onUpdate();
         return;
       }
-    } else if (isRoofType) {
+    } else if (isSlopedType) {
       topLevelId = this.state.activeLayerId || 'L0';
     } else {
       topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';

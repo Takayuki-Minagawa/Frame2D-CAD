@@ -51,7 +51,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 7);
+  assert.equal(data.schemaVersion, 8);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -84,7 +84,7 @@ test('roof plane fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 7);
+  assert.equal(data.schemaVersion, 8);
   assert.equal(data.surfaces[0].type, 'roof');
   assert.equal(data.surfaces[0].roofSlope, 0.25);
   assert.equal(data.surfaces[0].roofDirection, 'yMinus');
@@ -145,6 +145,46 @@ test('roof group ids default, serialize, and list by group', () => {
   });
   assert.equal(restored.surfaces[0].roofGroupId, 'RG1');
   assert.equal(restored.getRoofGroupSurfaces('RG1').length, 4);
+});
+
+test('eave surfaces use sloped geometry without roof grouping', () => {
+  const source = new AppState();
+  const eave = source.addSurfaceRect(0, 0, 3000, 1000, {
+    type: 'eave',
+    levelId: 'L1',
+    roofSlope: 0.2,
+    roofDirection: 'yPlus',
+    roofBaseOffset: -300,
+    roofGroupId: 'Ignored',
+    includeWind: true,
+    includeSeismicWeight: true,
+    unitWeight: 250,
+  });
+
+  assert.equal(eave.sectionName, '_E');
+  assert.equal(eave.roofGroupId, undefined);
+  assert.equal(Number(computeSurfaceWeightAreaM2(source, eave).toFixed(3)), 3.059);
+  assert.deepEqual(computeSurfaceWindProjectionM2(source, eave), {
+    xAreaM2: 0,
+    yAreaM2: 0.6,
+  });
+
+  const data = source.toJSON();
+  assert.equal(data.schemaVersion, 8);
+  assert.equal(data.surfaces[0].type, 'eave');
+  assert.equal(data.surfaces[0].roofSlope, 0.2);
+  assert.equal(data.surfaces[0].roofDirection, 'yPlus');
+  assert.equal(data.surfaces[0].roofBaseOffset, -300);
+  assert.equal(Object.hasOwn(data.surfaces[0], 'roofGroupId'), false);
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.equal(restored.surfaces[0].type, 'eave');
+  assert.equal(restored.surfaces[0].sectionName, '_E');
+  assert.equal(restored.surfaces[0].roofSlope, 0.2);
+  assert.equal(restored.surfaces[0].roofDirection, 'yPlus');
+  assert.equal(restored.surfaces[0].includeWind, true);
+  assert.equal(restored.surfaces[0].includeSeismicWeight, true);
 });
 
 test('non-roof surfaces omit roof-only fields', () => {
@@ -320,7 +360,7 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(members[0].endZ, 4500);
 
   const data = state.toJSON();
-  assert.equal(data.schemaVersion, 7);
+  assert.equal(data.schemaVersion, 8);
   assert.equal(data.members[0].geometryMode, 'explicit3d');
   assert.equal(data.members[0].startZ, 3000);
   assert.equal(data.members[0].endZ, 4500);

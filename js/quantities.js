@@ -1,7 +1,7 @@
 // quantities.js - projected wind areas and seismic weight summaries
 
 import { roofActualAreaM2, roofProjectionAreasM2 } from './roof-geometry.js';
-import { isRoofSurfaceType, isWallSurfaceType } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 const MM2_TO_M2 = 1 / 1000000;
 
@@ -51,7 +51,7 @@ export function computeQuantitySummary(state) {
   for (const surface of state.surfaces || []) {
     const levelSummary = ensureLevel(surface.levelId);
 
-    if ((isWallSurfaceType(surface.type) || isRoofSurfaceType(surface.type)) && surface.includeWind !== false) {
+    if ((isWallSurfaceType(surface.type) || isSlopedSurfaceType(surface.type)) && surface.includeWind !== false) {
       const wind = computeSurfaceWindProjectionM2(state, surface);
       levelSummary.windXAreaM2 += wind.xAreaM2;
       levelSummary.windYAreaM2 += wind.yAreaM2;
@@ -73,7 +73,7 @@ export function computeQuantitySummary(state) {
 }
 
 export function computeSurfaceWindProjectionM2(state, surface) {
-  if (isRoofSurfaceType(surface.type)) return roofProjectionAreasM2(state, surface);
+  if (isSlopedSurfaceType(surface.type)) return roofProjectionAreasM2(state, surface);
   if (!isWallSurfaceType(surface.type)) return { xAreaM2: 0, yAreaM2: 0 };
   const { height } = resolveSurfaceVerticalRange(state, surface);
   if (height <= 0) return { xAreaM2: 0, yAreaM2: 0 };
@@ -111,7 +111,7 @@ export function computeSurfaceSeismicWeightN(state, surface) {
 }
 
 export function computeSurfaceWeightAreaM2(state, surface) {
-  if (isRoofSurfaceType(surface.type)) return roofActualAreaM2(surface);
+  if (isSlopedSurfaceType(surface.type)) return roofActualAreaM2(surface);
   if (isWallSurfaceType(surface.type)) {
     const { height } = resolveSurfaceVerticalRange(state, surface);
     if (height <= 0) return 0;

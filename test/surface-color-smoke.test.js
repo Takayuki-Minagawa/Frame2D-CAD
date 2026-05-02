@@ -18,6 +18,7 @@ test('surface color helpers resolve explicit and fallback colors', () => {
   assert.equal(defaultSurfaceColorForType('wall'), '#b57a6b');
   assert.equal(defaultSurfaceColorForType('exteriorWall'), '#b57a6b');
   assert.equal(defaultSurfaceColorForType('roof'), '#8b6f47');
+  assert.equal(defaultSurfaceColorForType('eave'), '#4f9a8a');
 
   assert.equal(resolveSurfaceColor({ type: 'floor', color: '#224466' }), '#224466');
   assert.equal(resolveSurfaceColor({ type: 'floor', color: '' }), '#67a9cf');

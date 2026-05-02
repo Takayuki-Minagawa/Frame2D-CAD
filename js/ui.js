@@ -1,7 +1,7 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t } from './i18n.js';
-import { isWallSurfaceType } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 import {
   computeQuantitySummary,
   computeSurfaceWeightAreaM2,
@@ -174,7 +174,7 @@ export class UI {
     const type = this.state.surfaceDraftType;
     const isFloor = type === 'floor';
     const isWall = isWallSurfaceType(type);
-    const isRoof = type === 'roof';
+    const isSloped = isSlopedSurfaceType(type);
     const modeLabel = document.getElementById('label-surface-mode');
     const loadDirLabel = document.getElementById('label-load-direction');
     const topLayerLabel = document.getElementById('label-top-layer');
@@ -184,15 +184,15 @@ export class UI {
     const roofSlopeLabel = document.getElementById('label-roof-slope');
     const roofDirectionLabel = document.getElementById('label-roof-direction');
     const roofBaseOffsetLabel = document.getElementById('label-roof-base-offset');
-    if (modeLabel) modeLabel.style.display = (isFloor || isRoof) ? '' : 'none';
+    if (modeLabel) modeLabel.style.display = (isFloor || isSloped) ? '' : 'none';
     if (loadDirLabel) loadDirLabel.style.display = isFloor ? '' : 'none';
     if (topLayerLabel) topLayerLabel.style.display = 'none';
     if (wallHeightLabel) wallHeightLabel.style.display = isWall ? '' : 'none';
     if (wallBottomLabel) wallBottomLabel.style.display = isWall ? '' : 'none';
     if (wallTopLabel) wallTopLabel.style.display = isWall ? '' : 'none';
-    if (roofSlopeLabel) roofSlopeLabel.style.display = isRoof ? '' : 'none';
-    if (roofDirectionLabel) roofDirectionLabel.style.display = isRoof ? '' : 'none';
-    if (roofBaseOffsetLabel) roofBaseOffsetLabel.style.display = isRoof ? '' : 'none';
+    if (roofSlopeLabel) roofSlopeLabel.style.display = isSloped ? '' : 'none';
+    if (roofDirectionLabel) roofDirectionLabel.style.display = isSloped ? '' : 'none';
+    if (roofBaseOffsetLabel) roofBaseOffsetLabel.style.display = isSloped ? '' : 'none';
     this._syncWallHeightInputs(false);
     this._syncRoofInputs();
   }
@@ -481,7 +481,8 @@ export class UI {
 
     const isWall = isWallSurfaceType(surface.type);
     const isRoof = surface.type === 'roof';
-    const isWindSurface = isWall || isRoof;
+    const isSloped = isSlopedSurfaceType(surface.type);
+    const isWindSurface = isWall || isSloped;
     const area = computeSurfaceWeightAreaM2(this.state, surface);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
     const typeLabel = t(surface.type);
@@ -552,7 +553,7 @@ export class UI {
         </div>
       </div>
       ` : ''}
-      ${isRoof ? `
+      ${isSloped ? `
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('roofSlope')}</label>
@@ -572,10 +573,12 @@ export class UI {
           <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
         </select>
       </div>
+      ${isRoof ? `
       <div class="prop-group">
         <label>${t('roofGroupId')}</label>
         <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || 'RG1')}">
       </div>
+      ` : ''}
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('windAreaX')} (m²)</label>
@@ -586,6 +589,7 @@ export class UI {
           <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
         </div>
       </div>
+      ${isRoof ? `
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
       </div>
@@ -599,6 +603,7 @@ export class UI {
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
       </div>
+      ` : ''}
       ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
