@@ -512,6 +512,40 @@ test('roof joint generation classifies valleys and respects roof groups', () => 
   assert.equal(members[0].endZ, 2800);
 });
 
+test('roof joint generation classifies concave notch shared edges from owning interiors', () => {
+  const state = new AppState();
+  state.addSurfacePolygon([
+    { x: 0, y: 0 },
+    { x: 5000, y: 0 },
+    { x: 5000, y: 4000 },
+    { x: 3500, y: 4000 },
+    { x: 3500, y: 1000 },
+    { x: 1500, y: 1000 },
+    { x: 1500, y: 4000 },
+    { x: 0, y: 4000 },
+  ], {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'yPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(1500, 1000, 3500, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.1,
+    roofDirection: 'yMinus',
+    roofGroupId: 'Main',
+  });
+
+  const members = state.addRoofJointMembers('Main');
+  assert.equal(members.length, 1);
+  assert.equal(members[0].roofRole, 'roofRidge');
+  assert.equal(members[0].geometryMode, 'explicit3d');
+  assert.equal(members[0].startZ, 3100);
+  assert.equal(members[0].endZ, 3100);
+});
+
 test('roof joint classification samples inward from the shared roof edge', async () => {
   const stateSource = await readFile(new URL('../js/state.js', import.meta.url), 'utf8');
 
