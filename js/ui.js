@@ -1,6 +1,13 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t } from './i18n.js';
+import { isWallSurfaceType } from './state.js';
+import {
+  computeQuantitySummary,
+  computeSurfaceWeightAreaM2,
+  computeSurfaceWindProjectionM2,
+  resolveSurfaceVerticalRange,
+} from './quantities.js';
 
 export class UI {
   constructor(state, callbacks) {
@@ -46,6 +53,7 @@ export class UI {
     // Active layer
     document.getElementById('sel-active-layer').addEventListener('change', e => {
       this.state.activeLayerId = e.target.value;
+      this._syncWallHeightInputs(false);
       this.callbacks.onLayerChange?.(this.state.activeLayerId);
     });
 
@@ -68,6 +76,20 @@ export class UI {
     document.getElementById('sel-top-layer').addEventListener('change', e => {
       this.state.surfaceDraftTopLayerId = e.target.value;
     });
+    document.getElementById('sel-wall-height-mode').addEventListener('change', e => {
+      this.state.surfaceDraftHeightMode = e.target.value;
+      this._syncWallHeightInputs(true);
+    });
+    const onWallOffsetChange = () => {
+      const bottomEl = document.getElementById('input-wall-bottom-offset');
+      const topEl = document.getElementById('input-wall-top-offset');
+      this.state.surfaceDraftHeightMode = 'custom';
+      this.state.surfaceDraftBottomOffset = parseFloat(bottomEl?.value || '0');
+      this.state.surfaceDraftTopOffset = parseFloat(topEl?.value || '1200');
+      this._syncWallHeightInputs(false);
+    };
+    document.getElementById('input-wall-bottom-offset').addEventListener('change', onWallOffsetChange);
+    document.getElementById('input-wall-top-offset').addEventListener('change', onWallOffsetChange);
 
     // Load type
     document.getElementById('sel-load-type').addEventListener('change', e => {
@@ -132,12 +154,49 @@ export class UI {
   _updateSurfaceSubOptions() {
     const type = this.state.surfaceDraftType;
     const isFloor = type === 'floor';
+    const isWall = isWallSurfaceType(type);
     const modeLabel = document.getElementById('label-surface-mode');
     const loadDirLabel = document.getElementById('label-load-direction');
     const topLayerLabel = document.getElementById('label-top-layer');
+    const wallHeightLabel = document.getElementById('label-wall-height-mode');
+    const wallBottomLabel = document.getElementById('label-wall-bottom-offset');
+    const wallTopLabel = document.getElementById('label-wall-top-offset');
     if (modeLabel) modeLabel.style.display = isFloor ? '' : 'none';
     if (loadDirLabel) loadDirLabel.style.display = isFloor ? '' : 'none';
     if (topLayerLabel) topLayerLabel.style.display = 'none';
+    if (wallHeightLabel) wallHeightLabel.style.display = isWall ? '' : 'none';
+    if (wallBottomLabel) wallBottomLabel.style.display = isWall ? '' : 'none';
+    if (wallTopLabel) wallTopLabel.style.display = isWall ? '' : 'none';
+    this._syncWallHeightInputs(false);
+  }
+
+  _syncWallHeightInputs(applyPreset) {
+    const modeEl = document.getElementById('sel-wall-height-mode');
+    const bottomEl = document.getElementById('input-wall-bottom-offset');
+    const topEl = document.getElementById('input-wall-top-offset');
+    if (!modeEl || !bottomEl || !topEl) return;
+
+    const mode = this.state.surfaceDraftHeightMode || 'full';
+    modeEl.value = mode;
+
+    if (applyPreset || mode !== 'custom') {
+      const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+      const offsets = this.state.getSurfaceHeightOffsets({
+        heightMode: mode,
+        levelId: this.state.activeLayerId,
+        topLevelId,
+        bottomOffset: this.state.surfaceDraftBottomOffset,
+        topOffset: this.state.surfaceDraftTopOffset,
+      });
+      this.state.surfaceDraftBottomOffset = offsets.bottomOffset;
+      this.state.surfaceDraftTopOffset = offsets.topOffset;
+    }
+
+    bottomEl.value = String(Math.round(this.state.surfaceDraftBottomOffset || 0));
+    topEl.value = String(Math.round(this.state.surfaceDraftTopOffset || 0));
+    const isCustom = mode === 'custom';
+    bottomEl.disabled = !isCustom;
+    topEl.disabled = !isCustom;
   }
 
   refreshLayerSelectors() {
@@ -164,9 +223,11 @@ export class UI {
     if (selSurfaceMode) selSurfaceMode.value = this.state.surfaceDraftMode;
     const selLoadDir = document.getElementById('sel-load-direction');
     if (selLoadDir) selLoadDir.value = this.state.surfaceDraftLoadDir;
+    this._syncWallHeightInputs(false);
   }
 
   updatePropertyPanel() {
+    this._renderQuantitySummary();
     const container = document.getElementById('prop-content');
 
     if (this.state.selectedSupportId) {
@@ -378,18 +439,23 @@ export class UI {
       return;
     }
 
-    const isExteriorWall = surface.type === 'exteriorWall';
-    const area = Math.round(Math.abs((surface.x2 - surface.x1) * (surface.y2 - surface.y1)) / 1000000);
+    const isWall = isWallSurfaceType(surface.type);
+    const area = computeSurfaceWeightAreaM2(this.state, surface);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
     const typeLabel = t(surface.type);
     const level = this.state.levels.find(l => l.id === surface.levelId);
     const levelLabel = level ? `${level.name} (z=${level.z})` : surface.levelId;
+    const range = resolveSurfaceVerticalRange(this.state, surface);
+    const wind = computeSurfaceWindProjectionM2(this.state, surface);
     const sectionDefs = this.state.listSections('surface', surface.type);
     const sectionOptions = sectionDefs.length > 0
       ? sectionDefs.map(s =>
         `<option value="${escapeHtml(s.name)}" ${s.name === surface.sectionName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
       ).join('')
       : `<option value="${escapeHtml(surface.sectionName || '')}" selected>${escapeHtml(surface.sectionName || '-')}</option>`;
+    const heightModeOptions = ['full', 'waist', 'hanging', 'custom']
+      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t(`wallHeight${capitalize(mode)}`)}</option>`)
+      .join('');
 
     container.innerHTML = `
       <div class="prop-group">
@@ -414,27 +480,81 @@ export class UI {
         </select>
       </div>
       ` : ''}
+      ${isWall ? `
+      <div class="prop-group">
+        <label>${t('wallHeightMode')}</label>
+        <select id="prop-wall-height-mode">${heightModeOptions}</select>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('wallBottomOffset')} (mm)</label>
+          <input type="number" id="prop-wall-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
+        </div>
+        <div class="prop-group">
+          <label>${t('wallTopOffset')} (mm)</label>
+          <input type="number" id="prop-wall-top-offset" value="${Math.round(surface.topOffset || 0)}" step="100">
+        </div>
+      </div>
+      <div class="prop-group">
+        <label>${t('wallVerticalRange')}</label>
+        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('windAreaX')} (m²)</label>
+          <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
+        </div>
+        <div class="prop-group">
+          <label>${t('windAreaY')} (m²)</label>
+          <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
+        </div>
+      </div>
+      ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
         <input type="color" value="${surface.color}" disabled>
       </div>
-      ${!isExteriorWall ? `
       <div class="prop-group">
         <label>${t('propArea')}</label>
-        <input type="text" value="${area} m²" disabled>
+        <input type="text" value="${formatNumber(area)} m²" disabled>
       </div>
       <div class="prop-group">
         <label>${t('propVertices')}</label>
         <input type="text" value="${vertices}" disabled>
       </div>
+      <div class="prop-group">
+        <label>${t('unitWeight')} (${t('weightUnit_surface')})</label>
+        <input type="number" id="prop-surface-unit-weight" value="${surface.unitWeight || 0}" step="100">
+      </div>
+      ${isWall ? `
+      <div class="prop-group">
+        <label class="prop-check-label">
+          <input type="checkbox" id="prop-surface-include-wind" ${surface.includeWind !== false ? 'checked' : ''}>
+          <span>${t('includeWind')}</span>
+        </label>
+      </div>
       ` : ''}
+      <div class="prop-group">
+        <label class="prop-check-label">
+          <input type="checkbox" id="prop-surface-include-seismic" ${surface.includeSeismicWeight ? 'checked' : ''}>
+          <span>${t('includeSeismicWeight')}</span>
+        </label>
+      </div>
     `;
 
-    const bind = (id, key) => {
+    const bind = (id, key, transform = v => v) => {
       const el = document.getElementById(id);
       if (!el) return;
       el.addEventListener('change', () => {
-        this.state.updateSurface(surface.id, { [key]: el.value });
+        this.state.updateSurface(surface.id, { [key]: transform(el.value) });
+        this.callbacks.onPropertyChange?.(surface.id);
+      });
+    };
+    const bindChecked = (id, key) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        this.state.updateSurface(surface.id, { [key]: el.checked });
         this.callbacks.onPropertyChange?.(surface.id);
       });
     };
@@ -442,6 +562,12 @@ export class UI {
     bind('prop-surface-section', 'sectionName');
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
+    bind('prop-wall-height-mode', 'heightMode');
+    bind('prop-wall-bottom-offset', 'bottomOffset', parseFloat);
+    bind('prop-wall-top-offset', 'topOffset', parseFloat);
+    bind('prop-surface-unit-weight', 'unitWeight', parseFloat);
+    bindChecked('prop-surface-include-wind', 'includeWind');
+    bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
   }
 
   _renderLoadProperties(container) {
@@ -639,6 +765,51 @@ export class UI {
     });
   }
 
+  _renderQuantitySummary() {
+    const container = document.getElementById('quantity-content');
+    if (!container) return;
+    const summary = computeQuantitySummary(this.state);
+    const rows = summary.levels
+      .filter(row => row.windXAreaM2 || row.windYAreaM2 || row.seismicWeightN)
+      .map(row => `
+        <tr>
+          <td>${escapeHtml(row.label)}</td>
+          <td>${formatNumber(row.windXAreaM2)}</td>
+          <td>${formatNumber(row.windYAreaM2)}</td>
+          <td>${formatNumber(row.seismicWeightN)}</td>
+        </tr>
+      `).join('');
+
+    container.innerHTML = `
+      <table class="quantity-table">
+        <thead>
+          <tr>
+            <th>${t('quantityLevel')}</th>
+            <th>${t('windAreaX')}</th>
+            <th>${t('windAreaY')}</th>
+            <th>${t('seismicWeight')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || `
+          <tr>
+            <td>-</td>
+            <td>0</td>
+            <td>0</td>
+            <td>0</td>
+          </tr>`}
+          <tr>
+            <th>${t('quantityTotal')}</th>
+            <th>${formatNumber(summary.totals.windXAreaM2)}</th>
+            <th>${formatNumber(summary.totals.windYAreaM2)}</th>
+            <th>${formatNumber(summary.totals.seismicWeightN)}</th>
+          </tr>
+        </tbody>
+      </table>
+      <p class="quantity-note">${t('quantityNoWeight')}</p>
+    `;
+  }
+
   updateStatusBar() {
     const snap = document.getElementById('status-snap');
     if (snap) snap.textContent = this.state.settings.snap ? t('snapOn') : t('snapOff');
@@ -668,4 +839,17 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function formatNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  if (Math.abs(n) >= 100) return n.toFixed(0);
+  if (Math.abs(n) >= 10) return n.toFixed(1);
+  return n.toFixed(2);
+}
+
+function capitalize(value) {
+  const text = String(value || '');
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 }

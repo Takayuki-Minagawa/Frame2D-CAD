@@ -473,10 +473,19 @@ export class ToolManager {
   }
 
   _getAutoTopLevelId() {
-    const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
-    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLayerId);
-    if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) return null;
-    return sortedLevels[activeIdx + 1].id;
+    return this.state.getNextLevelId(this.state.activeLayerId);
+  }
+
+  _getWallHeightOptions(topLevelId) {
+    const type = this.state.surfaceDraftType;
+    if (type !== 'wall' && type !== 'exteriorWall') return {};
+    return this.state.getSurfaceHeightOffsets({
+      heightMode: this.state.surfaceDraftHeightMode,
+      levelId: this.state.activeLayerId || 'L0',
+      topLevelId,
+      bottomOffset: this.state.surfaceDraftBottomOffset,
+      topOffset: this.state.surfaceDraftTopOffset,
+    });
   }
 
   _surfaceDown(e) {
@@ -525,11 +534,13 @@ export class ToolManager {
     this.history.save();
 
     let surface;
+    const heightOptions = this._getWallHeightOptions(topLevelId);
     if (mode === 'line') {
       surface = this.state.addSurfaceLine(start.x, start.y, end.x, end.y, {
         type: type || 'wall',
         levelId: this.state.activeLayerId || 'L0',
         topLevelId,
+        ...heightOptions,
       });
     } else {
       surface = this.state.addSurfaceRect(start.x, start.y, end.x, end.y, {
@@ -537,6 +548,7 @@ export class ToolManager {
         levelId: this.state.activeLayerId || 'L0',
         topLevelId,
         loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
+        ...heightOptions,
       });
     }
     this.state.selectedSurfaceId = surface.id;
@@ -641,6 +653,7 @@ export class ToolManager {
       levelId: this.state.activeLayerId || 'L0',
       topLevelId,
       loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
+      ...this._getWallHeightOptions(topLevelId),
     });
     if (surface) {
       this.state.selectedSurfaceId = surface.id;

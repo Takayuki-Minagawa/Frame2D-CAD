@@ -306,7 +306,7 @@ export class Canvas2D {
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = isSelected ? 3 : 2;
-    ctx.setLineDash([4, 3]);
+    ctx.setLineDash(wallDash(s));
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
@@ -358,7 +358,7 @@ export class Canvas2D {
       ctx.fillStyle = toRgba(surfaceColor, isWall ? 0.22 : 0.26);
       ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
       ctx.lineWidth = isSelected ? 2.5 : 1.5;
-      if (isWall) ctx.setLineDash([4, 3]);
+      if (isWall) ctx.setLineDash(wallDash(s));
       ctx.beginPath();
       ctx.rect(sx, sy, sw, sh);
       ctx.fill();
@@ -379,7 +379,7 @@ export class Canvas2D {
     ctx.fillStyle = toRgba(surfaceColor, isWall ? 0.22 : 0.26);
     ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    if (isWall) ctx.setLineDash([4, 3]);
+    if (isWall) ctx.setLineDash(wallDash(s));
     ctx.beginPath();
     ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
     for (let i = 1; i < screenPoints.length; i++) {
@@ -412,6 +412,7 @@ export class Canvas2D {
     ctx.lineWidth = isSelected ? 7 : 6;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
+    if (s.heightMode && s.heightMode !== 'full') ctx.setLineDash([10, 4]);
     ctx.beginPath();
     ctx.moveTo(screenOff[0].x, screenOff[0].y);
     for (let i = 1; i < screenOff.length; i++) {
@@ -423,7 +424,7 @@ export class Canvas2D {
     // Thin dashed line at original polygon position
     ctx.strokeStyle = isSelected ? selectedColor : surfaceColor;
     ctx.lineWidth = isSelected ? 2 : 1;
-    ctx.setLineDash([4, 3]);
+    ctx.setLineDash(wallDash(s));
     ctx.beginPath();
     ctx.moveTo(screenOrig[0].x, screenOrig[0].y);
     for (let i = 1; i < screenOrig.length; i++) {
@@ -707,6 +708,10 @@ function toRgba(hex, alpha) {
   const g = (n >> 8) & 255;
   const b = n & 255;
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function wallDash(surface) {
+  return surface.heightMode && surface.heightMode !== 'full' ? [8, 3, 2, 3] : [4, 3];
 }
 
 function polygonBounds(points) {

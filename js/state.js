@@ -17,13 +17,14 @@ const DEFAULT_SPRING_DEFINITIONS = [
 const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(s => s.name));
 const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
 const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
+const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
 const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
 };
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 3;
+    this.schemaVersion = 4;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -60,6 +61,9 @@ export class AppState {
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';
     this.surfaceDraftTopLayerId = 'L1';
+    this.surfaceDraftHeightMode = 'full';
+    this.surfaceDraftBottomOffset = 0;
+    this.surfaceDraftTopOffset = 1200;
     this.loadDraftType = 'areaLoad';
 
     // Counters for ID generation
@@ -113,6 +117,64 @@ export class AppState {
   getDefaultSection(target, type) {
     const name = this.getDefaultSectionName(target, type);
     return name ? this.getSection(target, type, name) : null;
+  }
+
+  getLevelZ(levelId) {
+    const level = this.levels.find(l => l.id === levelId);
+    return Number.isFinite(Number(level?.z)) ? Number(level.z) : 0;
+  }
+
+  getNextLevelId(levelId = this.activeLayerId) {
+    const sortedLevels = [...this.levels].sort((a, b) => a.z - b.z);
+    const activeIdx = sortedLevels.findIndex(l => l.id === levelId);
+    if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) return null;
+    return sortedLevels[activeIdx + 1].id;
+  }
+
+  getStoryHeight(levelId = this.activeLayerId, topLevelId = null) {
+    const resolvedTopLevelId = topLevelId || this.getNextLevelId(levelId);
+    if (!resolvedTopLevelId) return 0;
+    return Math.max(0, this.getLevelZ(resolvedTopLevelId) - this.getLevelZ(levelId));
+  }
+
+  getSurfaceHeightOffsets(options = {}) {
+    const heightMode = normalizeSurfaceHeightMode(options.heightMode);
+    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLayerId || levelId;
+    const storyHeight = this.getStoryHeight(levelId, topLevelId);
+
+    if (heightMode === 'waist') {
+      return {
+        heightMode,
+        bottomOffset: 0,
+        topOffset: Math.min(1200, storyHeight || 1200),
+      };
+    }
+
+    if (heightMode === 'hanging') {
+      const topOffset = storyHeight || 0;
+      return {
+        heightMode,
+        bottomOffset: Math.max(0, topOffset - 600),
+        topOffset,
+      };
+    }
+
+    if (heightMode === 'custom') {
+      const bottomOffset = sanitizeNumber(options.bottomOffset, this.surfaceDraftBottomOffset || 0);
+      const topOffset = sanitizeNumber(options.topOffset, this.surfaceDraftTopOffset || Math.max(1200, storyHeight));
+      return {
+        heightMode,
+        bottomOffset,
+        topOffset: topOffset > bottomOffset ? topOffset : bottomOffset + 1,
+      };
+    }
+
+    return {
+      heightMode: 'full',
+      bottomOffset: 0,
+      topOffset: storyHeight || 0,
+    };
   }
 
   addSection(entry) {
@@ -472,19 +534,42 @@ export class AppState {
   }
 
   _normalizeLoadedSurface(raw) {
+    const type = raw.type || 'floor';
+    const levelId = raw.levelId || this.activeLayerId || 'L0';
+    const topLevelId = raw.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
     const surface = {
       ...raw,
-      type: raw.type || 'floor',
+      type,
       sectionName: sanitizeText(raw.sectionName) || '',
-      levelId: raw.levelId || this.activeLayerId || 'L0',
-      topLevelId: raw.topLevelId || this.surfaceDraftTopLayerId || 'L1',
+      levelId,
+      topLevelId,
       loadDirection: raw.loadDirection || 'twoWay',
       color: raw.color || (raw.type === 'wall' || raw.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
       shape: raw.shape || 'rect',
       points: Array.isArray(raw.points) ? raw.points.map(p => ({ ...p })) : null,
+      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     return surface;
+  }
+
+  _normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options = {}) {
+    const isWallType = isWallSurfaceType(type);
+    const offsets = this.getSurfaceHeightOffsets({
+      heightMode: options.heightMode || (isWallType ? 'full' : 'custom'),
+      levelId,
+      topLevelId,
+      bottomOffset: options.bottomOffset,
+      topOffset: options.topOffset,
+    });
+    return {
+      heightMode: isWallType ? offsets.heightMode : 'custom',
+      bottomOffset: isWallType ? offsets.bottomOffset : sanitizeNumber(options.bottomOffset, 0),
+      topOffset: isWallType ? offsets.topOffset : sanitizeNumber(options.topOffset, 0),
+      includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : isWallType,
+      includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
+      unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+    };
   }
 
   // --- Nodes ---
@@ -672,12 +757,15 @@ export class AppState {
 
   addSurfaceRect(x1, y1, x2, y2, options = {}) {
     const id = this.nextSurfaceId();
+    const type = options.type || 'floor';
+    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
     const surface = {
       id,
-      type: options.type || 'floor', // floor | wall | exteriorWall
+      type, // floor | wall | exteriorWall
       sectionName: sanitizeText(options.sectionName) || '',
-      levelId: options.levelId || this.activeLayerId || 'L0',
-      topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
+      levelId,
+      topLevelId,
       loadDirection: options.loadDirection || 'twoWay', // x | y | twoWay
       color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
       x1: Math.min(x1, x2),
@@ -686,6 +774,7 @@ export class AppState {
       y2: Math.max(y1, y2),
       points: null,
       shape: 'rect',
+      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -694,17 +783,21 @@ export class AppState {
 
   addSurfaceLine(x1, y1, x2, y2, options = {}) {
     const id = this.nextSurfaceId();
+    const type = options.type || 'wall';
+    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLayerId || levelId;
     const surface = {
       id,
-      type: options.type || 'wall',
+      type,
       sectionName: sanitizeText(options.sectionName) || '',
-      levelId: options.levelId || this.activeLayerId || 'L0',
-      topLevelId: options.topLevelId || 'L1',
+      levelId,
+      topLevelId,
       loadDirection: 'twoWay',
       color: options.color || '#b57a6b',
       x1, y1, x2, y2,
       points: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
       shape: 'line',
+      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -716,12 +809,15 @@ export class AppState {
     const id = this.nextSurfaceId();
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
+    const type = options.type || 'wall';
+    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
     const surface = {
       id,
-      type: options.type || 'wall',
+      type,
       sectionName: sanitizeText(options.sectionName) || '',
-      levelId: options.levelId || this.activeLayerId || 'L0',
-      topLevelId: options.topLevelId || this.surfaceDraftTopLayerId || 'L1',
+      levelId,
+      topLevelId,
       loadDirection: options.loadDirection || 'twoWay',
       color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
       x1: Math.min(...xs),
@@ -730,6 +826,7 @@ export class AppState {
       y2: Math.max(...ys),
       points: points.map(p => ({ x: p.x, y: p.y })),
       shape: 'polygon',
+      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
     };
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
@@ -747,11 +844,42 @@ export class AppState {
     const hasType = hasOwn(patch, 'type');
     const hasSectionName = hasOwn(patch, 'sectionName');
     const hasColor = hasOwn(patch, 'color');
+    const hasHeightMode = hasOwn(patch, 'heightMode');
+    const hasBottomOffset = hasOwn(patch, 'bottomOffset');
+    const hasTopOffset = hasOwn(patch, 'topOffset');
+    const hasUnitWeight = hasOwn(patch, 'unitWeight');
+    const hasIncludeWind = hasOwn(patch, 'includeWind');
+    const hasIncludeSeismicWeight = hasOwn(patch, 'includeSeismicWeight');
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
     }
+    if (hasHeightMode) {
+      patch.heightMode = normalizeSurfaceHeightMode(patch.heightMode);
+    }
+    if (hasBottomOffset) {
+      patch.bottomOffset = sanitizeNumber(patch.bottomOffset, surface.bottomOffset || 0);
+    }
+    if (hasTopOffset) {
+      patch.topOffset = sanitizeNumber(patch.topOffset, surface.topOffset || 0);
+    }
+    if (hasUnitWeight) {
+      patch.unitWeight = sanitizeNonNegativeNumber(patch.unitWeight, surface.unitWeight || 0);
+    }
+    if (hasIncludeWind) {
+      patch.includeWind = !!patch.includeWind;
+    }
+    if (hasIncludeSeismicWeight) {
+      patch.includeSeismicWeight = !!patch.includeSeismicWeight;
+    }
     Object.assign(surface, patch);
+    if (hasHeightMode && surface.heightMode !== 'custom' && isWallSurfaceType(surface.type)) {
+      Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
+    }
+    if (isWallSurfaceType(surface.type) && surface.topOffset <= surface.bottomOffset) {
+      surface.topOffset = surface.bottomOffset + 1;
+      surface.heightMode = 'custom';
+    }
     if (hasType || hasSectionName || hasColor) {
       this._ensureSurfaceSection(surface, surface.sectionName);
     }
@@ -1028,6 +1156,12 @@ export class AppState {
         levelId: s.levelId,
         topLevelId: s.topLevelId,
         loadDirection: s.loadDirection,
+        heightMode: s.heightMode,
+        bottomOffset: s.bottomOffset,
+        topOffset: s.topOffset,
+        includeWind: s.includeWind,
+        includeSeismicWeight: s.includeSeismicWeight,
+        unitWeight: s.unitWeight,
         color: s.color,
         x1: s.x1,
         y1: s.y1,
@@ -1057,10 +1191,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 3;
+    this.schemaVersion = 4;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1122,6 +1256,9 @@ export class AppState {
     this.surfaceDraftType = 'floor';
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';
+    this.surfaceDraftHeightMode = 'full';
+    this.surfaceDraftBottomOffset = 0;
+    this.surfaceDraftTopOffset = 1200;
     this.loadDraftType = 'areaLoad';
 
     // Restore counters
@@ -1210,6 +1347,16 @@ function sanitizePositiveNumber(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function sanitizeNonNegativeNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+function sanitizeNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -1235,6 +1382,15 @@ function defaultColorForSection(target, type) {
     return normalizedType === 'floor' ? '#67a9cf' : '#b57a6b';
   }
   return '#666666';
+}
+
+function normalizeSurfaceHeightMode(value) {
+  const text = sanitizeText(value);
+  return SURFACE_HEIGHT_MODES.has(text) ? text : 'full';
+}
+
+export function isWallSurfaceType(type) {
+  return type === 'wall' || type === 'exteriorWall';
 }
 
 function pointToSegmentDist(px, py, ax, ay, bx, by) {
