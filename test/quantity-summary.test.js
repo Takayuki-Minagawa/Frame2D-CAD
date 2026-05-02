@@ -311,6 +311,55 @@ test('roof slope members are generated along the roof rise direction', () => {
   }
 });
 
+test('roof slope member endpoints split existing roof edge members for node sharing', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofBaseOffset: 200,
+  });
+
+  state.addRoofEdgeMembers(roof.id);
+  const slopeMembers = state.addRoofSlopeMembers(roof.id, { spacing: 1000 });
+  const edgeMembers = state.members.filter(member => member.roofRole === 'roofEdge');
+
+  assert.equal(slopeMembers.length, 3);
+  assert.equal(edgeMembers.length, 10);
+  for (const member of slopeMembers) {
+    for (const nodeId of [member.startNodeId, member.endNodeId]) {
+      const edgeUseCount = edgeMembers.filter(edge => edge.startNodeId === nodeId || edge.endNodeId === nodeId).length;
+      assert.equal(edgeUseCount, 2);
+    }
+  }
+});
+
+test('roof edge members split around existing roof slope endpoints', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofBaseOffset: 200,
+  });
+
+  const slopeMembers = state.addRoofSlopeMembers(roof.id, { spacing: 1000 });
+  const generatedEdges = state.addRoofEdgeMembers(roof.id);
+  const edgeMembers = state.members.filter(member => member.roofRole === 'roofEdge');
+
+  assert.equal(slopeMembers.length, 3);
+  assert.equal(generatedEdges.length, 10);
+  assert.equal(edgeMembers.length, 10);
+  for (const member of slopeMembers) {
+    for (const nodeId of [member.startNodeId, member.endNodeId]) {
+      const edgeUseCount = edgeMembers.filter(edge => edge.startNodeId === nodeId || edge.endNodeId === nodeId).length;
+      assert.equal(edgeUseCount, 2);
+    }
+  }
+});
+
 test('roof slope member generation falls back to a center line for narrow roofs', () => {
   const state = new AppState();
   const roof = state.addSurfaceRect(0, 0, 500, 5000, {
