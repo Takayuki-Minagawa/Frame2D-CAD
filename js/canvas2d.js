@@ -1,6 +1,7 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
+import { roofSlopeArrow } from './roof-geometry.js';
 import { offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 
@@ -334,6 +335,7 @@ export class Canvas2D {
         } else {
           this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
         }
+        if (s.type === 'roof') this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
         continue;
       }
 
@@ -367,6 +369,8 @@ export class Canvas2D {
 
       if (s.type === 'floor') {
         this._drawLoadArrow(ctx, sx, sy, sw, sh, s.loadDirection);
+      } else if (s.type === 'roof') {
+        this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
       }
     }
   }
@@ -394,6 +398,32 @@ export class Canvas2D {
       const bounds = polygonBounds(screenPoints);
       this._drawLoadArrow(ctx, bounds.x, bounds.y, bounds.w, bounds.h, s.loadDirection);
     }
+  }
+
+  _drawRoofSlopeArrow(ctx, surface, selectedColor, isSelected) {
+    const arrow = roofSlopeArrow(surface);
+    if (!arrow) return;
+    const p1 = this.worldToScreen(arrow.x1, arrow.y1);
+    const p2 = this.worldToScreen(arrow.x2, arrow.y2);
+    const color = isSelected ? selectedColor : resolveSurfaceColor(surface);
+    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const head = 7;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = isSelected ? 2.5 : 1.7;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(p2.x, p2.y);
+    ctx.lineTo(p2.x - Math.cos(angle - Math.PI / 6) * head, p2.y - Math.sin(angle - Math.PI / 6) * head);
+    ctx.lineTo(p2.x - Math.cos(angle + Math.PI / 6) * head, p2.y - Math.sin(angle + Math.PI / 6) * head);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   _drawExteriorWallEdges(ctx, points, s, isSelected, selectedColor) {

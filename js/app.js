@@ -237,6 +237,7 @@ function refreshUserDefTypeOptions() {
         { value: 'floor', label: t('floor') },
         { value: 'exteriorWall', label: t('exteriorWall') },
         { value: 'wall', label: t('wall') },
+        { value: 'roof', label: t('roof') },
       ];
   userDefTypeSelect.innerHTML = options
     .map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`)
@@ -264,7 +265,7 @@ function applyUserDefDefaultSectionValues() {
   if (section?.color) {
     userDefColorInput.value = section.color;
   } else if (target === 'surface') {
-    userDefColorInput.value = type === 'floor' ? '#67a9cf' : '#b57a6b';
+    userDefColorInput.value = type === 'floor' ? '#67a9cf' : (type === 'roof' ? '#8b6f47' : '#b57a6b');
   } else {
     userDefColorInput.value = '#666666';
   }

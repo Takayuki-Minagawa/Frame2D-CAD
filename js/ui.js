@@ -98,6 +98,17 @@ export class UI {
     };
     document.getElementById('input-wall-bottom-offset').addEventListener('change', onWallOffsetChange);
     document.getElementById('input-wall-top-offset').addEventListener('change', onWallOffsetChange);
+    document.getElementById('input-roof-slope').addEventListener('change', e => {
+      this.state.surfaceDraftRoofSlope = Math.max(0, readNumberInput(e.target, this.state.surfaceDraftRoofSlope || 0));
+      e.target.value = String(this.state.surfaceDraftRoofSlope);
+    });
+    document.getElementById('sel-roof-direction').addEventListener('change', e => {
+      this.state.surfaceDraftRoofDirection = e.target.value;
+    });
+    document.getElementById('input-roof-base-offset').addEventListener('change', e => {
+      this.state.surfaceDraftRoofBaseOffset = readNumberInput(e.target, this.state.surfaceDraftRoofBaseOffset || 0);
+      e.target.value = String(this.state.surfaceDraftRoofBaseOffset);
+    });
 
     // Load type
     document.getElementById('sel-load-type').addEventListener('change', e => {
@@ -163,19 +174,27 @@ export class UI {
     const type = this.state.surfaceDraftType;
     const isFloor = type === 'floor';
     const isWall = isWallSurfaceType(type);
+    const isRoof = type === 'roof';
     const modeLabel = document.getElementById('label-surface-mode');
     const loadDirLabel = document.getElementById('label-load-direction');
     const topLayerLabel = document.getElementById('label-top-layer');
     const wallHeightLabel = document.getElementById('label-wall-height-mode');
     const wallBottomLabel = document.getElementById('label-wall-bottom-offset');
     const wallTopLabel = document.getElementById('label-wall-top-offset');
-    if (modeLabel) modeLabel.style.display = isFloor ? '' : 'none';
+    const roofSlopeLabel = document.getElementById('label-roof-slope');
+    const roofDirectionLabel = document.getElementById('label-roof-direction');
+    const roofBaseOffsetLabel = document.getElementById('label-roof-base-offset');
+    if (modeLabel) modeLabel.style.display = (isFloor || isRoof) ? '' : 'none';
     if (loadDirLabel) loadDirLabel.style.display = isFloor ? '' : 'none';
     if (topLayerLabel) topLayerLabel.style.display = 'none';
     if (wallHeightLabel) wallHeightLabel.style.display = isWall ? '' : 'none';
     if (wallBottomLabel) wallBottomLabel.style.display = isWall ? '' : 'none';
     if (wallTopLabel) wallTopLabel.style.display = isWall ? '' : 'none';
+    if (roofSlopeLabel) roofSlopeLabel.style.display = isRoof ? '' : 'none';
+    if (roofDirectionLabel) roofDirectionLabel.style.display = isRoof ? '' : 'none';
+    if (roofBaseOffsetLabel) roofBaseOffsetLabel.style.display = isRoof ? '' : 'none';
     this._syncWallHeightInputs(false);
+    this._syncRoofInputs();
   }
 
   _syncWallHeightInputs(applyPreset) {
@@ -207,6 +226,15 @@ export class UI {
     topEl.disabled = !isCustom;
   }
 
+  _syncRoofInputs() {
+    const slopeEl = document.getElementById('input-roof-slope');
+    const directionEl = document.getElementById('sel-roof-direction');
+    const baseOffsetEl = document.getElementById('input-roof-base-offset');
+    if (slopeEl) slopeEl.value = String(this.state.surfaceDraftRoofSlope || 0);
+    if (directionEl) directionEl.value = this.state.surfaceDraftRoofDirection || 'xPlus';
+    if (baseOffsetEl) baseOffsetEl.value = String(this.state.surfaceDraftRoofBaseOffset || 0);
+  }
+
   refreshLayerSelectors() {
     const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
     const layerHtml = sortedLevels
@@ -232,6 +260,7 @@ export class UI {
     const selLoadDir = document.getElementById('sel-load-direction');
     if (selLoadDir) selLoadDir.value = this.state.surfaceDraftLoadDir;
     this._syncWallHeightInputs(false);
+    this._syncRoofInputs();
   }
 
   updatePropertyPanel() {
@@ -448,6 +477,8 @@ export class UI {
     }
 
     const isWall = isWallSurfaceType(surface.type);
+    const isRoof = surface.type === 'roof';
+    const isWindSurface = isWall || isRoof;
     const area = computeSurfaceWeightAreaM2(this.state, surface);
     const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
     const typeLabel = t(surface.type);
@@ -518,6 +549,37 @@ export class UI {
         </div>
       </div>
       ` : ''}
+      ${isRoof ? `
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofSlope')}</label>
+          <input type="number" id="prop-roof-slope" value="${surface.roofSlope || 0}" min="0" step="0.01">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofBaseOffset')} (mm)</label>
+          <input type="number" id="prop-roof-base-offset" value="${Math.round(surface.roofBaseOffset || 0)}" step="100">
+        </div>
+      </div>
+      <div class="prop-group">
+        <label>${t('roofDirection')}</label>
+        <select id="prop-roof-direction">
+          <option value="xPlus" ${surface.roofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
+          <option value="xMinus" ${surface.roofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
+          <option value="yPlus" ${surface.roofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
+          <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
+        </select>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('windAreaX')} (m²)</label>
+          <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
+        </div>
+        <div class="prop-group">
+          <label>${t('windAreaY')} (m²)</label>
+          <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
+        </div>
+      </div>
+      ` : ''}
       <div class="prop-group">
         <label>${t('propColor')}</label>
         <input type="color" value="${surface.color}" disabled>
@@ -534,7 +596,7 @@ export class UI {
         <label>${t('unitWeight')} (${t('weightUnit_surface')})</label>
         <input type="number" id="prop-surface-unit-weight" value="${surface.unitWeight || 0}" step="100">
       </div>
-      ${isWall ? `
+      ${isWindSurface ? `
       <div class="prop-group">
         <label class="prop-check-label">
           <input type="checkbox" id="prop-surface-include-wind" ${surface.includeWind !== false ? 'checked' : ''}>
@@ -571,6 +633,9 @@ export class UI {
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
     bind('prop-wall-height-mode', 'heightMode');
+    bind('prop-roof-slope', 'roofSlope', parseFloat);
+    bind('prop-roof-direction', 'roofDirection');
+    bind('prop-roof-base-offset', 'roofBaseOffset', parseFloat);
     bind('prop-surface-unit-weight', 'unitWeight', parseFloat);
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');

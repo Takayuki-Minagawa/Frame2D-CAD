@@ -51,7 +51,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 4);
+  assert.equal(data.schemaVersion, 5);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -67,6 +67,37 @@ test('wall height and weight fields survive CAD serialization', () => {
   assert.equal(restored.surfaces[0].includeWind, false);
   assert.equal(restored.surfaces[0].includeSeismicWeight, true);
   assert.equal(restored.surfaces[0].unitWeight, 450);
+});
+
+test('roof plane fields survive CAD serialization', () => {
+  const source = new AppState();
+  source.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.25,
+    roofDirection: 'yMinus',
+    roofBaseOffset: 900,
+    includeWind: true,
+    includeSeismicWeight: true,
+    unitWeight: 700,
+  });
+
+  const data = source.toJSON();
+  assert.equal(data.schemaVersion, 5);
+  assert.equal(data.surfaces[0].type, 'roof');
+  assert.equal(data.surfaces[0].roofSlope, 0.25);
+  assert.equal(data.surfaces[0].roofDirection, 'yMinus');
+  assert.equal(data.surfaces[0].roofBaseOffset, 900);
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.equal(restored.surfaces[0].sectionName, '_R');
+  assert.equal(restored.surfaces[0].color, '#8b6f47');
+  assert.equal(restored.surfaces[0].roofSlope, 0.25);
+  assert.equal(restored.surfaces[0].roofDirection, 'yMinus');
+  assert.equal(restored.surfaces[0].roofBaseOffset, 900);
+  assert.equal(restored.surfaces[0].includeWind, true);
+  assert.equal(restored.surfaces[0].includeSeismicWeight, true);
 });
 
 test('invalid custom wall offsets are rejected instead of being clamped to 1mm height', () => {
@@ -158,4 +189,27 @@ test('seismic weight summary uses surface area times unit weight', () => {
   const summary = computeQuantitySummary(state);
   assert.equal(summary.totals.seismicWeightN, 15000);
   assert.equal(summary.totals.windYAreaM2, 6);
+});
+
+test('roof planes use sloped actual area and vertical projected wind areas', () => {
+  const state = new AppState();
+  const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    includeWind: true,
+    includeSeismicWeight: true,
+    unitWeight: 500,
+  });
+
+  assert.equal(Number(computeSurfaceWeightAreaM2(state, roof).toFixed(3)), 20.881);
+  assert.deepEqual(computeSurfaceWindProjectionM2(state, roof), {
+    xAreaM2: 6,
+    yAreaM2: 0,
+  });
+
+  const summary = computeQuantitySummary(state);
+  assert.equal(Number(summary.totals.seismicWeightN.toFixed(3)), 10440.307);
+  assert.equal(summary.totals.windXAreaM2, 6);
 });
