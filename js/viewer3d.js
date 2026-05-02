@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
-import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
+import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
 
@@ -243,6 +243,10 @@ export class Viewer3D {
       }
 
       if (s.shape === 'line') {
+        if (isGableWallSurfaceType(s.type)) {
+          this._addGableWallLine3D(s);
+          continue;
+        }
         this._addWallLine3D(s, base, top);
         continue;
       }
@@ -459,6 +463,36 @@ export class Viewer3D {
     lineSegments.position.copy(mesh.position);
     lineSegments.rotation.copy(mesh.rotation);
     this.surfaceGroup.add(lineSegments);
+  }
+
+  _addGableWallLine3D(surface) {
+    const baseZ = this.state.getLevelZ(surface.levelId);
+    const bottomY = (baseZ + Number(surface.bottomOffset || 0)) / 1000;
+    const startTopY = (baseZ + Number(surface.gableStartTopOffset || surface.topOffset || 0)) / 1000;
+    const endTopY = (baseZ + Number(surface.gableEndTopOffset || surface.topOffset || 0)) / 1000;
+    if (Math.max(startTopY, endTopY) - bottomY < 0.001) return;
+
+    const vertices = [
+      new THREE.Vector3(surface.x1 / 1000, bottomY, -surface.y1 / 1000),
+      new THREE.Vector3(surface.x2 / 1000, bottomY, -surface.y2 / 1000),
+      new THREE.Vector3(surface.x2 / 1000, endTopY, -surface.y2 / 1000),
+      new THREE.Vector3(surface.x1 / 1000, startTopY, -surface.y1 / 1000),
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(resolveSurfaceColor(surface)),
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.38,
+    });
+    this.surfaceGroup.add(new THREE.Mesh(geometry, material));
+
+    const outline = [...vertices, vertices[0]];
+    const outlineGeo = new THREE.BufferGeometry().setFromPoints(outline);
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
+    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
   _addColumn3D(member, node) {

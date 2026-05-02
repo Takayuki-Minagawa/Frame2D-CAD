@@ -12,6 +12,7 @@ const DEFAULT_SECTION_DEFINITIONS = [
   { target: 'surface', type: 'wall', name: '_IW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
   { target: 'surface', type: 'roof', name: '_R', material: '', b: null, h: null, color: '#8b6f47', isDefault: true },
   { target: 'surface', type: 'eave', name: '_E', material: '', b: null, h: null, color: '#4f9a8a', isDefault: true },
+  { target: 'surface', type: 'gableWall', name: '_GW', material: '', b: null, h: null, color: '#bf6f5e', isDefault: true },
 ];
 
 const DEFAULT_SPRING_DEFINITIONS = [
@@ -29,7 +30,7 @@ const MEMBER_SECTION_TYPE_ALIAS = {
 
 export class AppState {
   constructor() {
-    this.schemaVersion = 8;
+    this.schemaVersion = 9;
     this.meta = {
       name: 'untitled',
       unit: 'mm',
@@ -564,6 +565,7 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
       ...this._normalizeSurfaceRoof(type, raw),
     };
+    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, surface));
     if (!isSlopedSurfaceType(type)) {
       delete surface.roofSlope;
       delete surface.roofDirection;
@@ -571,6 +573,10 @@ export class AppState {
     }
     if (!isRoofSurfaceType(type)) {
       delete surface.roofGroupId;
+    }
+    if (!isGableWallSurfaceType(type)) {
+      delete surface.gableStartTopOffset;
+      delete surface.gableEndTopOffset;
     }
     this._ensureSurfaceSection(surface, surface.sectionName);
     return surface;
@@ -619,6 +625,24 @@ export class AppState {
       roofFields.roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1');
     }
     return roofFields;
+  }
+
+  _normalizeSurfaceGable(type, levelId, topLevelId, options = {}) {
+    if (!isGableWallSurfaceType(type)) return {};
+    const bottomOffset = sanitizeNumber(options.bottomOffset, 0);
+    const storyHeight = this.getStoryHeight(levelId, topLevelId);
+    const fallbackTop = Math.max(bottomOffset + 1, sanitizeNumber(options.topOffset, storyHeight || 2800));
+    const startTop = sanitizeNumber(options.gableStartTopOffset, fallbackTop);
+    const endTop = sanitizeNumber(options.gableEndTopOffset, fallbackTop);
+    const gableStartTopOffset = startTop >= bottomOffset ? startTop : fallbackTop;
+    const gableEndTopOffset = endTop >= bottomOffset ? endTop : fallbackTop;
+    return {
+      heightMode: 'custom',
+      bottomOffset,
+      topOffset: Math.max(gableStartTopOffset, gableEndTopOffset),
+      gableStartTopOffset,
+      gableEndTopOffset,
+    };
   }
 
   // --- Nodes ---
@@ -915,6 +939,47 @@ export class AppState {
     return members;
   }
 
+  addGableWallsFromRoofGroup(roofGroupId, options = {}) {
+    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
+    if (!surfaces.length) return [];
+
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
+    const bottomOffset = sanitizeNonNegativeNumber(options.bottomOffset, 0);
+    const walls = [];
+    for (const surface of surfaces) {
+      const vertices = roofVertices3D(this, surface);
+      if (vertices.length < 3) continue;
+      const baseZ = this.getLevelZ(surface.levelId);
+      for (let i = 0; i < vertices.length; i++) {
+        const start = vertices[i];
+        const end = vertices[(i + 1) % vertices.length];
+        if (this._hasSharedRoofGroupEdge(surface, start, end, nodeTolerance)) continue;
+        const startTopOffset = start.z - baseZ;
+        const endTopOffset = end.z - baseZ;
+        if (Math.abs(startTopOffset - endTopOffset) <= zTolerance) continue;
+        if (Math.max(startTopOffset, endTopOffset) <= bottomOffset + zTolerance) continue;
+        if (this._hasGableWallOnSegment(surface.levelId, start, end, nodeTolerance)) continue;
+        const wall = this.addSurfaceLine(start.x, start.y, end.x, end.y, {
+          type: 'gableWall',
+          levelId: surface.levelId,
+          topLevelId: surface.topLevelId || surface.levelId,
+          heightMode: 'custom',
+          bottomOffset,
+          topOffset: Math.max(startTopOffset, endTopOffset),
+          gableStartTopOffset: startTopOffset,
+          gableEndTopOffset: endTopOffset,
+          includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
+          includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
+          unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
+          sectionName: options.sectionName || this.getDefaultSectionName('surface', 'gableWall'),
+        });
+        walls.push(wall);
+      }
+    }
+    return walls;
+  }
+
   listRoofGroups() {
     const groups = new Map();
     for (const surface of this.surfaces) {
@@ -978,6 +1043,20 @@ export class AppState {
         sameSegment(start, end, edge.start, edge.end, tolerance)
       );
     });
+  }
+
+  _hasGableWallOnSegment(levelId, start, end, tolerance = 1) {
+    return this.surfaces.some(surface => (
+      isGableWallSurfaceType(surface.type) &&
+      surface.levelId === levelId &&
+      sameSegment(
+        { x: surface.x1, y: surface.y1 },
+        { x: surface.x2, y: surface.y2 },
+        start,
+        end,
+        tolerance
+      )
+    ));
   }
 
   _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
@@ -1134,6 +1213,7 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
       ...this._normalizeSurfaceRoof(type, options),
     };
+    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
     return surface;
@@ -1158,6 +1238,7 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
       ...this._normalizeSurfaceRoof(type, options),
     };
+    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
     return surface;
@@ -1188,6 +1269,7 @@ export class AppState {
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
       ...this._normalizeSurfaceRoof(type, options),
     };
+    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
     return surface;
@@ -1214,6 +1296,8 @@ export class AppState {
     const hasRoofDirection = hasOwn(patch, 'roofDirection');
     const hasRoofBaseOffset = hasOwn(patch, 'roofBaseOffset');
     const hasRoofGroupId = hasOwn(patch, 'roofGroupId');
+    const hasGableStartTopOffset = hasOwn(patch, 'gableStartTopOffset');
+    const hasGableEndTopOffset = hasOwn(patch, 'gableEndTopOffset');
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
@@ -1248,6 +1332,12 @@ export class AppState {
     if (hasRoofGroupId) {
       patch.roofGroupId = sanitizeRoofGroupId(patch.roofGroupId, surface.roofGroupId || 'RG1');
     }
+    if (hasGableStartTopOffset) {
+      patch.gableStartTopOffset = sanitizeNumber(patch.gableStartTopOffset, surface.gableStartTopOffset || surface.topOffset || 0);
+    }
+    if (hasGableEndTopOffset) {
+      patch.gableEndTopOffset = sanitizeNumber(patch.gableEndTopOffset, surface.gableEndTopOffset || surface.topOffset || 0);
+    }
 
     const prospectiveType = patch.type || surface.type;
     if (!isSlopedSurfaceType(prospectiveType)) {
@@ -1258,6 +1348,10 @@ export class AppState {
     if (!isRoofSurfaceType(prospectiveType)) {
       delete patch.roofGroupId;
     }
+    if (!isGableWallSurfaceType(prospectiveType)) {
+      delete patch.gableStartTopOffset;
+      delete patch.gableEndTopOffset;
+    }
     if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
       const prospectiveBottom = hasBottomOffset ? patch.bottomOffset : surface.bottomOffset;
       const prospectiveTop = hasTopOffset ? patch.topOffset : surface.topOffset;
@@ -1266,9 +1360,25 @@ export class AppState {
         if (hasTopOffset) delete patch.topOffset;
       }
     }
+    if (isGableWallSurfaceType(prospectiveType)) {
+      const prospectiveBottom = hasBottomOffset ? patch.bottomOffset : surface.bottomOffset;
+      if (hasTopOffset && !hasGableStartTopOffset && !hasGableEndTopOffset) {
+        patch.gableStartTopOffset = patch.topOffset;
+        patch.gableEndTopOffset = patch.topOffset;
+      }
+      const prospectiveStart = hasOwn(patch, 'gableStartTopOffset') ? patch.gableStartTopOffset : surface.gableStartTopOffset;
+      const prospectiveEnd = hasOwn(patch, 'gableEndTopOffset') ? patch.gableEndTopOffset : surface.gableEndTopOffset;
+      if (prospectiveStart < prospectiveBottom) delete patch.gableStartTopOffset;
+      if (prospectiveEnd < prospectiveBottom) delete patch.gableEndTopOffset;
+    }
 
     Object.assign(surface, patch);
-    if (hasHeightMode && surface.heightMode !== 'custom' && isWallSurfaceType(surface.type)) {
+    if (isGableWallSurfaceType(surface.type) && (
+      hasType || hasHeightMode || hasBottomOffset || hasTopOffset || hasGableStartTopOffset || hasGableEndTopOffset
+    )) {
+      Object.assign(surface, this._normalizeSurfaceGable(surface.type, surface.levelId, surface.topLevelId, surface));
+    }
+    if (hasHeightMode && surface.heightMode !== 'custom' && isWallSurfaceType(surface.type) && !isGableWallSurfaceType(surface.type)) {
       Object.assign(surface, this._normalizeSurfaceHeightAndWeight(surface.type, surface.levelId, surface.topLevelId, surface));
     }
     if (hasType) {
@@ -1281,6 +1391,10 @@ export class AppState {
       }
       if (!isRoofSurfaceType(surface.type)) {
         delete surface.roofGroupId;
+      }
+      if (!isGableWallSurfaceType(surface.type)) {
+        delete surface.gableStartTopOffset;
+        delete surface.gableEndTopOffset;
       }
     }
     if (hasType || hasSectionName || hasColor) {
@@ -1300,7 +1414,7 @@ export class AppState {
     const wallOffset = this.settings.wallDisplayOffset || 120;
     for (let i = this.surfaces.length - 1; i >= 0; i--) {
       const s = this.surfaces[i];
-      const isWallType = s.type === 'wall' || s.type === 'exteriorWall';
+      const isWallType = isWallSurfaceType(s.type);
       if (s.shape === 'line') {
         const lx1 = s.x1 + wallOffset;
         const ly1 = s.y1 + wallOffset;
@@ -1586,6 +1700,10 @@ export class AppState {
         if (isRoofSurfaceType(s.type)) {
           surface.roofGroupId = sanitizeRoofGroupId(s.roofGroupId, 'RG1');
         }
+        if (isGableWallSurfaceType(s.type)) {
+          surface.gableStartTopOffset = s.gableStartTopOffset;
+          surface.gableEndTopOffset = s.gableEndTopOffset;
+        }
         return surface;
       }),
       loads: this.loads.map(l => {
@@ -1609,10 +1727,10 @@ export class AppState {
 
   loadJSON(data) {
     const version = data?.schemaVersion || 1;
-    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8)) {
+    if (!data || (version !== 1 && version !== 2 && version !== 3 && version !== 4 && version !== 5 && version !== 6 && version !== 7 && version !== 8 && version !== 9)) {
       throw new Error('Unsupported schema version');
     }
-    this.schemaVersion = 8;
+    this.schemaVersion = 9;
     this.meta = { ...data.meta };
     this.settings = {
       gridSize: 1000,
@@ -1814,6 +1932,7 @@ function defaultColorForSection(target, type) {
     if (normalizedType === 'floor') return '#67a9cf';
     if (normalizedType === 'roof') return '#8b6f47';
     if (normalizedType === 'eave') return '#4f9a8a';
+    if (normalizedType === 'gableWall') return '#bf6f5e';
     return '#b57a6b';
   }
   return '#666666';
@@ -1830,11 +1949,15 @@ function normalizeMemberGeometryMode(value) {
 }
 
 export function isWallSurfaceType(type) {
-  return type === 'wall' || type === 'exteriorWall';
+  return type === 'wall' || type === 'exteriorWall' || type === 'gableWall';
 }
 
 export function isRoofSurfaceType(type) {
   return type === 'roof';
+}
+
+export function isGableWallSurfaceType(type) {
+  return type === 'gableWall';
 }
 
 export function isSlopedSurfaceType(type) {

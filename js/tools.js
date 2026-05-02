@@ -2,7 +2,7 @@
 
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
-import { isSlopedSurfaceType } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
@@ -469,7 +469,7 @@ export class ToolManager {
   _getEffectiveSurfaceMode() {
     const type = this.state.surfaceDraftType;
     if (type === 'exteriorWall') return 'polyline';
-    if (type === 'wall') return 'line';
+    if (type === 'wall' || type === 'gableWall') return 'line';
     return this.state.surfaceDraftMode;
   }
 
@@ -479,7 +479,7 @@ export class ToolManager {
 
   _getWallHeightOptions(topLevelId) {
     const type = this.state.surfaceDraftType;
-    if (type !== 'wall' && type !== 'exteriorWall') return {};
+    if (!isWallSurfaceType(type)) return {};
     return this.state.getSurfaceHeightOffsets({
       heightMode: this.state.surfaceDraftHeightMode,
       levelId: this.state.activeLayerId || 'L0',
@@ -503,7 +503,7 @@ export class ToolManager {
     const snapped = this._getSnappedPos(e);
     const mode = this._getEffectiveSurfaceMode();
     const type = this.state.surfaceDraftType;
-    const isWallType = type === 'wall' || type === 'exteriorWall';
+    const isWallType = isWallSurfaceType(type);
     const isSlopedType = isSlopedSurfaceType(type);
 
     if (mode === 'polyline') {
@@ -646,7 +646,7 @@ export class ToolManager {
   _finishSurfacePolyline() {
     if (this._surfacePolyline.length < 3) return;
     const type = this.state.surfaceDraftType;
-    const isWallType = type === 'wall' || type === 'exteriorWall';
+    const isWallType = isWallSurfaceType(type);
     const isSlopedType = isSlopedSurfaceType(type);
 
     let topLevelId;

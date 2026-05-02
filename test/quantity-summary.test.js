@@ -51,7 +51,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 8);
+  assert.equal(data.schemaVersion, 9);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -84,7 +84,7 @@ test('roof plane fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 8);
+  assert.equal(data.schemaVersion, 9);
   assert.equal(data.surfaces[0].type, 'roof');
   assert.equal(data.surfaces[0].roofSlope, 0.25);
   assert.equal(data.surfaces[0].roofDirection, 'yMinus');
@@ -170,7 +170,7 @@ test('eave surfaces use sloped geometry without roof grouping', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 8);
+  assert.equal(data.schemaVersion, 9);
   assert.equal(data.surfaces[0].type, 'eave');
   assert.equal(data.surfaces[0].roofSlope, 0.2);
   assert.equal(data.surfaces[0].roofDirection, 'yPlus');
@@ -217,6 +217,45 @@ test('non-roof surfaces omit roof-only fields', () => {
   assert.equal(Object.hasOwn(restored.surfaces[0], 'roofSlope'), false);
   assert.equal(Object.hasOwn(restored.toJSON().surfaces[0], 'roofSlope'), false);
   assert.equal(Object.hasOwn(restored.toJSON().surfaces[0], 'roofGroupId'), false);
+});
+
+test('gable wall surfaces use trapezoid area and variable top offsets', () => {
+  const source = new AppState();
+  const gable = source.addSurfaceLine(0, 0, 5000, 0, {
+    type: 'gableWall',
+    levelId: 'L0',
+    topLevelId: 'L1',
+    bottomOffset: 0,
+    topOffset: 2800,
+    gableStartTopOffset: 1200,
+    gableEndTopOffset: 2800,
+    includeWind: true,
+    includeSeismicWeight: true,
+    unitWeight: 400,
+  });
+
+  assert.equal(gable.sectionName, '_GW');
+  assert.equal(gable.heightMode, 'custom');
+  assert.equal(gable.topOffset, 2800);
+  assert.equal(computeSurfaceWeightAreaM2(source, gable), 10);
+  assert.deepEqual(computeSurfaceWindProjectionM2(source, gable), {
+    xAreaM2: 0,
+    yAreaM2: 10,
+  });
+
+  const data = source.toJSON();
+  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.surfaces[0].type, 'gableWall');
+  assert.equal(data.surfaces[0].gableStartTopOffset, 1200);
+  assert.equal(data.surfaces[0].gableEndTopOffset, 2800);
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.equal(restored.surfaces[0].type, 'gableWall');
+  assert.equal(restored.surfaces[0].sectionName, '_GW');
+  assert.equal(restored.surfaces[0].gableStartTopOffset, 1200);
+  assert.equal(restored.surfaces[0].gableEndTopOffset, 2800);
+  assert.equal(computeQuantitySummary(restored).totals.seismicWeightN, 4000);
 });
 
 test('invalid custom wall offsets are rejected instead of being clamped to 1mm height', () => {
@@ -360,7 +399,7 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(members[0].endZ, 4500);
 
   const data = state.toJSON();
-  assert.equal(data.schemaVersion, 8);
+  assert.equal(data.schemaVersion, 9);
   assert.equal(data.members[0].geometryMode, 'explicit3d');
   assert.equal(data.members[0].startZ, 3000);
   assert.equal(data.members[0].endZ, 4500);
@@ -505,6 +544,65 @@ test('roof joint generation replaces duplicate roof edge members on shared edges
   assert.equal(joints[0].roofRole, 'roofRidge');
   assert.equal(state.members.filter(member => member.roofRole === 'roofEdge').length, 0);
   assert.equal(state.members.filter(member => member.roofRole === 'roofRidge').length, 1);
+});
+
+test('gable walls are generated from sloped outer roof group edges', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Main',
+  });
+
+  const walls = state.addGableWallsFromRoofGroup('Main');
+
+  assert.equal(walls.length, 4);
+  assert.ok(walls.every(surface => surface.type === 'gableWall'));
+  assert.ok(walls.every(surface => surface.sectionName === '_GW'));
+  assert.equal(state.surfaces.filter(surface => surface.type === 'gableWall').length, 4);
+  assert.deepEqual(walls.map(surface => [surface.x1, surface.y1, surface.x2, surface.y2, surface.gableStartTopOffset, surface.gableEndTopOffset]), [
+    [0, 0, 5000, 0, 0, 1500],
+    [5000, 4000, 0, 4000, 1500, 0],
+    [5000, 0, 10000, 0, 1500, 0],
+    [10000, 4000, 5000, 4000, 0, 1500],
+  ]);
+
+  const secondPass = state.addGableWallsFromRoofGroup('Main');
+  assert.equal(secondPass.length, 0);
+});
+
+test('gable wall generation skips shared and horizontal roof edges', () => {
+  const state = new AppState();
+  state.addSurfaceRect(0, 0, 5000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xPlus',
+    roofGroupId: 'Main',
+  });
+  state.addSurfaceRect(5000, 0, 10000, 4000, {
+    type: 'roof',
+    levelId: 'L1',
+    roofSlope: 0.3,
+    roofDirection: 'xMinus',
+    roofGroupId: 'Main',
+  });
+
+  state.addGableWallsFromRoofGroup('Main');
+  const gableWalls = state.surfaces.filter(surface => surface.type === 'gableWall');
+
+  assert.equal(gableWalls.some(surface => surface.x1 === 5000 && surface.x2 === 5000), false);
+  assert.equal(gableWalls.some(surface => surface.x1 === 0 && surface.x2 === 0), false);
+  assert.equal(gableWalls.some(surface => surface.x1 === 10000 && surface.x2 === 10000), false);
 });
 
 test('roof slope members are generated along the roof rise direction', () => {

@@ -1,7 +1,7 @@
 // quantities.js - projected wind areas and seismic weight summaries
 
 import { roofActualAreaM2, roofProjectionAreasM2 } from './roof-geometry.js';
-import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
+import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 const MM2_TO_M2 = 1 / 1000000;
 
@@ -74,6 +74,7 @@ export function computeQuantitySummary(state) {
 
 export function computeSurfaceWindProjectionM2(state, surface) {
   if (isSlopedSurfaceType(surface.type)) return roofProjectionAreasM2(state, surface);
+  if (isGableWallSurfaceType(surface.type)) return computeGableWallWindProjectionM2(state, surface);
   if (!isWallSurfaceType(surface.type)) return { xAreaM2: 0, yAreaM2: 0 };
   const { height } = resolveSurfaceVerticalRange(state, surface);
   if (height <= 0) return { xAreaM2: 0, yAreaM2: 0 };
@@ -112,12 +113,46 @@ export function computeSurfaceSeismicWeightN(state, surface) {
 
 export function computeSurfaceWeightAreaM2(state, surface) {
   if (isSlopedSurfaceType(surface.type)) return roofActualAreaM2(surface);
+  if (isGableWallSurfaceType(surface.type)) return gableWallAreaM2(state, surface);
   if (isWallSurfaceType(surface.type)) {
     const { height } = resolveSurfaceVerticalRange(state, surface);
     if (height <= 0) return 0;
     return surfacePlanLengthMm(surface) * height * MM2_TO_M2;
   }
   return horizontalSurfaceAreaM2(surface);
+}
+
+function computeGableWallWindProjectionM2(state, surface) {
+  const avgHeight = gableWallAverageHeightMm(state, surface);
+  if (avgHeight <= 0) return { xAreaM2: 0, yAreaM2: 0 };
+  let xAreaMm2 = 0;
+  let yAreaMm2 = 0;
+  for (const seg of surfacePlanSegments(surface)) {
+    const dx = seg.b.x - seg.a.x;
+    const dy = seg.b.y - seg.a.y;
+    xAreaMm2 += Math.abs(dy) * avgHeight;
+    yAreaMm2 += Math.abs(dx) * avgHeight;
+  }
+  return {
+    xAreaM2: xAreaMm2 * MM2_TO_M2,
+    yAreaM2: yAreaMm2 * MM2_TO_M2,
+  };
+}
+
+function gableWallAreaM2(state, surface) {
+  const avgHeight = gableWallAverageHeightMm(state, surface);
+  if (avgHeight <= 0) return 0;
+  return surfacePlanLengthMm(surface) * avgHeight * MM2_TO_M2;
+}
+
+function gableWallAverageHeightMm(state, surface) {
+  const baseZ = getLevelZ(state, surface.levelId);
+  const bottom = baseZ + finiteNumber(surface.bottomOffset, 0);
+  const topStart = baseZ + finiteNumber(surface.gableStartTopOffset, surface.topOffset);
+  const topEnd = baseZ + finiteNumber(surface.gableEndTopOffset, surface.topOffset);
+  const h1 = Math.max(0, topStart - bottom);
+  const h2 = Math.max(0, topEnd - bottom);
+  return (h1 + h2) / 2;
 }
 
 export function horizontalSurfaceAreaM2(surface) {
