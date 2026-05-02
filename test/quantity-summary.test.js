@@ -245,6 +245,7 @@ test('roof planes use sloped actual area and vertical projected wind areas', () 
 
 test('roof edge members are generated with explicit 3D endpoints', () => {
   const state = new AppState();
+  const existingCorner = state.addNode(0, 0);
   const roof = state.addSurfaceRect(0, 0, 5000, 4000, {
     type: 'roof',
     levelId: 'L1',
@@ -255,6 +256,14 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
 
   const members = state.addRoofEdgeMembers(roof.id);
   assert.equal(members.length, 4);
+  assert.equal(state.nodes.length, 4);
+  assert.equal(members[0].startNodeId, existingCorner.id);
+  const connectedNodeIds = new Set(members.flatMap(member => [member.startNodeId, member.endNodeId]));
+  assert.equal(connectedNodeIds.size, 4);
+  for (const nodeId of connectedNodeIds) {
+    const useCount = members.filter(member => member.startNodeId === nodeId || member.endNodeId === nodeId).length;
+    assert.equal(useCount, 2);
+  }
   assert.ok(members.every(member => member.geometryMode === 'explicit3d'));
   assert.ok(members.every(member => member.roofRole === 'roofEdge'));
   assert.equal(members[0].startZ, 3000);

@@ -814,12 +814,15 @@ export class AppState {
     const vertices = roofVertices3D(this, surface);
     if (vertices.length < 3) return [];
 
+    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
+    const nodes = vertices.map(v => this.findNodeAt(v.x, v.y, nodeTolerance) || this.addNode(v.x, v.y));
     const members = [];
     for (let i = 0; i < vertices.length; i++) {
       const a = vertices[i];
       const b = vertices[(i + 1) % vertices.length];
-      const startNode = this.addNode(a.x, a.y);
-      const endNode = this.addNode(b.x, b.y);
+      const startNode = nodes[i];
+      const endNode = nodes[(i + 1) % vertices.length];
+      if (startNode.id === endNode.id) continue;
       const member = this.addMember(startNode.id, endNode.id, {
         type: 'beam',
         levelId: surface.levelId,

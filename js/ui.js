@@ -551,9 +551,6 @@ export class UI {
           <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
         </div>
       </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
-      </div>
       ` : ''}
       ${isRoof ? `
       <div class="prop-row">
@@ -584,6 +581,9 @@ export class UI {
           <label>${t('windAreaY')} (m²)</label>
           <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
         </div>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
       </div>
       ` : ''}
       <div class="prop-group">
