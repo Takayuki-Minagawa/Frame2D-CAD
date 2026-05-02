@@ -1,4 +1,6 @@
-// io.js - JSON Export / Import
+// io.js - JSON/CSV Export / Import
+
+import { computeQuantitySummary } from './quantities.js';
 
 export function exportJSON(state) {
   const data = state.toJSON();
@@ -9,6 +11,69 @@ export function exportJSON(state) {
   const a = document.createElement('a');
   a.href = url;
   a.download = `${data.meta.name || 'lineframe'}_${timestamp()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function buildQuantitySummaryCSV(state) {
+  const summary = computeQuantitySummary(state);
+  const rows = [
+    ['section', 'name', 'wind_x_area_m2', 'wind_y_area_m2', 'seismic_weight_N', 'member_count', 'member_length_m'],
+  ];
+  for (const row of summary.levels) {
+    rows.push([
+      'level',
+      row.label,
+      formatCsvNumber(row.windXAreaM2),
+      formatCsvNumber(row.windYAreaM2),
+      formatCsvNumber(row.seismicWeightN),
+      '',
+      '',
+    ]);
+  }
+  rows.push([
+    'total',
+    'total',
+    formatCsvNumber(summary.totals.windXAreaM2),
+    formatCsvNumber(summary.totals.windYAreaM2),
+    formatCsvNumber(summary.totals.seismicWeightN),
+    '',
+    '',
+  ]);
+  for (const row of summary.roofMembers.rows) {
+    rows.push([
+      'roof_member',
+      row.roofRole,
+      '',
+      '',
+      '',
+      String(row.count),
+      formatCsvNumber(row.lengthM),
+    ]);
+  }
+  rows.push([
+    'roof_member_total',
+    'total',
+    '',
+    '',
+    '',
+    String(summary.roofMembers.totals.count),
+    formatCsvNumber(summary.roofMembers.totals.lengthM),
+  ]);
+  return `${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
+}
+
+export function exportQuantitySummaryCSV(state) {
+  const csv = buildQuantitySummaryCSV(state);
+  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const name = state.meta?.name || 'lineframe';
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${name}_quantities_${timestamp()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -92,6 +157,18 @@ export function importUserDefs(file, state) {
 function timestamp() {
   const d = new Date();
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  if (!/[",\r\n]/.test(text)) return text;
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function formatCsvNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  return String(Number(n.toFixed(6)));
 }
 
 function pad(n) {
