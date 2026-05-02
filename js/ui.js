@@ -489,6 +489,7 @@ export class UI {
     const isWall = isWallSurfaceType(surface.type);
     const isRoof = surface.type === 'roof';
     const isGableWall = isGableWallSurfaceType(surface.type);
+    const isRectangularWall = isWall && !isGableWall;
     const isSloped = isSlopedSurfaceType(surface.type);
     const isWindSurface = isWall || isSloped;
     const area = computeSurfaceWeightAreaM2(this.state, surface);
@@ -507,6 +508,21 @@ export class UI {
     const heightModeOptions = ['full', 'waist', 'hanging', 'custom']
       .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t(`wallHeight${capitalize(mode)}`)}</option>`)
       .join('');
+    const windProjectionFields = isWindSurface ? `
+      <div class="prop-group">
+        <label>${t('calculatedWindArea')}</label>
+        <div class="prop-row">
+          <div class="prop-group">
+            <label>${t('windAreaX')} (m²)</label>
+            <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
+          </div>
+          <div class="prop-group">
+            <label>${t('windAreaY')} (m²)</label>
+            <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
+          </div>
+        </div>
+      </div>
+    ` : '';
 
     container.innerHTML = `
       <div class="prop-group">
@@ -531,7 +547,7 @@ export class UI {
         </select>
       </div>
       ` : ''}
-      ${isWall ? `
+      ${isRectangularWall ? `
       <div class="prop-group">
         <label>${t('wallHeightMode')}</label>
         <select id="prop-wall-height-mode">${heightModeOptions}</select>
@@ -550,7 +566,12 @@ export class UI {
         <label>${t('wallVerticalRange')}</label>
         <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
       </div>
+      ` : ''}
       ${isGableWall ? `
+      <div class="prop-group">
+        <label>${t('wallBottomOffset')} (mm)</label>
+        <input type="number" id="prop-gable-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
+      </div>
       <div class="prop-row">
         <div class="prop-group">
           <label>${t('gableStartTopOffset')} (mm)</label>
@@ -561,16 +582,9 @@ export class UI {
           <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
         </div>
       </div>
-      ` : ''}
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('windAreaX')} (m²)</label>
-          <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
-        </div>
-        <div class="prop-group">
-          <label>${t('windAreaY')} (m²)</label>
-          <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
-        </div>
+      <div class="prop-group">
+        <label>${t('wallVerticalRange')}</label>
+        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
       </div>
       ` : ''}
       ${isSloped ? `
@@ -599,16 +613,6 @@ export class UI {
         <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || 'RG1')}">
       </div>
       ` : ''}
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('windAreaX')} (m²)</label>
-          <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
-        </div>
-        <div class="prop-group">
-          <label>${t('windAreaY')} (m²)</label>
-          <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
-        </div>
-      </div>
       ${isRoof ? `
       <div class="prop-group">
         <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
@@ -628,6 +632,7 @@ export class UI {
       </div>
       ` : ''}
       ` : ''}
+      ${windProjectionFields}
       <div class="prop-group">
         <label>${t('propColor')}</label>
         <input type="color" value="${surface.color}" disabled>
@@ -685,8 +690,6 @@ export class UI {
     bind('prop-roof-direction', 'roofDirection');
     bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
     bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || 'RG1');
-    bind('prop-gable-start-top-offset', 'gableStartTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableStartTopOffset')));
-    bind('prop-gable-end-top-offset', 'gableEndTopOffset', (_value, el) => readNumberInput(el, gableTopOffset(surface, 'gableEndTopOffset')));
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
     bindChecked('prop-surface-include-wind', 'includeWind');
     bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
@@ -750,6 +753,44 @@ export class UI {
       topEl.addEventListener('change', apply);
     };
     bindWallHeightOffsets();
+
+    const bindGableWallOffsets = () => {
+      const bottomEl = document.getElementById('prop-gable-bottom-offset');
+      const startEl = document.getElementById('prop-gable-start-top-offset');
+      const endEl = document.getElementById('prop-gable-end-top-offset');
+      if (!bottomEl || !startEl || !endEl) return;
+      const apply = () => {
+        const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
+        const gableStartTopOffset = readNumberInput(startEl, gableTopOffset(surface, 'gableStartTopOffset'));
+        const gableEndTopOffset = readNumberInput(endEl, gableTopOffset(surface, 'gableEndTopOffset'));
+        let isValid = true;
+        if (gableStartTopOffset < bottomOffset) {
+          markInputInvalid(startEl, t('gableInvalidTop'));
+          isValid = false;
+        } else {
+          clearInputInvalid(startEl);
+        }
+        if (gableEndTopOffset < bottomOffset) {
+          markInputInvalid(endEl, t('gableInvalidTop'));
+          isValid = false;
+        } else {
+          clearInputInvalid(endEl);
+        }
+        if (!isValid) return;
+        clearInputInvalid(bottomEl);
+        this.state.updateSurface(surface.id, {
+          heightMode: 'custom',
+          bottomOffset,
+          gableStartTopOffset,
+          gableEndTopOffset,
+        });
+        this.callbacks.onPropertyChange?.(surface.id);
+      };
+      bottomEl.addEventListener('change', apply);
+      startEl.addEventListener('change', apply);
+      endEl.addEventListener('change', apply);
+    };
+    bindGableWallOffsets();
   }
 
   _showInlineNotice(container, message) {
