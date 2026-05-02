@@ -491,12 +491,16 @@ export class ToolManager {
 
   _getRoofOptions() {
     if (!isSlopedSurfaceType(this.state.surfaceDraftType)) return {};
-    return {
+    const options = {
       roofSlope: this.state.surfaceDraftRoofSlope,
       roofDirection: this.state.surfaceDraftRoofDirection,
       roofBaseOffset: this.state.surfaceDraftRoofBaseOffset,
       includeWind: true,
     };
+    if (this.state.surfaceDraftType === 'roof') {
+      options.roofGroupId = this.state.surfaceDraftRoofGroupId || 'RG1';
+    }
+    return options;
   }
 
   _surfaceDown(e) {
