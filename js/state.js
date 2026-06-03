@@ -817,7 +817,7 @@ export class AppState {
 
   nextNodeId() {
     this._nodeCounter++;
-    return `N${this._nodeCounter}`;
+    return this._nodeCounter;
   }
 
   addNode(x, y, z = 0) {
@@ -3015,7 +3015,7 @@ function roundedKey(value) {
 function maxIdNum(items) {
   let max = 0;
   for (const item of items) {
-    const n = parseInt(item.id.slice(1), 10);
+    const n = parseTrailingIdNumber(item.id);
     if (n > max) max = n;
   }
   return max;
@@ -3024,12 +3024,20 @@ function maxIdNum(items) {
 function maxIdNumPrefix(items, prefix) {
   let max = 0;
   for (const item of items) {
-    if (item.id.startsWith(prefix)) {
-      const n = parseInt(item.id.slice(prefix.length), 10);
+    const id = String(item.id ?? '');
+    if (id.startsWith(prefix)) {
+      const n = parseInt(id.slice(prefix.length), 10);
       if (n > max) max = n;
     }
   }
   return max;
+}
+
+function parseTrailingIdNumber(id) {
+  if (typeof id === 'number' && Number.isFinite(id)) return Math.max(0, Math.floor(id));
+  const text = String(id ?? '');
+  const match = text.match(/(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 // Compute outward-offset polygon with properly connected corners.
