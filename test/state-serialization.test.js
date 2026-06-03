@@ -46,6 +46,8 @@ test('toJSON omits runtime IDs for members, surfaces, and loads', () => {
 
 test('toJSON includes used custom definitions but excludes unused ones', () => {
   const state = new AppState();
+  state.addSpring({ symbol: 'SP1', memo: 'used spring' });
+  state.addSpring({ symbol: 'SP_UNUSED', memo: 'not used' });
   // Add two custom sections: one will be used, one will not
   state.addSection({
     target: 'member', type: 'beam', name: 'B300x500',
@@ -57,8 +59,6 @@ test('toJSON includes used custom definitions but excludes unused ones', () => {
     target: 'member', type: 'beam', name: 'B_UNUSED',
     b: 100, h: 200, color: '#aabbcc',
   });
-  state.addSpring({ symbol: 'SP1', memo: 'used spring' });
-  state.addSpring({ symbol: 'SP_UNUSED', memo: 'not used' });
 
   // Create a member using B300x500 and a spring using SP1
   const n1 = state.addNode(0, 0);
@@ -207,6 +207,38 @@ test('loadJSON backward-compat: old files with embedded custom defs still load',
   assert.deepEqual(
     state.getSection('member', 'beam', 'OLD_BEAM').defaultEndJ,
     { condition: 'pin', springSymbol: null }
+  );
+});
+
+test('loadJSON normalizes missing section preset springs to the default spring', () => {
+  const fileData = {
+    schemaVersion: 10,
+    meta: { name: 'invalid-spring-preset', unit: 'mm', createdAt: '2026-06-03T00:00:00Z' },
+    settings: { gridSize: 1000, snap: true, wallDisplayOffset: 120 },
+    levels: [{ id: 'L0', name: 'GL', z: 0 }, { id: 'L1', name: '2F', z: 2800 }],
+    nodes: [],
+    sectionCatalog: [
+      { target: 'member', type: 'beam', name: 'B_BAD_SPRING', material: 'steel', b: 300, h: 500, color: '#123456', isDefault: false, defaultEndI: { condition: 'spring', springSymbol: 'MISSING_SP' }, defaultEndJ: { condition: 'spring' } },
+    ],
+    springCatalog: [
+      { symbol: '_SP', memo: '回転バネ', isDefault: true },
+    ],
+    members: [],
+    surfaces: [],
+    loads: [],
+    supports: [],
+  };
+
+  const state = new AppState();
+  state.loadJSON(fileData);
+
+  assert.deepEqual(
+    state.getSection('member', 'beam', 'B_BAD_SPRING').defaultEndI,
+    { condition: 'spring', springSymbol: '_SP' }
+  );
+  assert.deepEqual(
+    state.getSection('member', 'beam', 'B_BAD_SPRING').defaultEndJ,
+    { condition: 'spring', springSymbol: '_SP' }
   );
 });
 

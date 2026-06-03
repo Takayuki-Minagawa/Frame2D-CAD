@@ -205,6 +205,7 @@ export class AppState {
     if (DEFAULT_SECTION_NAME_SET.has(normalized.name)) return null;
     if (this._getSectionRef(normalized.target, normalized.type, normalized.name)) return null;
     const section = { ...normalized, isDefault: false };
+    this._normalizeSectionEndDefaults(section);
     this.sectionCatalog.push(section);
     return cloneSection(section);
   }
@@ -224,10 +225,10 @@ export class AppState {
         section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, 400));
       }
       if (hasOwn(props, 'defaultEndI')) {
-        section.defaultEndI = normalizeSectionDefaultEnd(props.defaultEndI);
+        section.defaultEndI = this._normalizeMemberEnd(props.defaultEndI);
       }
       if (hasOwn(props, 'defaultEndJ')) {
-        section.defaultEndJ = normalizeSectionDefaultEnd(props.defaultEndJ);
+        section.defaultEndJ = this._normalizeMemberEnd(props.defaultEndJ);
       }
     }
     if (hasOwn(props, 'color')) {
@@ -439,6 +440,18 @@ export class AppState {
       endI: this._normalizeMemberEnd(section?.defaultEndI),
       endJ: this._normalizeMemberEnd(section?.defaultEndJ),
     };
+  }
+
+  _normalizeSectionEndDefaults(section) {
+    if (section?.target !== 'member') return;
+    section.defaultEndI = this._normalizeMemberEnd(section.defaultEndI);
+    section.defaultEndJ = this._normalizeMemberEnd(section.defaultEndJ);
+  }
+
+  _normalizeSectionCatalogEndDefaults() {
+    for (const section of this.sectionCatalog) {
+      this._normalizeSectionEndDefaults(section);
+    }
   }
 
   _ensureSurfaceSection(surface, requestedSectionName = null) {
@@ -1975,7 +1988,7 @@ export class AppState {
       settings: { ...this.settings },
       levels: this.levels.map(l => ({ ...l })),
       nodes: this.nodes.map(n => ({ ...n })),
-      sectionCatalog: this._usedSectionCatalog().map(s => ({ ...s })),
+      sectionCatalog: this._usedSectionCatalog().map(s => cloneSection(s)),
       springCatalog: this._usedSpringCatalog().map(s => ({ ...s })),
       members: this.members.map(m => ({
         type: m.type,
@@ -2078,7 +2091,7 @@ export class AppState {
     this.springCatalog = this._hydrateSpringCatalog(data.springCatalog);
     for (const cs of prevCustomSections) {
       if (!this.sectionCatalog.some(s => s.target === cs.target && s.type === cs.type && s.name === cs.name)) {
-        this.sectionCatalog.push({ ...cs });
+        this.sectionCatalog.push(cloneSection(cs));
       }
     }
     for (const cs of prevCustomSprings) {
@@ -2086,6 +2099,7 @@ export class AppState {
         this.springCatalog.push({ ...cs });
       }
     }
+    this._normalizeSectionCatalogEndDefaults();
     this.members = (data.members || []).map((m, idx) =>
       this._normalizeLoadedMember({ id: m.id || `M${idx + 1}`, ...m })
     );

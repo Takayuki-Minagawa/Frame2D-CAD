@@ -130,6 +130,28 @@ test('section end preset updates do not rewrite placed member ends', () => {
   assert.deepEqual(beam.endJ, { condition: 'pin', springSymbol: null });
 });
 
+test('removeSpring blocks springs referenced by section end presets', () => {
+  const state = new AppState();
+  state.addSpring({ symbol: 'SP_PRESET_ONLY', memo: 'preset only' });
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B_SPRING_PRESET',
+    b: 300,
+    h: 500,
+    color: '#123456',
+    defaultEndI: { condition: 'spring', springSymbol: 'SP_PRESET_ONLY' },
+    defaultEndJ: { condition: 'pin' },
+  });
+
+  assert.equal(state.removeSpring('SP_PRESET_ONLY'), false);
+
+  state.updateSection('member', 'beam', 'B_SPRING_PRESET', {
+    defaultEndI: { condition: 'pin' },
+  });
+  assert.equal(state.removeSpring('SP_PRESET_ONLY'), true);
+});
+
 test('surface section changes update color and follow section catalog updates', () => {
   const state = new AppState();
   state.addSection({

@@ -280,6 +280,7 @@ app.js ─┬─ state.js      Data model (AppState)
 - `nodes` / `levels` の `id` はJSONに保存されます
 - `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
 - 旧バージョンで保存されたファイルも後方互換で読込可能
+- schemaVersion 10 以降、`endI` / `endJ` が未指定の線材はピンとして読み込まれます（明示された材端条件は保持されます）
 
 ### ユーザー定義ファイル
 
