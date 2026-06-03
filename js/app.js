@@ -115,6 +115,130 @@ const ui = new UI(state, {
 
 new ToolManager(canvas2d, state, history, update);
 
+// --- Side Panels ---
+
+const sidePanelConfig = {
+  toolbar: {
+    widthVar: '--toolbar-w',
+    storageWidth: 'lineframe-toolbar-width',
+    storageCollapsed: 'lineframe-toolbar-collapsed',
+    min: 112,
+    maxRatio: 0.36,
+    defaultWidth: 160,
+    button: document.getElementById('btn-toggle-toolbar'),
+    resizer: document.getElementById('toolbar-resizer'),
+    className: 'toolbar-collapsed',
+    collapsedText: '›',
+    expandedText: '‹',
+    showLabel: 'Show toolbar',
+    hideLabel: 'Hide toolbar',
+    showTitle: 'ツールパネルを表示',
+    hideTitle: 'ツールパネルを隠す',
+  },
+  property: {
+    widthVar: '--panel-w',
+    storageWidth: 'lineframe-property-panel-width',
+    storageCollapsed: 'lineframe-property-panel-collapsed',
+    min: 156,
+    maxRatio: 0.42,
+    defaultWidth: 220,
+    button: document.getElementById('btn-toggle-property'),
+    resizer: document.getElementById('property-resizer'),
+    className: 'property-collapsed',
+    collapsedText: '‹',
+    expandedText: '›',
+    showLabel: 'Show properties',
+    hideLabel: 'Hide properties',
+    showTitle: 'プロパティパネルを表示',
+    hideTitle: 'プロパティパネルを隠す',
+  },
+};
+
+function clampPanelWidth(side, width) {
+  const cfg = sidePanelConfig[side];
+  const max = Math.max(cfg.min, Math.floor(window.innerWidth * cfg.maxRatio));
+  return Math.max(cfg.min, Math.min(max, Math.round(width)));
+}
+
+function getStoredPanelWidth(cfg) {
+  const stored = Number(localStorage.getItem(cfg.storageWidth));
+  return Number.isFinite(stored) && stored > 0 ? stored : cfg.defaultWidth;
+}
+
+function applyPanelWidth(side, width, persist = true) {
+  const cfg = sidePanelConfig[side];
+  const nextWidth = clampPanelWidth(side, width);
+  document.documentElement.style.setProperty(cfg.widthVar, `${nextWidth}px`);
+  if (persist) localStorage.setItem(cfg.storageWidth, String(nextWidth));
+  requestLayoutRefresh();
+}
+
+function isPanelCollapsed(side) {
+  return document.body.classList.contains(sidePanelConfig[side].className);
+}
+
+function updatePanelToggle(side) {
+  const cfg = sidePanelConfig[side];
+  if (!cfg.button) return;
+  const collapsed = isPanelCollapsed(side);
+  cfg.button.textContent = collapsed ? cfg.collapsedText : cfg.expandedText;
+  cfg.button.setAttribute('aria-label', collapsed ? cfg.showLabel : cfg.hideLabel);
+  cfg.button.title = collapsed ? cfg.showTitle : cfg.hideTitle;
+}
+
+function setPanelCollapsed(side, collapsed) {
+  const cfg = sidePanelConfig[side];
+  document.body.classList.toggle(cfg.className, collapsed);
+  localStorage.setItem(cfg.storageCollapsed, collapsed ? '1' : '0');
+  updatePanelToggle(side);
+  requestLayoutRefresh();
+}
+
+function requestLayoutRefresh() {
+  requestAnimationFrame(() => {
+    canvas2d.resize();
+    if (viewer3d) viewer3d.resize();
+    update();
+  });
+}
+
+function initSidePanels() {
+  for (const side of Object.keys(sidePanelConfig)) {
+    const cfg = sidePanelConfig[side];
+    applyPanelWidth(side, getStoredPanelWidth(cfg), false);
+    setPanelCollapsed(side, localStorage.getItem(cfg.storageCollapsed) === '1');
+
+    cfg.button?.addEventListener('click', () => {
+      setPanelCollapsed(side, !isPanelCollapsed(side));
+    });
+
+    cfg.resizer?.addEventListener('pointerdown', (event) => {
+      if (event.target.closest('button') || isPanelCollapsed(side)) return;
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = getStoredPanelWidth(cfg);
+      cfg.resizer.classList.add('active');
+      document.body.classList.add('resizing-panels');
+
+      const onPointerMove = (moveEvent) => {
+        const delta = moveEvent.clientX - startX;
+        const nextWidth = side === 'toolbar' ? startWidth + delta : startWidth - delta;
+        applyPanelWidth(side, nextWidth);
+      };
+      const onPointerUp = () => {
+        cfg.resizer.classList.remove('active');
+        document.body.classList.remove('resizing-panels');
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+      };
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp, { once: true });
+    });
+  }
+}
+
+initSidePanels();
+
 // --- View Tab Switching ---
 
 const tab2d = document.getElementById('tab-2d');
