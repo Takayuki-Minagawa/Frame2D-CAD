@@ -153,6 +153,7 @@ const sidePanelConfig = {
     hideTitle: 'プロパティパネルを隠す',
   },
 };
+let layoutRefreshQueued = false;
 
 function clampPanelWidth(side, width) {
   const cfg = sidePanelConfig[side];
@@ -171,6 +172,7 @@ function applyPanelWidth(side, width, persist = true) {
   document.documentElement.style.setProperty(cfg.widthVar, `${nextWidth}px`);
   if (persist) localStorage.setItem(cfg.storageWidth, String(nextWidth));
   requestLayoutRefresh();
+  return nextWidth;
 }
 
 function isPanelCollapsed(side) {
@@ -195,7 +197,10 @@ function setPanelCollapsed(side, collapsed) {
 }
 
 function requestLayoutRefresh() {
+  if (layoutRefreshQueued) return;
+  layoutRefreshQueued = true;
   requestAnimationFrame(() => {
+    layoutRefreshQueued = false;
     canvas2d.resize();
     if (viewer3d) viewer3d.resize();
     update();
@@ -216,23 +221,27 @@ function initSidePanels() {
       if (event.target.closest('button') || isPanelCollapsed(side)) return;
       event.preventDefault();
       const startX = event.clientX;
-      const startWidth = getStoredPanelWidth(cfg);
+      const startWidth = clampPanelWidth(side, getStoredPanelWidth(cfg));
+      let currentWidth = startWidth;
       cfg.resizer.classList.add('active');
       document.body.classList.add('resizing-panels');
 
       const onPointerMove = (moveEvent) => {
         const delta = moveEvent.clientX - startX;
         const nextWidth = side === 'toolbar' ? startWidth + delta : startWidth - delta;
-        applyPanelWidth(side, nextWidth);
+        currentWidth = applyPanelWidth(side, nextWidth, false);
       };
-      const onPointerUp = () => {
+      const finishResize = () => {
+        localStorage.setItem(cfg.storageWidth, String(currentWidth));
         cfg.resizer.classList.remove('active');
         document.body.classList.remove('resizing-panels');
         window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointerup', finishResize);
+        window.removeEventListener('pointercancel', finishResize);
       };
       window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerUp, { once: true });
+      window.addEventListener('pointerup', finishResize, { once: true });
+      window.addEventListener('pointercancel', finishResize, { once: true });
     });
   }
 }

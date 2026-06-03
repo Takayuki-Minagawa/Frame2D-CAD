@@ -37,6 +37,9 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   assert.match(appSource, /lineframe-toolbar-width/);
   assert.match(appSource, /lineframe-property-panel-width/);
   assert.match(appSource, /pointermove/);
+  assert.match(appSource, /pointercancel/);
+  assert.match(appSource, /layoutRefreshQueued/);
+  assert.match(appSource, /applyPanelWidth\(side,\s*nextWidth,\s*false\)/);
   assert.match(appSource, /canvas2d\.resize\(\)/);
 });
 
