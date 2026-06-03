@@ -48,6 +48,16 @@ export class UI {
       this.state.settings.widePick = e.target.checked;
     });
 
+    document.getElementById('sel-plan-layer-display-mode').addEventListener('change', e => {
+      this.state.settings.planLayerDisplayMode = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+
+    document.getElementById('sel-member-3d-render-mode').addEventListener('change', e => {
+      this.state.settings.member3dRenderMode = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+
     // Grid size
     document.getElementById('sel-grid').addEventListener('change', e => {
       this.state.settings.gridSize = parseFloat(e.target.value);
@@ -58,12 +68,14 @@ export class UI {
     document.getElementById('sel-active-layer').addEventListener('change', e => {
       this.state.activeLayerId = e.target.value;
       this._syncWallHeightInputs(false);
+      this._updateMemberLayerHint();
       this.callbacks.onLayerChange?.(this.state.activeLayerId);
     });
 
     // Member default type
     document.getElementById('sel-member-type').addEventListener('change', e => {
       this.state.memberDraftType = e.target.value;
+      this._updateMemberLayerHint();
     });
 
     // Surface defaults
@@ -272,8 +284,35 @@ export class UI {
     if (selSurfaceMode) selSurfaceMode.value = this.state.surfaceDraftMode;
     const selLoadDir = document.getElementById('sel-load-direction');
     if (selLoadDir) selLoadDir.value = this.state.surfaceDraftLoadDir;
+    const selPlanLayerMode = document.getElementById('sel-plan-layer-display-mode');
+    if (selPlanLayerMode) selPlanLayerMode.value = this.state.settings.planLayerDisplayMode || 'all';
+    const selMember3DMode = document.getElementById('sel-member-3d-render-mode');
+    if (selMember3DMode) selMember3DMode.value = this.state.settings.member3dRenderMode || 'solid';
+    this._updateMemberLayerHint();
     this._syncWallHeightInputs(false);
     this._syncRoofInputs();
+  }
+
+  _updateMemberLayerHint() {
+    const hint = document.getElementById('member-layer-hint');
+    if (!hint) return;
+    const activeLevel = this.state.levels.find(l => l.id === this.state.activeLayerId);
+    const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+    const topLevel = this.state.levels.find(l => l.id === topLevelId);
+    const activeLabel = activeLevel ? `${activeLevel.name} (z=${activeLevel.z})` : (this.state.activeLayerId || '-');
+    const topLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : '-';
+
+    if (this.state.memberDraftType === 'column') {
+      hint.textContent = t('memberLayerHintColumn')
+        .replace('{base}', activeLabel)
+        .replace('{top}', topLabel);
+    } else if (this.state.memberDraftType === 'vbrace') {
+      hint.textContent = t('memberLayerHintVBrace')
+        .replace('{base}', activeLabel)
+        .replace('{top}', topLabel);
+    } else {
+      hint.textContent = t('memberLayerHintPlan').replace('{layer}', activeLabel);
+    }
   }
 
   updatePropertyPanel() {

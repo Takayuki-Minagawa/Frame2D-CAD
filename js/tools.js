@@ -238,9 +238,10 @@ export class ToolManager {
     const tolerance = basePx / this.c.camera.scale;
 
     // Support hit first (small target, check before others) — skip if hidden
-    const support = this.state.settings.showSupports
+    let support = this.state.settings.showSupports
       ? this.state.findSupportAt(world.x, world.y, tolerance)
       : null;
+    if (support && !this.state.getPlanLayerStyle(support.levelId).visible) support = null;
     if (support) {
       this.state.selectedSupportId = support.id;
       this.state.selectedLoadId = null;
@@ -253,7 +254,7 @@ export class ToolManager {
 
     // Load hit
     const load = this.state.findLoadAt(world.x, world.y);
-    if (load) {
+    if (load && this.state.getPlanLayerStyle(load.levelId).visible) {
       this.state.selectedLoadId = load.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedMemberId = null;
@@ -265,7 +266,7 @@ export class ToolManager {
 
     // Surface hit
     const surface = this.state.findSurfaceAt(world.x, world.y);
-    if (surface) {
+    if (surface && this.state.getPlanLayerStyle(surface.levelId).visible) {
       this.state.selectedSurfaceId = surface.id;
       this.state.selectedMemberId = null;
       this.state.selectedLoadId = null;
@@ -279,7 +280,8 @@ export class ToolManager {
     const node = this.state.findNodeAt(world.x, world.y, tolerance);
     if (node) {
       const member = this.state.members.find(
-        m => m.startNodeId === node.id || m.endNodeId === node.id
+        m => (m.startNodeId === node.id || m.endNodeId === node.id) &&
+          this.state.getPlanLayerStyle(m.levelId).visible
       );
       if (member) {
         this.state.selectedMemberId = member.id;
@@ -296,7 +298,7 @@ export class ToolManager {
 
     // Check member hit
     const member = this.state.findMemberAt(world.x, world.y, tolerance);
-    if (member) {
+    if (member && this.state.getPlanLayerStyle(member.levelId).visible) {
       this.state.selectedMemberId = member.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedLoadId = null;

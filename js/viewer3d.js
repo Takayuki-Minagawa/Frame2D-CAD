@@ -321,6 +321,11 @@ export class Viewer3D {
       const length = direction.length();
       if (length < 0.001) continue;
 
+      if (this._isMemberLineMode()) {
+        this._addMemberLine3D(start, end, resolveMemberColor(m));
+        continue;
+      }
+
       const b = (m.section?.b || 200) / 1000;
       const h = (m.section?.h || 400) / 1000;
 
@@ -507,6 +512,13 @@ export class Viewer3D {
     const height = Math.abs(topZ - bottomZ);
     if (height < 0.001) return;
 
+    if (this._isMemberLineMode()) {
+      const start = new THREE.Vector3(node.x / 1000, bottomZ, -node.y / 1000);
+      const end = new THREE.Vector3(node.x / 1000, topZ, -node.y / 1000);
+      this._addMemberLine3D(start, end, member.color || '#666666');
+      return;
+    }
+
     const b = (member.section?.b || 200) / 1000;
     const h = (member.section?.h || 200) / 1000;
 
@@ -527,6 +539,19 @@ export class Viewer3D {
       lineSegments.position.copy(mesh.position);
       this.memberGroup.add(lineSegments);
     }
+  }
+
+  _isMemberLineMode() {
+    return this.state.settings?.member3dRenderMode === 'line';
+  }
+
+  _addMemberLine3D(start, end, color) {
+    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const mat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(color || '#666666'),
+      linewidth: 2,
+    });
+    this.memberGroup.add(new THREE.Line(geo, mat));
   }
 
   _addVBrace3D(member, n1, n2) {

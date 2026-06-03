@@ -43,6 +43,7 @@
           <option value="vbrace" data-i18n="vbrace">垂直ブレース</option>
         </select>
       </label>
+      <div id="member-layer-hint" class="tool-hint"></div>
     </div>
     <div id="tool-opts-surface" class="tool-opts">
       <label class="grid-label">
@@ -136,6 +137,21 @@
     <label class="toggle-label">
       <input type="checkbox" id="chk-wide-pick">
       <span data-i18n="widePick">広域選択</span>
+    </label>
+    <label class="grid-label">
+      <span data-i18n="planLayerDisplayMode">2Dレイヤー表示</span>
+      <select id="sel-plan-layer-display-mode">
+        <option value="all" data-i18n="planLayerAll">全レイヤー</option>
+        <option value="current" data-i18n="planLayerCurrent">現在のみ</option>
+        <option value="halftone" data-i18n="planLayerHalftone">他レイヤー薄表示</option>
+      </select>
+    </label>
+    <label class="grid-label">
+      <span data-i18n="member3dRenderMode">3D線材表示</span>
+      <select id="sel-member-3d-render-mode">
+        <option value="solid" data-i18n="member3dSolid">断面形状</option>
+        <option value="line" data-i18n="member3dLine">線表示</option>
+      </select>
     </label>
     <label class="grid-label">
       <span data-i18n="grid">グリッド</span>

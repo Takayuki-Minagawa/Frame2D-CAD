@@ -155,6 +155,16 @@ body {
 .tool-opts.visible {
   display: block;
 }
+.tool-hint {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.35;
+}
 
 .toggle-label, .grid-label {
   display: flex;

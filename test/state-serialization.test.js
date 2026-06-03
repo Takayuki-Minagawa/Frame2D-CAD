@@ -44,6 +44,37 @@ test('toJSON omits runtime IDs for members, surfaces, and loads', () => {
   assert.equal(hasOwn(data.loads[0], 'id'), false);
 });
 
+test('display mode settings default, serialize, and normalize on load', () => {
+  const state = new AppState();
+
+  assert.equal(state.settings.planLayerDisplayMode, 'all');
+  assert.equal(state.settings.member3dRenderMode, 'solid');
+  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 1, halftone: false });
+  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false });
+
+  state.activeLayerId = 'L1';
+  state.settings.planLayerDisplayMode = 'halftone';
+  state.settings.member3dRenderMode = 'line';
+  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 0.28, halftone: true });
+  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false });
+
+  const data = state.toJSON();
+  assert.equal(data.settings.planLayerDisplayMode, 'halftone');
+  assert.equal(data.settings.member3dRenderMode, 'line');
+
+  const restored = new AppState();
+  restored.loadJSON({
+    ...data,
+    settings: {
+      ...data.settings,
+      planLayerDisplayMode: 'bad-mode',
+      member3dRenderMode: 'bad-mode',
+    },
+  });
+  assert.equal(restored.settings.planLayerDisplayMode, 'all');
+  assert.equal(restored.settings.member3dRenderMode, 'solid');
+});
+
 test('toJSON includes used custom definitions but excludes unused ones', () => {
   const state = new AppState();
   state.addSpring({ symbol: 'SP1', memo: 'used spring' });
