@@ -515,7 +515,7 @@ export class Viewer3D {
     if (this._isMemberLineMode()) {
       const start = new THREE.Vector3(node.x / 1000, bottomZ, -node.y / 1000);
       const end = new THREE.Vector3(node.x / 1000, topZ, -node.y / 1000);
-      this._addMemberLine3D(start, end, member.color || '#666666');
+      this._addMemberLine3D(start, end, resolveMemberColor(member));
       return;
     }
 
@@ -547,6 +547,7 @@ export class Viewer3D {
 
   _addMemberLine3D(start, end, color) {
     const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+    // Browser WebGL implementations commonly clamp LineBasicMaterial to 1px.
     const mat = new THREE.LineBasicMaterial({
       color: new THREE.Color(color || '#666666'),
       linewidth: 2,
@@ -561,7 +562,7 @@ export class Viewer3D {
 
     const yBottom = bottomLevel.z / 1000;
     const yTop = topLevel.z / 1000;
-    const color = new THREE.Color(member.color || '#666666');
+    const color = new THREE.Color(resolveMemberColor(member));
     const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
 
     const s1 = new THREE.Vector3(n1.x / 1000, yBottom, -n1.y / 1000);

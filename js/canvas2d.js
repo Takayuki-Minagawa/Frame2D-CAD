@@ -150,8 +150,14 @@ export class Canvas2D {
 
     // Nodes
     for (const n of this.state.nodes) {
-      const nodeAlpha = visibleNodeAlpha.get(n.id);
-      if (!nodeAlpha) continue;
+      let nodeAlpha = visibleNodeAlpha.get(n.id);
+      if (!nodeAlpha) {
+        const isMemberNode = this.state.members.some(
+          m => m.startNodeId === n.id || m.endNodeId === n.id
+        );
+        if (isMemberNode) continue;
+        nodeAlpha = 1;
+      }
       const s = this.worldToScreen(n.x, n.y);
       const isEndOfSelected = this.state.selectedMemberId &&
         (() => {
