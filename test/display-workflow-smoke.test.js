@@ -36,8 +36,10 @@ test('2D drawing and selection use shared display visibility helpers', async () 
   assert.match(canvasSource, /_drawPreviewLabel/);
 
   assert.match(toolsSource, /isMemberSelectable\(member\)/);
-  assert.match(toolsSource, /isSurfaceSelectable\(surface\)/);
+  assert.match(toolsSource, /findSurfaceAt\(x,\s*y,\s*surface => this\.state\.isSurfaceSelectable\(surface\)\)/);
+  assert.match(toolsSource, /findMemberAt\(x,\s*y,\s*tolerance,\s*member => this\.state\.isMemberSelectable\(member\)\)/);
   assert.match(toolsSource, /_findSelectableMemberNodeAt/);
+  assert.doesNotMatch(toolsSource, /function surfaceHitAt/);
 });
 
 test('3D viewer uses 3D layer display and element filters', async () => {

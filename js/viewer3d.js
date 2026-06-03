@@ -538,7 +538,7 @@ export class Viewer3D {
 
     const geometry = new THREE.BoxGeometry(b, height, h);
     const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(member.color || '#666666'),
+      color: new THREE.Color(resolveMemberColor(member)),
       wireframe: this.showWireframe,
       transparent: opacityMultiplier < 1,
       opacity: opacityMultiplier,

@@ -2,7 +2,7 @@
 
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
-import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
@@ -344,59 +344,19 @@ export class ToolManager {
 
   _findSelectableSupportAt(x, y, tolerance) {
     if (this.state.settings.showSupports === false) return null;
-    let closest = null;
-    let minDist = tolerance;
-    for (const support of this.state.supports) {
-      if (!this.state.isSupportSelectable(support)) continue;
-      const dist = Math.hypot(support.x - x, support.y - y);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = support;
-      }
-    }
-    return closest;
+    return this.state.findSupportAt(x, y, tolerance, support => this.state.isSupportSelectable(support));
   }
 
   _findSelectableLoadAt(x, y) {
-    for (let i = this.state.loads.length - 1; i >= 0; i--) {
-      const load = this.state.loads[i];
-      if (!this.state.isLoadSelectable(load)) continue;
-      if (load.type === 'areaLoad') {
-        if (x >= load.x1 && x <= load.x2 && y >= load.y1 && y <= load.y2) return load;
-      } else if (load.type === 'lineLoad') {
-        if (pointToSegmentDist(x, y, load.x1, load.y1, load.x2, load.y2) < 300) return load;
-      } else if (load.type === 'pointLoad') {
-        if (Math.hypot(x - load.x1, y - load.y1) < 300) return load;
-      }
-    }
-    return null;
+    return this.state.findLoadAt(x, y, load => this.state.isLoadSelectable(load));
   }
 
   _findSelectableSurfaceAt(x, y) {
-    const wallOffset = this.state.settings.wallDisplayOffset || 120;
-    for (let i = this.state.surfaces.length - 1; i >= 0; i--) {
-      const surface = this.state.surfaces[i];
-      if (!this.state.isSurfaceSelectable(surface)) continue;
-      if (surfaceHitAt(surface, x, y, wallOffset)) return surface;
-    }
-    return null;
+    return this.state.findSurfaceAt(x, y, surface => this.state.isSurfaceSelectable(surface));
   }
 
   _findSelectableMemberAt(x, y, tolerance) {
-    let closest = null;
-    let minDist = tolerance;
-    for (const member of this.state.members) {
-      if (!this.state.isMemberSelectable(member)) continue;
-      const n1 = this.state.getNode(member.startNodeId);
-      const n2 = this.state.getNode(member.endNodeId);
-      if (!n1 || !n2) continue;
-      const dist = pointToSegmentDist(x, y, n1.x, n1.y, n2.x, n2.y);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = member;
-      }
-    }
-    return closest;
+    return this.state.findMemberAt(x, y, tolerance, member => this.state.isMemberSelectable(member));
   }
 
   _selectMove(e) {
@@ -883,61 +843,4 @@ export class ToolManager {
     const el = document.getElementById('status-coords');
     if (el) el.textContent = `X: ${Math.round(x)}  Y: ${Math.round(y)}`;
   }
-}
-
-function surfaceHitAt(surface, x, y, wallOffset) {
-  const isWallType = isWallSurfaceType(surface.type);
-  if (surface.shape === 'line') {
-    return pointToSegmentDist(
-      x,
-      y,
-      surface.x1 + wallOffset,
-      surface.y1 + wallOffset,
-      surface.x2 + wallOffset,
-      surface.y2 + wallOffset
-    ) < 300;
-  }
-  if (surface.shape === 'polygon' && Array.isArray(surface.points)) {
-    if (surface.type === 'exteriorWall') {
-      const oPts = offsetPolygonOutward(surface.points, wallOffset);
-      return oPts.some((point, index) => {
-        const next = oPts[(index + 1) % oPts.length];
-        return pointToSegmentDist(x, y, point.x, point.y, next.x, next.y) < 300;
-      });
-    }
-    const points = surface.points.map(p => ({
-      x: p.x + (isWallType ? wallOffset : 0),
-      y: p.y + (isWallType ? wallOffset : 0),
-    }));
-    return pointInPolygon(x, y, points);
-  }
-  const x1 = isWallType ? surface.x1 + wallOffset : surface.x1;
-  const y1 = isWallType ? surface.y1 + wallOffset : surface.y1;
-  const x2 = isWallType ? surface.x2 + wallOffset : surface.x2;
-  const y2 = isWallType ? surface.y2 + wallOffset : surface.y2;
-  return x >= x1 && x <= x2 && y >= y1 && y <= y2;
-}
-
-function pointToSegmentDist(px, py, x1, y1, x2, y2) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
-  const x = x1 + t * dx;
-  const y = y1 + t * dy;
-  return Math.hypot(px - x, py - y);
-}
-
-function pointInPolygon(px, py, points) {
-  let inside = false;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const xi = points[i].x;
-    const yi = points[i].y;
-    const xj = points[j].x;
-    const yj = points[j].y;
-    const intersect = ((yi > py) !== (yj > py)) &&
-      (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-9) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }

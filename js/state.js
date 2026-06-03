@@ -998,10 +998,11 @@ export class AppState {
     }
   }
 
-  findMemberAt(x, y, tolerance = 300) {
+  findMemberAt(x, y, tolerance = 300, predicate = null) {
     let closest = null;
     let minDist = tolerance;
     for (const m of this.members) {
+      if (predicate && !predicate(m)) continue;
       const n1 = this.getNode(m.startNodeId);
       const n2 = this.getNode(m.endNodeId);
       if (!n1 || !n2) continue;
@@ -1859,10 +1860,11 @@ export class AppState {
     }
   }
 
-  findSurfaceAt(x, y) {
+  findSurfaceAt(x, y, predicate = null) {
     const wallOffset = this.settings.wallDisplayOffset || 120;
     for (let i = this.surfaces.length - 1; i >= 0; i--) {
       const s = this.surfaces[i];
+      if (predicate && !predicate(s)) continue;
       const isWallType = isWallSurfaceType(s.type);
       if (s.shape === 'line') {
         const lx1 = s.x1 + wallOffset;
@@ -2210,9 +2212,10 @@ export class AppState {
     }
   }
 
-  findLoadAt(x, y) {
+  findLoadAt(x, y, predicate = null) {
     for (let i = this.loads.length - 1; i >= 0; i--) {
       const ld = this.loads[i];
+      if (predicate && !predicate(ld)) continue;
       if (ld.type === 'areaLoad') {
         if (x >= ld.x1 && x <= ld.x2 && y >= ld.y1 && y <= ld.y2) return ld;
       } else if (ld.type === 'lineLoad') {
@@ -2266,10 +2269,11 @@ export class AppState {
     }
   }
 
-  findSupportAt(x, y, tolerance = 300) {
+  findSupportAt(x, y, tolerance = 300, predicate = null) {
     let closest = null;
     let minDist = tolerance;
     for (const s of this.supports) {
+      if (predicate && !predicate(s)) continue;
       const d = Math.hypot(s.x - x, s.y - y);
       if (d < minDist) {
         minDist = d;
@@ -2692,7 +2696,7 @@ function normalizeMember3DRenderMode(value) {
 
 function normalizeMemberTypeFilter(value) {
   const text = sanitizeText(value);
-  return ['all', 'beam', 'column', 'hbrace', 'vbrace', 'brace'].includes(text) ? text : 'all';
+  return ['all', 'beam', 'column', 'hbrace', 'vbrace'].includes(text) ? text : 'all';
 }
 
 function normalizeDisplayPreset(value) {

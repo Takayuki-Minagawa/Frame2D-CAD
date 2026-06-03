@@ -75,13 +75,32 @@ test('display mode settings default, serialize, and normalize on load', () => {
       planLayerDisplayMode: 'bad-mode',
       view3dLayerDisplayMode: 'bad-mode',
       member3dRenderMode: 'bad-mode',
-      memberTypeFilter: 'bad-mode',
+      memberTypeFilter: 'brace',
     },
   });
   assert.equal(restored.settings.planLayerDisplayMode, 'all');
   assert.equal(restored.settings.view3dLayerDisplayMode, 'all');
   assert.equal(restored.settings.member3dRenderMode, 'solid');
   assert.equal(restored.settings.memberTypeFilter, 'all');
+});
+
+test('hit tests accept predicates so locked or hidden elements do not block visible candidates', () => {
+  const state = new AppState();
+  const lowerA = state.addNode(0, 0);
+  const lowerB = state.addNode(4000, 0);
+  const upperA = state.addNode(0, 0);
+  const upperB = state.addNode(4000, 0);
+  const lower = state.addMember(lowerA.id, lowerB.id, { type: 'beam', levelId: 'L0' });
+  const upper = state.addMember(upperA.id, upperB.id, { type: 'beam', levelId: 'L1' });
+
+  state.activeLayerId = 'L1';
+  state.settings.planLayerDisplayMode = 'current';
+
+  assert.equal(state.findMemberAt(2000, 0, 300).id, lower.id);
+  assert.equal(
+    state.findMemberAt(2000, 0, 300, member => state.isMemberSelectable(member)).id,
+    upper.id
+  );
 });
 
 test('display presets and filters drive member visibility and selection', () => {
