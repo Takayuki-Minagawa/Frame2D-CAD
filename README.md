@@ -226,8 +226,8 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": "L1", "name": "2F", "z": 2800 }
   ],
   "nodes": [
-    { "id": "N1", "x": 0, "y": 0, "z": 0 },
-    { "id": "N2", "x": 5000, "y": 0, "z": 0 }
+    { "id": 1, "x": 0, "y": 0, "z": 0 },
+    { "id": 2, "x": 5000, "y": 0, "z": 0 }
   ],
   "sectionCatalog": [
     { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "memo": "", "defaultEndI": { "condition": "pin", "springSymbol": null }, "defaultEndJ": { "condition": "pin", "springSymbol": null }, "isDefault": true },
@@ -239,8 +239,8 @@ app.js ─┬─ state.js      Data model (AppState)
   "members": [
     {
       "type": "beam",
-      "startNodeId": "N1",
-      "endNodeId": "N2",
+      "startNodeId": 1,
+      "endNodeId": 2,
       "sectionName": "B300x500",
       "levelId": "L0",
       "color": "#123456",
@@ -286,7 +286,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 - `sectionCatalog` / `springCatalog` にはデフォルト定義＋使用中のカスタム定義が含まれます（未使用のカスタム定義は含まれません）
 - 断面定義には `memo`（説明テキスト）フィールドが含まれます
-- `nodes` / `levels` の `id` はJSONに保存されます
+- `nodes` / `levels` の `id` はJSONに保存されます。節点IDと `members` の節点参照は数値で出力されます
 - `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
 - 旧バージョンで保存されたファイルも後方互換で読込可能
 - schemaVersion 10 以降、`endI` / `endJ` が未指定の線材はピンとして読み込まれます（明示された材端条件は保持されます）

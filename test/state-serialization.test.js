@@ -24,7 +24,7 @@ test('loadJSON accepts supported schema versions and rejects future versions', (
   );
 });
 
-test('toJSON omits runtime IDs for members, surfaces, and loads', () => {
+test('toJSON writes numeric node IDs and omits runtime IDs for members, surfaces, and loads', () => {
   const state = new AppState();
 
   const n1 = state.addNode(0, 0);
@@ -39,9 +39,39 @@ test('toJSON omits runtime IDs for members, surfaces, and loads', () => {
   state.addLoad('pointLoad', { x1: 2500, y1: 2000, fz: -10000 });
 
   const data = state.toJSON();
+  assert.deepEqual(data.nodes.map(n => n.id), [1, 2, 3]);
+  assert.equal(data.members[0].startNodeId, 1);
+  assert.equal(data.members[0].endNodeId, 2);
   assert.equal(hasOwn(data.members[0], 'id'), false);
   assert.equal(hasOwn(data.surfaces[0], 'id'), false);
   assert.equal(hasOwn(data.loads[0], 'id'), false);
+});
+
+test('loadJSON accepts numeric node IDs and keeps future saved IDs numeric', () => {
+  const state = new AppState();
+  state.loadJSON({
+    schemaVersion: 10,
+    meta: { name: 'numeric-node-ids', unit: 'mm', createdAt: '2026-06-03T00:00:00Z' },
+    settings: {},
+    levels: [{ id: 'L0', name: 'GL', z: 0 }, { id: 'L1', name: '2F', z: 2800 }],
+    nodes: [{ id: 1, x: 0, y: 0, z: 0 }, { id: 2, x: 5000, y: 0, z: 0 }],
+    members: [{ type: 'beam', startNodeId: 1, endNodeId: 2, sectionName: '_G', levelId: 'L0' }],
+    surfaces: [],
+    loads: [],
+    supports: [],
+  });
+
+  assert.equal(state.getNode(1).x, 0);
+  assert.equal(state.members[0].startNodeId, 1);
+  assert.equal(state.members[0].endNodeId, 2);
+
+  const n3 = state.addNode(10000, 0);
+  state.addMember(2, n3.id, { type: 'beam' });
+
+  const data = state.toJSON();
+  assert.deepEqual(data.nodes.map(n => n.id), [1, 2, 3]);
+  assert.equal(data.members[1].startNodeId, 2);
+  assert.equal(data.members[1].endNodeId, 3);
 });
 
 test('display mode settings default, serialize, and normalize on load', () => {
@@ -340,14 +370,13 @@ test('loadJSON restores used custom definitions from CAD and preserves existing 
   assert.ok(restored.sectionCatalog.some(s => s.name === 'EXTRA_DEF'));
 });
 
-test('loadJSON backward-compat: old files with embedded custom defs still load', () => {
-  // Simulate an old-format file that includes custom sections
-  const oldFileData = {
-    schemaVersion: 3,
-    meta: { name: 'old-file', unit: 'mm', createdAt: '2025-01-01T00:00:00Z' },
+test('loadJSON restores embedded custom defs from CAD files', () => {
+  const fileData = {
+    schemaVersion: 10,
+    meta: { name: 'cad-file', unit: 'mm', createdAt: '2026-06-03T00:00:00Z' },
     settings: { gridSize: 1000, snap: true, wallDisplayOffset: 120 },
     levels: [{ id: 'L0', name: 'GL', z: 0 }, { id: 'L1', name: '2F', z: 2800 }],
-    nodes: [{ id: 'N1', x: 0, y: 0 }, { id: 'N2', x: 5000, y: 0 }],
+    nodes: [{ id: 1, x: 0, y: 0 }, { id: 2, x: 5000, y: 0 }],
     sectionCatalog: [
       { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
       { target: 'member', type: 'column', name: '_C', material: 'steel', b: 105, h: 105, color: '#666666', isDefault: true },
@@ -363,7 +392,7 @@ test('loadJSON backward-compat: old files with embedded custom defs still load',
       { symbol: '_SP', memo: '回転バネ', isDefault: true },
     ],
     members: [
-      { type: 'beam', startNodeId: 'N1', endNodeId: 'N2', sectionName: 'OLD_BEAM', levelId: 'L0', color: '#aabbcc', topLevelId: null, bracePattern: 'single', endI: { condition: 'rigid', springSymbol: null }, endJ: { condition: 'rigid', springSymbol: null } },
+      { type: 'beam', startNodeId: 1, endNodeId: 2, sectionName: 'OLD_BEAM', levelId: 'L0', color: '#aabbcc', topLevelId: null, bracePattern: 'single', endI: { condition: 'rigid', springSymbol: null }, endJ: { condition: 'rigid', springSymbol: null } },
     ],
     surfaces: [],
     loads: [],
@@ -371,9 +400,9 @@ test('loadJSON backward-compat: old files with embedded custom defs still load',
   };
 
   const state = new AppState();
-  state.loadJSON(oldFileData);
+  state.loadJSON(fileData);
 
-  // Old file's embedded custom def is loaded for backward compat
+  // Embedded custom definitions are loaded with the CAD data.
   assert.ok(state.sectionCatalog.some(s => s.name === 'OLD_BEAM'));
   assert.equal(state.members[0].sectionName, 'OLD_BEAM');
   assert.equal(state.members[0].section.b, 250);
