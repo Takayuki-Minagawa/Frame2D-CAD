@@ -49,17 +49,22 @@ test('display mode settings default, serialize, and normalize on load', () => {
 
   assert.equal(state.settings.planLayerDisplayMode, 'all');
   assert.equal(state.settings.member3dRenderMode, 'solid');
-  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 1, halftone: false });
-  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false });
+  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 1, halftone: false, selectable: true });
+  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false, selectable: true });
 
   state.activeLayerId = 'L1';
   state.settings.planLayerDisplayMode = 'halftone';
+  state.settings.planLayerSelectionLock = true;
+  state.settings.view3dLayerDisplayMode = 'current';
   state.settings.member3dRenderMode = 'line';
-  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 0.28, halftone: true });
-  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false });
+  assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 0.28, halftone: true, selectable: false });
+  assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false, selectable: true });
+  assert.deepEqual(state.getPlanLayerStyle('L0', { view: '3d' }), { visible: false, alpha: 0, halftone: false, selectable: false });
 
   const data = state.toJSON();
   assert.equal(data.settings.planLayerDisplayMode, 'halftone');
+  assert.equal(data.settings.planLayerSelectionLock, true);
+  assert.equal(data.settings.view3dLayerDisplayMode, 'current');
   assert.equal(data.settings.member3dRenderMode, 'line');
 
   const restored = new AppState();
@@ -68,11 +73,153 @@ test('display mode settings default, serialize, and normalize on load', () => {
     settings: {
       ...data.settings,
       planLayerDisplayMode: 'bad-mode',
+      view3dLayerDisplayMode: 'bad-mode',
       member3dRenderMode: 'bad-mode',
+      memberTypeFilter: 'brace',
     },
   });
   assert.equal(restored.settings.planLayerDisplayMode, 'all');
+  assert.equal(restored.settings.view3dLayerDisplayMode, 'all');
   assert.equal(restored.settings.member3dRenderMode, 'solid');
+  assert.equal(restored.settings.memberTypeFilter, 'all');
+});
+
+test('hit tests accept predicates so locked or hidden elements do not block visible candidates', () => {
+  const state = new AppState();
+  const lowerA = state.addNode(0, 0);
+  const lowerB = state.addNode(4000, 0);
+  const upperA = state.addNode(0, 0);
+  const upperB = state.addNode(4000, 0);
+  const lower = state.addMember(lowerA.id, lowerB.id, { type: 'beam', levelId: 'L0' });
+  const upper = state.addMember(upperA.id, upperB.id, { type: 'beam', levelId: 'L1' });
+
+  state.activeLayerId = 'L1';
+  state.settings.planLayerDisplayMode = 'current';
+
+  assert.equal(state.findMemberAt(2000, 0, 300).id, lower.id);
+  assert.equal(
+    state.findMemberAt(2000, 0, 300, member => state.isMemberSelectable(member)).id,
+    upper.id
+  );
+});
+
+test('display presets and filters drive member visibility and selection', () => {
+  const state = new AppState();
+  state.activeLayerId = 'L1';
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(4000, 0);
+  const beam = state.addMember(n1.id, n2.id, { type: 'beam', levelId: 'L0' });
+
+  state.applyDisplayPreset('review');
+  assert.equal(state.settings.planLayerDisplayMode, 'halftone');
+  assert.equal(state.settings.planLayerSelectionLock, true);
+  assert.equal(state.settings.showMemberEndSymbols, true);
+  assert.equal(state.isMemberVisible(beam, '2d'), true);
+  assert.equal(state.isMemberSelectable(beam), false);
+
+  state.settings.memberTypeFilter = 'column';
+  assert.equal(state.isMemberVisible(beam, '2d'), false);
+});
+
+test('copyLevelElements duplicates nodes and maps story members to the target level', () => {
+  const state = new AppState();
+  const third = state.addLevel('3F', 5600);
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(5000, 0);
+  const beam = state.addMember(n1.id, n2.id, { type: 'beam', levelId: 'L0' });
+  const column = state.addMember(n1.id, n1.id, { type: 'column', levelId: 'L0', topLevelId: 'L1' });
+  state.addSurfaceRect(0, 0, 5000, 4000, { type: 'floor', levelId: 'L0', topLevelId: 'L0' });
+  state.addLoad('pointLoad', { x1: 2500, y1: 2000, levelId: 'L0', fz: -1000 });
+  state.addSupport(0, 0, { levelId: 'L0' });
+
+  const counts = state.copyLevelElements('L0', 'L1');
+  assert.deepEqual(counts, { members: 2, surfaces: 1, loads: 1, supports: 1 });
+  assert.equal(state.members.length, 4);
+
+  const copiedBeam = state.members.find(m => m.id !== beam.id && m.type === 'beam' && m.levelId === 'L1');
+  const copiedColumn = state.members.find(m => m.id !== column.id && m.type === 'column' && m.levelId === 'L1');
+  assert.ok(copiedBeam);
+  assert.ok(copiedColumn);
+  assert.equal(copiedColumn.topLevelId, third.id);
+  assert.notEqual(copiedBeam.startNodeId, beam.startNodeId);
+  assert.notEqual(copiedBeam.endNodeId, beam.endNodeId);
+});
+
+test('copyLevelElements separates copied roof groups and skips generated roof members', () => {
+  const state = new AppState();
+  state.addLevel('3F', 5600);
+  const roof = state.addSurfacePolygon(
+    [{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 4000 }, { x: 0, y: 4000 }],
+    { type: 'roof', levelId: 'L0', topLevelId: 'L0', roofGroupId: 'RG1' }
+  );
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(5000, 0);
+  state.addMember(n1.id, n2.id, {
+    type: 'beam',
+    levelId: 'L0',
+    geometryMode: 'explicit3d',
+    startZ: 0,
+    endZ: 500,
+    roofRole: 'roofEdge',
+  });
+
+  const counts = state.copyLevelElements('L0', 'L1');
+  assert.equal(counts.members, 0);
+  assert.equal(counts.surfaces, 1);
+  const copiedRoof = state.surfaces.find(s => s.id !== roof.id && s.type === 'roof');
+  assert.ok(copiedRoof);
+  assert.equal(copiedRoof.roofGroupId, 'RG1_L1');
+});
+
+test('validateModel reports missing references, duplicates, and orphan nodes', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(0, 0);
+  state.addNode(9000, 9000);
+  state.addMember(n1.id, n2.id, { type: 'beam', levelId: 'L0' });
+  state.addMember(n1.id, n2.id, { type: 'beam', levelId: 'L0' });
+  state.members.push({
+    id: 'BROKEN',
+    type: 'beam',
+    startNodeId: 'NOPE',
+    endNodeId: n2.id,
+    levelId: 'L9',
+    topLevelId: null,
+    sectionName: '_G',
+    section: { b: 200, h: 400 },
+    endI: { condition: 'pin', springSymbol: null },
+    endJ: { condition: 'pin', springSymbol: null },
+  });
+
+  const codes = state.validateModel().map(issue => issue.code);
+  assert.ok(codes.includes('missing-node'));
+  assert.ok(codes.includes('duplicate-member'));
+  assert.ok(codes.includes('zero-length-member'));
+  assert.ok(codes.includes('orphan-node'));
+});
+
+test('validateModel uses explicit 3D Z values for length and duplicate checks', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(0, 0);
+  state.addMember(n1.id, n2.id, {
+    type: 'beam',
+    levelId: 'L0',
+    geometryMode: 'explicit3d',
+    startZ: 0,
+    endZ: 1000,
+  });
+  state.addMember(n1.id, n2.id, {
+    type: 'beam',
+    levelId: 'L0',
+    geometryMode: 'explicit3d',
+    startZ: 0,
+    endZ: 2000,
+  });
+
+  const codes = state.validateModel().map(issue => issue.code);
+  assert.ok(!codes.includes('zero-length-member'));
+  assert.ok(!codes.includes('duplicate-member'));
 });
 
 test('toJSON includes used custom definitions but excludes unused ones', () => {

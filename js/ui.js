@@ -53,9 +53,58 @@ export class UI {
       this.callbacks.onPropertyChange?.();
     });
 
+    document.getElementById('chk-plan-layer-selection-lock').addEventListener('change', e => {
+      this.state.settings.planLayerSelectionLock = e.target.checked;
+      this.callbacks.onPropertyChange?.();
+    });
+
+    document.getElementById('sel-3d-layer-display-mode').addEventListener('change', e => {
+      this.state.settings.view3dLayerDisplayMode = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+
     document.getElementById('sel-member-3d-render-mode').addEventListener('change', e => {
       this.state.settings.member3dRenderMode = e.target.value;
       this.callbacks.onPropertyChange?.();
+    });
+
+    document.getElementById('sel-display-preset').addEventListener('change', e => {
+      this.state.applyDisplayPreset(e.target.value);
+      this.refreshLayerSelectors();
+      this.callbacks.onPropertyChange?.();
+    });
+
+    const bindDisplayCheckbox = (id, key) => {
+      document.getElementById(id).addEventListener('change', e => {
+        this.state.settings[key] = e.target.checked;
+        this.callbacks.onPropertyChange?.();
+      });
+    };
+    bindDisplayCheckbox('chk-show-members', 'showMembers');
+    bindDisplayCheckbox('chk-show-surfaces', 'showSurfaces');
+    bindDisplayCheckbox('chk-show-loads', 'showLoads');
+    bindDisplayCheckbox('chk-show-member-end-symbols', 'showMemberEndSymbols');
+    bindDisplayCheckbox('chk-show-placement-labels', 'showPlacementLabels');
+
+    document.getElementById('sel-member-type-filter').addEventListener('change', e => {
+      this.state.settings.memberTypeFilter = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+    document.getElementById('sel-section-filter').addEventListener('change', e => {
+      this.state.settings.sectionFilter = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+
+    document.getElementById('btn-copy-level').addEventListener('click', () => {
+      this.callbacks.onCopyLevel?.(
+        document.getElementById('sel-copy-source-layer').value,
+        document.getElementById('sel-copy-target-layer').value
+      );
+    });
+
+    document.getElementById('btn-model-check').addEventListener('click', () => {
+      this.renderModelCheck();
+      this.callbacks.onModelCheck?.();
     });
 
     // Grid size
@@ -286,11 +335,83 @@ export class UI {
     if (selLoadDir) selLoadDir.value = this.state.surfaceDraftLoadDir;
     const selPlanLayerMode = document.getElementById('sel-plan-layer-display-mode');
     if (selPlanLayerMode) selPlanLayerMode.value = this.state.settings.planLayerDisplayMode || 'all';
+    const chkSelectionLock = document.getElementById('chk-plan-layer-selection-lock');
+    if (chkSelectionLock) chkSelectionLock.checked = !!this.state.settings.planLayerSelectionLock;
+    const sel3DLayerMode = document.getElementById('sel-3d-layer-display-mode');
+    if (sel3DLayerMode) sel3DLayerMode.value = this.state.settings.view3dLayerDisplayMode || 'all';
     const selMember3DMode = document.getElementById('sel-member-3d-render-mode');
     if (selMember3DMode) selMember3DMode.value = this.state.settings.member3dRenderMode || 'solid';
+    const selPreset = document.getElementById('sel-display-preset');
+    if (selPreset) selPreset.value = this.state.settings.displayPreset || 'input';
+    this._refreshDisplayFilters();
+    this._refreshCopyLayerSelectors(layerHtml);
     this._updateMemberLayerHint();
     this._syncWallHeightInputs(false);
     this._syncRoofInputs();
+  }
+
+  _refreshCopyLayerSelectors(layerHtml) {
+    const source = document.getElementById('sel-copy-source-layer');
+    const target = document.getElementById('sel-copy-target-layer');
+    if (source) {
+      source.innerHTML = layerHtml;
+      source.value = this.state.activeLayerId;
+    }
+    if (target) {
+      target.innerHTML = layerHtml;
+      target.value = this.state.getNextLevelId(this.state.activeLayerId) || this.state.activeLayerId;
+    }
+  }
+
+  _refreshDisplayFilters() {
+    const setChecked = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.checked = value;
+    };
+    setChecked('chk-show-members', this.state.settings.showMembers !== false);
+    setChecked('chk-show-surfaces', this.state.settings.showSurfaces !== false);
+    setChecked('chk-show-loads', this.state.settings.showLoads !== false);
+    setChecked('chk-show-member-end-symbols', !!this.state.settings.showMemberEndSymbols);
+    setChecked('chk-show-placement-labels', this.state.settings.showPlacementLabels !== false);
+    const typeFilter = document.getElementById('sel-member-type-filter');
+    if (typeFilter) typeFilter.value = this.state.settings.memberTypeFilter || 'all';
+    const sectionFilter = document.getElementById('sel-section-filter');
+    if (sectionFilter) {
+      const selected = this.state.settings.sectionFilter || 'all';
+      const memberSections = this.state.sectionCatalog
+        .filter(s => s.target === 'member')
+        .sort((a, b) => a.name.localeCompare(b.name));
+      sectionFilter.innerHTML = [
+        `<option value="all">${escapeHtml(t('filterAll'))}</option>`,
+        ...memberSections.map(s =>
+          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
+        ),
+      ].join('');
+      const resolved = memberSections.some(s => s.name === selected) ? selected : 'all';
+      sectionFilter.value = resolved;
+      this.state.settings.sectionFilter = resolved;
+    }
+  }
+
+  renderModelCheck() {
+    const container = document.getElementById('model-check-content');
+    if (!container) return;
+    const issues = this.state.validateModel();
+    if (!issues.length) {
+      container.innerHTML = `<p class="quantity-note">${t('modelCheckNoIssues')}</p>`;
+      return;
+    }
+    container.innerHTML = `
+      <ul class="model-check-list">
+        ${issues.slice(0, 12).map(issue => `
+          <li class="model-check-item model-check-${escapeHtml(issue.severity)}">
+            <b>${escapeHtml(t(`modelCheck${capitalize(issue.severity)}`))}</b>
+            ${escapeHtml(issue.message)}
+          </li>
+        `).join('')}
+      </ul>
+      ${issues.length > 12 ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore').replace('{count}', issues.length - 12))}</p>` : ''}
+    `;
   }
 
   _updateMemberLayerHint() {

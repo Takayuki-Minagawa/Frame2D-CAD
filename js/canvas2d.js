@@ -106,8 +106,8 @@ export class Canvas2D {
     // Members
     const visibleNodeAlpha = new Map();
     for (const m of this.state.members) {
+      if (!this.state.isMemberVisible(m, '2d')) continue;
       const layerStyle = this.state.getPlanLayerStyle(m.levelId);
-      if (!layerStyle.visible) continue;
       const n1 = this.state.getNode(m.startNodeId);
       const n2 = this.state.getNode(m.endNodeId);
       if (!n1 || !n2) continue;
@@ -121,12 +121,14 @@ export class Canvas2D {
       ctx.globalAlpha *= alpha;
       if (m.type === 'column') {
         this._drawColumn(ctx, m, n1, isSelected, selectedColor, memberDefault);
+        if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
         ctx.restore();
         continue;
       }
 
       if (m.type === 'vbrace') {
         this._drawVBrace(ctx, m, n1, n2, isSelected, selectedColor, memberDefault);
+        if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
         ctx.restore();
         continue;
       }
@@ -145,6 +147,7 @@ export class Canvas2D {
       ctx.lineTo(s2.x, s2.y);
       ctx.stroke();
       ctx.restore();
+      if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
       ctx.restore();
     }
 
@@ -204,8 +207,62 @@ export class Canvas2D {
         ctx.lineTo(s2.x, s2.y);
       }
       ctx.stroke();
+      if (this.preview.label && this.state.settings.showPlacementLabels !== false) {
+        const labelPoint = this._previewLabelPoint();
+        this._drawPreviewLabel(ctx, this.preview.label, labelPoint.x + 8, labelPoint.y - 8, previewColor);
+      }
       ctx.restore();
     }
+  }
+
+  _previewLabelPoint() {
+    if (this.preview?.mode === 'polyline' && Array.isArray(this.preview.points) && this.preview.points.length) {
+      const last = this.preview.points[this.preview.points.length - 1];
+      return this.worldToScreen(last.x, last.y);
+    }
+    return this.worldToScreen(this.preview.endX, this.preview.endY);
+  }
+
+  _drawPreviewLabel(ctx, text, x, y, color) {
+    const label = String(text || '').trim();
+    if (!label) return;
+    ctx.save();
+    ctx.font = '11px system-ui, sans-serif';
+    const width = ctx.measureText(label).width + 12;
+    ctx.fillStyle = 'rgba(20, 22, 34, 0.88)';
+    ctx.strokeStyle = toRgba(color, 0.65);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y - 17, width, 20, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#e5e7eb';
+    ctx.fillText(label, x + 6, y - 3);
+    ctx.restore();
+  }
+
+  _drawMemberEndSymbols(ctx, member, n1, n2, selectedColor) {
+    const color = member.id === this.state.selectedMemberId ? selectedColor : resolveMemberColor(member);
+    const draw = (node, end, label) => {
+      const p = this.worldToScreen(node.x, node.y);
+      const symbol = endSymbol(end);
+      ctx.save();
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(20, 22, 34, 0.86)';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(p.x - 12, p.y - 24, 24, 14, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(`${label}:${symbol}`, p.x, p.y - 17);
+      ctx.restore();
+    };
+    draw(n1, member.endI, 'I');
+    draw(n2, member.endJ, 'J');
   }
 
   _drawColumn(ctx, member, node, isSelected, selectedColor, memberDefault) {
@@ -340,8 +397,8 @@ export class Canvas2D {
     const wallOffset = this.state.settings.wallDisplayOffset || 120;
 
     for (const s of this.state.surfaces) {
+      if (!this.state.isSurfaceVisible(s, '2d')) continue;
       const layerStyle = this.state.getPlanLayerStyle(s.levelId);
-      if (!layerStyle.visible) continue;
       const isWall = isWallSurfaceType(s.type);
       const isSelected = s.id === this.state.selectedSurfaceId;
       const surfaceColor = resolveSurfaceColor(s);
@@ -498,8 +555,8 @@ export class Canvas2D {
 
   _drawLoads(ctx, selectedColor) {
     for (const ld of this.state.loads) {
+      if (!this.state.isLoadVisible(ld, '2d')) continue;
       const layerStyle = this.state.getPlanLayerStyle(ld.levelId);
-      if (!layerStyle.visible) continue;
       const isSelected = ld.id === this.state.selectedLoadId;
       ctx.save();
       ctx.globalAlpha *= isSelected ? 1 : layerStyle.alpha;
@@ -696,8 +753,8 @@ export class Canvas2D {
   _drawSupports(ctx, selectedColor) {
     if (!this.state.settings.showSupports) return;
     for (const sup of this.state.supports) {
+      if (!this.state.isSupportVisible(sup, '2d')) continue;
       const layerStyle = this.state.getPlanLayerStyle(sup.levelId);
-      if (!layerStyle.visible) continue;
       const isSelected = sup.id === this.state.selectedSupportId;
       ctx.save();
       ctx.globalAlpha *= isSelected ? 1 : layerStyle.alpha;
@@ -782,6 +839,12 @@ function toRgba(hex, alpha) {
 
 function wallDash(surface) {
   return surface.heightMode && surface.heightMode !== 'full' ? [8, 3, 2, 3] : [4, 3];
+}
+
+function endSymbol(end) {
+  if (end?.condition === 'rigid') return 'R';
+  if (end?.condition === 'spring') return 'S';
+  return 'P';
 }
 
 function polygonBounds(points) {

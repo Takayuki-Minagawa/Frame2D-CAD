@@ -77,6 +77,38 @@ const ui = new UI(state, {
   onGridChange() { update(); },
   onLayerChange() { update(); },
   onPropertyChange() { update(); },
+  onCopyLevel(sourceLevelId, targetLevelId) {
+    if (!sourceLevelId || !targetLevelId || sourceLevelId === targetLevelId) {
+      showNotice(t('copyLevelInvalid'), 'error');
+      return;
+    }
+    history.save();
+    const counts = state.copyLevelElements(sourceLevelId, targetLevelId);
+    const total = counts.members + counts.surfaces + counts.loads + counts.supports;
+    if (!total) {
+      history.undo();
+      showNotice(t('copyLevelNoItems'), 'error');
+      return;
+    }
+    update();
+    showNotice(
+      t('copyLevelDone')
+        .replace('{members}', counts.members)
+        .replace('{surfaces}', counts.surfaces)
+        .replace('{loads}', counts.loads)
+        .replace('{supports}', counts.supports),
+      'success'
+    );
+  },
+  onModelCheck() {
+    const issues = state.validateModel();
+    showNotice(
+      issues.length
+        ? t('modelCheckDone').replace('{count}', issues.length)
+        : t('modelCheckNoIssues'),
+      issues.length ? 'error' : 'success'
+    );
+  },
 });
 
 // --- Tools ---
