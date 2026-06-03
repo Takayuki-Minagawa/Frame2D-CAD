@@ -163,6 +163,11 @@ const userDefNameInput = document.getElementById('user-def-name');
 const userDefColorInput = document.getElementById('user-def-color');
 const userDefBInput = document.getElementById('user-def-b');
 const userDefHInput = document.getElementById('user-def-h');
+const userDefEndPresetGroup = document.getElementById('user-def-end-preset-group');
+const userDefEndIConditionSelect = document.getElementById('user-def-endi-condition');
+const userDefEndJConditionSelect = document.getElementById('user-def-endj-condition');
+const userDefEndISpringSelect = document.getElementById('user-def-endi-spring');
+const userDefEndJSpringSelect = document.getElementById('user-def-endj-spring');
 const userDefSectionMemoInput = document.getElementById('user-def-section-memo');
 const userDefSymbolInput = document.getElementById('user-def-symbol');
 const userDefMemoInput = document.getElementById('user-def-memo');
@@ -270,6 +275,8 @@ function refreshUserDefFormVisibility() {
   if (userDefSpringGroup) userDefSpringGroup.style.display = isSection ? 'none' : '';
   const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
   if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
+  if (userDefEndPresetGroup) userDefEndPresetGroup.style.display = isMemberSection ? 'flex' : 'none';
+  refreshUserDefEndSpringVisibility();
 }
 
 function getUserDefGroupDefaultSection(target, type) {
@@ -293,7 +300,102 @@ function applyUserDefDefaultSectionValues() {
   if (target === 'member') {
     if (userDefBInput) userDefBInput.value = String(section?.b || 200);
     if (userDefHInput) userDefHInput.value = String(section?.h || 400);
+    setUserDefEndPresetInputs(section?.defaultEndI, section?.defaultEndJ);
   }
+}
+
+function setUserDefEndPresetInputs(defaultEndI = null, defaultEndJ = null) {
+  setEndPresetInput(userDefEndIConditionSelect, userDefEndISpringSelect, defaultEndI);
+  setEndPresetInput(userDefEndJConditionSelect, userDefEndJSpringSelect, defaultEndJ);
+  refreshUserDefEndSpringVisibility();
+}
+
+function setEndPresetInput(conditionEl, springEl, endInfo = null) {
+  if (!conditionEl) return;
+  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
+  conditionEl.value = condition;
+  refreshSpringSelectOptions(springEl, endInfo?.springSymbol || '');
+}
+
+function refreshSpringSelectOptions(selectEl, selectedSymbol = '') {
+  if (!selectEl) return;
+  const springs = state.listSprings();
+  const fallbackSymbol = springs[0]?.symbol || '';
+  const selected = selectedSymbol || selectEl.value || fallbackSymbol;
+  selectEl.innerHTML = springs.map(s =>
+    `<option value="${escapeHtml(s.symbol)}" ${s.symbol === selected ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
+  ).join('');
+  if (selected && springs.some(s => s.symbol === selected)) selectEl.value = selected;
+}
+
+function refreshUserDefEndSpringVisibility() {
+  refreshSpringSelectOptions(userDefEndISpringSelect);
+  refreshSpringSelectOptions(userDefEndJSpringSelect);
+  syncEndSpringVisibility(userDefEndIConditionSelect, userDefEndISpringSelect);
+  syncEndSpringVisibility(userDefEndJConditionSelect, userDefEndJSpringSelect);
+}
+
+function syncEndSpringVisibility(conditionEl, springEl) {
+  if (!conditionEl || !springEl) return;
+  springEl.style.display = conditionEl.value === 'spring' ? '' : 'none';
+}
+
+function readEndPreset(conditionEl, springEl) {
+  const condition = conditionEl?.value || 'pin';
+  return {
+    condition,
+    springSymbol: condition === 'spring' ? (springEl?.value || null) : null,
+  };
+}
+
+function endConditionLabel(condition) {
+  if (condition === 'rigid') return t('endRigid');
+  if (condition === 'spring') return t('endSpring');
+  return t('endPin');
+}
+
+function formatEndPreset(endInfo) {
+  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
+  if (condition === 'spring') {
+    return `${t('endSpring')} ${endInfo?.springSymbol || '-'}`;
+  }
+  return endConditionLabel(condition);
+}
+
+function renderEndConditionOptions(selectedCondition = 'pin') {
+  return ['pin', 'rigid', 'spring'].map(condition =>
+    `<option value="${condition}" ${condition === selectedCondition ? 'selected' : ''}>${escapeHtml(endConditionLabel(condition))}</option>`
+  ).join('');
+}
+
+function renderSpringOptions(springs, selectedSymbol = '') {
+  const selected = selectedSymbol || springs[0]?.symbol || '';
+  return springs.map(s =>
+    `<option value="${escapeHtml(s.symbol)}" ${s.symbol === selected ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
+  ).join('');
+}
+
+function renderEndPresetCell(endInfo, fieldPrefix, editable, springs) {
+  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
+  const springSymbol = endInfo?.springSymbol || springs[0]?.symbol || '';
+  if (!editable) {
+    return escapeHtml(formatEndPreset({ condition, springSymbol }));
+  }
+  return `
+    <select class="user-def-table-input" data-field="${fieldPrefix}Condition">
+      ${renderEndConditionOptions(condition)}
+    </select>
+    <select class="user-def-table-input" data-field="${fieldPrefix}Spring" style="${condition === 'spring' ? '' : 'display:none;'}">
+      ${renderSpringOptions(springs, springSymbol)}
+    </select>
+  `;
+}
+
+function readRowEndPreset(row, fieldPrefix) {
+  return readEndPreset(
+    row.querySelector(`[data-field="${fieldPrefix}Condition"]`),
+    row.querySelector(`[data-field="${fieldPrefix}Spring"]`)
+  );
 }
 
 function resetUserDefForm() {
@@ -389,6 +491,7 @@ function renderUserDefGroupList() {
   }
 
   const hasSize = target === 'member';
+  const springDefs = state.listSprings();
   userDefListBody.innerHTML = `
     <p><b>${t('userDefListGroup')}:</b> ${escapeHtml(currentUserDefGroupLabel())}</p>
     <table>
@@ -396,6 +499,7 @@ function renderUserDefGroupList() {
         <tr>
           <th>${t('userDefListColName')}</th>
           ${hasSize ? `<th>${t('userDefListColB')}</th><th>${t('userDefListColH')}</th>` : ''}
+          ${hasSize ? `<th>${t('userDefListColEndI')}</th><th>${t('userDefListColEndJ')}</th>` : ''}
           <th>${t('userDefListColColor')}</th>
           <th>${t('userDefListColMemo')}</th>
           <th>${t('userDefListColDefault')}</th>
@@ -411,7 +515,9 @@ function renderUserDefGroupList() {
     : `<input type="number" class="user-def-table-input" data-field="b" min="1" step="1" value="${Number.isFinite(s.b) ? s.b : 1}">`}</td>
             <td>${s.isDefault
     ? `${s.h ?? '-'}`
-    : `<input type="number" class="user-def-table-input" data-field="h" min="1" step="1" value="${Number.isFinite(s.h) ? s.h : 1}">`}</td>` : ''}
+    : `<input type="number" class="user-def-table-input" data-field="h" min="1" step="1" value="${Number.isFinite(s.h) ? s.h : 1}">`}</td>
+            <td>${renderEndPresetCell(s.defaultEndI, 'defaultEndI', !s.isDefault, springDefs)}</td>
+            <td>${renderEndPresetCell(s.defaultEndJ, 'defaultEndJ', !s.isDefault, springDefs)}</td>` : ''}
             <td>${s.isDefault
     ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
     : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
@@ -437,6 +543,12 @@ function renderUserDefGroupList() {
 
 function attachUserDefListHandlers() {
   if (!userDefListBody) return;
+
+  userDefListBody.querySelectorAll('[data-field$="Condition"]').forEach(conditionEl => {
+    const springField = conditionEl.dataset.field.replace('Condition', 'Spring');
+    const springEl = conditionEl.closest('td')?.querySelector(`[data-field="${springField}"]`);
+    conditionEl.addEventListener('change', () => syncEndSpringVisibility(conditionEl, springEl));
+  });
 
   userDefListBody.querySelectorAll('[data-action="save-section"]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -467,6 +579,8 @@ function attachUserDefListHandlers() {
         }
         patch.b = b;
         patch.h = h;
+        patch.defaultEndI = readRowEndPreset(row, 'defaultEndI');
+        patch.defaultEndJ = readRowEndPreset(row, 'defaultEndJ');
       }
 
       const updated = state.updateSection(target, type, name, patch);
@@ -571,7 +685,17 @@ function addUserDefinition() {
         markInputError(userDefHInput);
         return;
       }
-      added = state.addSection({ target, type, name, b, h, color, memo: sectionMemo });
+      added = state.addSection({
+        target,
+        type,
+        name,
+        b,
+        h,
+        color,
+        memo: sectionMemo,
+        defaultEndI: readEndPreset(userDefEndIConditionSelect, userDefEndISpringSelect),
+        defaultEndJ: readEndPreset(userDefEndJConditionSelect, userDefEndJSpringSelect),
+      });
     } else {
       added = state.addSection({ target, type, name, color, memo: sectionMemo });
     }
@@ -691,6 +815,7 @@ document.getElementById('file-user-def-import').addEventListener('change', async
         ? t('userDefImportedWithSkip').replace('{n}', added).replace('{s}', skipped)
         : t('userDefImported').replace('{n}', added);
       showNotice(msg, 'success');
+      refreshUserDefEndSpringVisibility();
       update();
       if (userDefListModal?.classList.contains('visible')) {
         renderUserDefGroupList();
@@ -722,6 +847,8 @@ if (userDefTypeSelect) userDefTypeSelect.addEventListener('change', () => {
   applyUserDefDefaultSectionValues();
   if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
 });
+if (userDefEndIConditionSelect) userDefEndIConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
+if (userDefEndJConditionSelect) userDefEndJConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
 
 if (userDefModal) {
   userDefModal.addEventListener('click', (e) => {

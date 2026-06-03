@@ -50,6 +50,8 @@ test('toJSON includes used custom definitions but excludes unused ones', () => {
   state.addSection({
     target: 'member', type: 'beam', name: 'B300x500',
     b: 300, h: 500, color: '#123456', memo: 'used beam',
+    defaultEndI: { condition: 'rigid' },
+    defaultEndJ: { condition: 'spring', springSymbol: 'SP1' },
   });
   state.addSection({
     target: 'member', type: 'beam', name: 'B_UNUSED',
@@ -83,6 +85,8 @@ test('toJSON includes used custom definitions but excludes unused ones', () => {
   // Memo is included in the output
   const exported = data.sectionCatalog.find(s => s.name === 'B300x500');
   assert.equal(exported.memo, 'used beam');
+  assert.deepEqual(exported.defaultEndI, { condition: 'rigid', springSymbol: null });
+  assert.deepEqual(exported.defaultEndJ, { condition: 'spring', springSymbol: 'SP1' });
   const exportedSpring = data.springCatalog.find(s => s.symbol === 'SP1');
   assert.equal(exportedSpring.memo, 'used spring');
 });
@@ -93,6 +97,8 @@ test('loadJSON restores used custom definitions from CAD and preserves existing 
   source.addSection({
     target: 'member', type: 'beam', name: 'B300x500',
     b: 300, h: 500, color: '#123456',
+    defaultEndI: { condition: 'rigid' },
+    defaultEndJ: { condition: 'spring', springSymbol: '_SP' },
   });
   source.addSection({
     target: 'surface', type: 'floor', name: 'S_BLUE',
@@ -137,6 +143,14 @@ test('loadJSON restores used custom definitions from CAD and preserves existing 
   assert.equal(restored.members[0].section.b, 300);
   assert.equal(restored.members[0].section.h, 500);
   assert.equal(restored.members[0].color, '#123456');
+  assert.deepEqual(
+    restored.getSection('member', 'beam', 'B300x500').defaultEndI,
+    { condition: 'rigid', springSymbol: null }
+  );
+  assert.deepEqual(
+    restored.getSection('member', 'beam', 'B300x500').defaultEndJ,
+    { condition: 'spring', springSymbol: '_SP' }
+  );
 
   assert.equal(restored.surfaces[0].sectionName, 'S_BLUE');
   assert.equal(restored.surfaces[0].color, '#3366aa');
@@ -186,6 +200,14 @@ test('loadJSON backward-compat: old files with embedded custom defs still load',
   assert.equal(state.members[0].sectionName, 'OLD_BEAM');
   assert.equal(state.members[0].section.b, 250);
   assert.equal(state.members[0].section.h, 600);
+  assert.deepEqual(
+    state.getSection('member', 'beam', 'OLD_BEAM').defaultEndI,
+    { condition: 'pin', springSymbol: null }
+  );
+  assert.deepEqual(
+    state.getSection('member', 'beam', 'OLD_BEAM').defaultEndJ,
+    { condition: 'pin', springSymbol: null }
+  );
 });
 
 test('addSection skips duplicates already loaded from CAD file', () => {

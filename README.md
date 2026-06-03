@@ -118,7 +118,8 @@ CADデータ（図面情報）とユーザー定義（断面・バネ）は**別
 - ユーザー定義名の先頭に `_` は使用不可
 - 既定名と同名のユーザー定義は作成不可
 - 同グループ一覧で既定値・ユーザー定義を確認可能
-- ユーザー定義は登録後に「名前以外（寸法・色・メモ）」を更新可能
+- 線材の断面定義では、配置時に使う I端/J端の材端条件プリセット（ピン / 剛 / バネ）を登録可能
+- ユーザー定義は登録後に「名前以外（寸法・色・材端プリセット・メモ）」を更新可能
 - ユーザー定義は削除可能（ただし使用中の定義は削除不可）
 
 ## Keyboard Shortcuts
@@ -198,7 +199,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 9,
+  "schemaVersion": 10,
   "meta": {
     "name": "sample",
     "unit": "mm",
@@ -220,8 +221,8 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": "N2", "x": 5000, "y": 0, "z": 0 }
   ],
   "sectionCatalog": [
-    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "memo": "", "isDefault": true },
-    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "isDefault": false }
+    { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "memo": "", "defaultEndI": { "condition": "pin", "springSymbol": null }, "defaultEndJ": { "condition": "pin", "springSymbol": null }, "isDefault": true },
+    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "_SP" }, "isDefault": false }
   ],
   "springCatalog": [
     { "symbol": "_SP", "memo": "回転バネ", "isDefault": true }
@@ -288,7 +289,7 @@ app.js ─┬─ state.js      Data model (AppState)
 {
   "userDefinitions": true,
   "sections": [
-    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁" }
+    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "SP1" } }
   ],
   "springs": [
     { "symbol": "SP1", "memo": "カスタムバネ" }
@@ -323,6 +324,7 @@ npm run lint:all
 主なテスト対象:
 - 断面/バネの命名ルール（先頭`_`禁止、既定名重複禁止）
 - 断面変更時の寸法・色反映
+- 線材断面の材端プリセット反映と配置済み部材の材端保持
 - CAD JSON Export時のカスタム定義除外・ID非出力
 - CAD読込時のカスタム定義保持・後方互換
 - 面材色解決の2D/3D共有ロジック（スモーク）
