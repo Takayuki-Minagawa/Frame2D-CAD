@@ -241,6 +241,16 @@ const dict = {
     supportFree: '全解除',
     showSupports: '支点表示',
     widePick: '広域選択',
+    planLayerDisplayMode: '2Dレイヤー表示',
+    planLayerAll: '全レイヤー',
+    planLayerCurrent: '現在のみ',
+    planLayerHalftone: '他レイヤー薄表示',
+    member3dRenderMode: '3D線材表示',
+    member3dSolid: '断面形状',
+    member3dLine: '線表示',
+    memberLayerHintPlan: '管理レイヤー: {layer}',
+    memberLayerHintColumn: '下端管理: {base} / 上端: {top}',
+    memberLayerHintVBrace: '下端管理: {base} / 上端: {top}',
 
     // User definition export/import
     userDefExport: 'エクスポート',
@@ -306,6 +316,7 @@ const dict = {
   <li><b>支点</b> - 位置(X,Y) / 並進拘束(DX,DY,DZ) / 回転拘束(RX,RY,RZ) / プリセット(ピン/剛/全解除)</li>
 </ul>
 <p>線材の始点・終点座標は数値入力で直接編集でき、ノード位置を正確に指定できます。</p>
+<p>線材ツールでは梁・水平ブレースは現在レイヤー、柱・鉛直ブレースは下端レイヤーで管理し、上端レイヤーをツールバーに表示します。</p>
 <p>種別・レイヤー・幅/高さ・色は表示専用です。断面を変更すると寸法と色が自動反映され、外壁を含む面材の色は平面図と3D表示へ連動します。</p>
 
 <h3>屋根入力ワークフロー</h3>
@@ -326,6 +337,8 @@ const dict = {
   <tr><td><b>スナップ</b></td><td>ONにするとグリッド/既存ノードに吸着します</td></tr>
   <tr><td><b>支点表示</b></td><td>OFFにすると支点を2D/3Dの両方で非表示にします。非表示中は支点のクリック選択もスキップされます</td></tr>
   <tr><td><b>広域選択</b></td><td>ONにするとクリックの許容範囲が広がり、グリッドからズレた部材も選択しやすくなります（通常 8px → 20px）</td></tr>
+  <tr><td><b>2Dレイヤー表示</b></td><td>全レイヤー、現在レイヤーのみ、他レイヤーの薄表示を切り替えます</td></tr>
+  <tr><td><b>3D線材表示</b></td><td>線材を断面形状または中心線で表示します。面材は面表示のままです</td></tr>
 </table>
 
 <h3>設定 / ユーザー定義</h3>
@@ -602,6 +615,16 @@ const dict = {
     supportFree: 'Free',
     showSupports: 'Show Supports',
     widePick: 'Wide Pick',
+    planLayerDisplayMode: '2D Layers',
+    planLayerAll: 'All Layers',
+    planLayerCurrent: 'Current Only',
+    planLayerHalftone: 'Others Halftone',
+    member3dRenderMode: '3D Lines',
+    member3dSolid: 'Section Solids',
+    member3dLine: 'Line View',
+    memberLayerHintPlan: 'Managed layer: {layer}',
+    memberLayerHintColumn: 'Base layer: {base} / Top: {top}',
+    memberLayerHintVBrace: 'Base layer: {base} / Top: {top}',
 
     // User definition export/import
     userDefExport: 'Export',
@@ -667,6 +690,7 @@ const dict = {
   <li><b>Support</b> - Position (X,Y) / Translation (DX,DY,DZ) / Rotation (RX,RY,RZ) / Presets (Pin/Rigid/Free)</li>
 </ul>
 <p>Start/end point coordinates can be edited numerically to precisely position nodes.</p>
+<p>In the line tool, beams and horizontal braces are managed on the current layer; columns and vertical braces are managed by their base layer, with the top layer shown in the toolbar.</p>
 <p>Type, layer, width/height, and color are display-only. Changing section automatically updates dimensions and color, including surface color sync in both plan and 3D views.</p>
 
 <h3>Roof Workflow</h3>
@@ -687,6 +711,8 @@ const dict = {
   <tr><td><b>Snap</b></td><td>When ON, snaps to grid points and existing nodes</td></tr>
   <tr><td><b>Show Supports</b></td><td>When OFF, hides supports in both 2D and 3D views. Click selection of supports is also skipped</td></tr>
   <tr><td><b>Wide Pick</b></td><td>When ON, widens the click tolerance for easier selection of off-grid elements (8px → 20px)</td></tr>
+  <tr><td><b>2D Layers</b></td><td>Switch between all layers, current layer only, or halftone display for other layers</td></tr>
+  <tr><td><b>3D Lines</b></td><td>Show line members as section solids or center lines. Surfaces remain as faces</td></tr>
 </table>
 
 <h3>Settings / User Definitions</h3>

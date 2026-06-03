@@ -321,6 +321,11 @@ export class Viewer3D {
       const length = direction.length();
       if (length < 0.001) continue;
 
+      if (this._isMemberLineMode()) {
+        this._addMemberLine3D(start, end, resolveMemberColor(m));
+        continue;
+      }
+
       const b = (m.section?.b || 200) / 1000;
       const h = (m.section?.h || 400) / 1000;
 
@@ -507,6 +512,13 @@ export class Viewer3D {
     const height = Math.abs(topZ - bottomZ);
     if (height < 0.001) return;
 
+    if (this._isMemberLineMode()) {
+      const start = new THREE.Vector3(node.x / 1000, bottomZ, -node.y / 1000);
+      const end = new THREE.Vector3(node.x / 1000, topZ, -node.y / 1000);
+      this._addMemberLine3D(start, end, resolveMemberColor(member));
+      return;
+    }
+
     const b = (member.section?.b || 200) / 1000;
     const h = (member.section?.h || 200) / 1000;
 
@@ -529,6 +541,20 @@ export class Viewer3D {
     }
   }
 
+  _isMemberLineMode() {
+    return this.state.settings?.member3dRenderMode === 'line';
+  }
+
+  _addMemberLine3D(start, end, color) {
+    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+    // Browser WebGL implementations commonly clamp LineBasicMaterial to 1px.
+    const mat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(color || '#666666'),
+      linewidth: 2,
+    });
+    this.memberGroup.add(new THREE.Line(geo, mat));
+  }
+
   _addVBrace3D(member, n1, n2) {
     const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
     const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
@@ -536,7 +562,7 @@ export class Viewer3D {
 
     const yBottom = bottomLevel.z / 1000;
     const yTop = topLevel.z / 1000;
-    const color = new THREE.Color(member.color || '#666666');
+    const color = new THREE.Color(resolveMemberColor(member));
     const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
 
     const s1 = new THREE.Vector3(n1.x / 1000, yBottom, -n1.y / 1000);

@@ -29,6 +29,8 @@ const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(s => s.
 const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
 const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
+const PLAN_LAYER_DISPLAY_MODES = new Set(['all', 'current', 'halftone']);
+const MEMBER_3D_RENDER_MODES = new Set(['solid', 'line']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
 const CURRENT_SCHEMA_VERSION = 10;
 const SUPPORTED_SCHEMA_VERSIONS = new Set(
@@ -52,6 +54,8 @@ export class AppState {
       wallDisplayOffset: 120,
       showSupports: true,
       widePick: false,
+      planLayerDisplayMode: 'all',
+      member3dRenderMode: 'solid',
     };
     this.levels = [
       { id: 'L0', name: 'GL', z: 0 },
@@ -155,6 +159,19 @@ export class AppState {
     const resolvedTopLevelId = topLevelId || this.getNextLevelId(levelId);
     if (!resolvedTopLevelId) return 0;
     return Math.max(0, this.getLevelZ(resolvedTopLevelId) - this.getLevelZ(levelId));
+  }
+
+  getPlanLayerStyle(levelId) {
+    const mode = normalizePlanLayerDisplayMode(this.settings?.planLayerDisplayMode);
+    const targetLevelId = levelId || this.activeLayerId || 'L0';
+    const isActive = targetLevelId === this.activeLayerId;
+    if (mode === 'current' && !isActive) {
+      return { visible: false, alpha: 0, halftone: false };
+    }
+    if (mode === 'halftone' && !isActive) {
+      return { visible: true, alpha: 0.28, halftone: true };
+    }
+    return { visible: true, alpha: 1, halftone: false };
   }
 
   getSurfaceHeightOffsets(options = {}) {
@@ -2075,6 +2092,8 @@ export class AppState {
       widePick: false,
       ...data.settings,
     };
+    this.settings.planLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.planLayerDisplayMode);
+    this.settings.member3dRenderMode = normalizeMember3DRenderMode(this.settings.member3dRenderMode);
     this.levels = Array.isArray(data.levels) && data.levels.length > 0
       ? data.levels.map(l => ({ ...l }))
       : [
@@ -2319,6 +2338,16 @@ function normalizeSurfaceHeightMode(value) {
 function normalizeMemberGeometryMode(value) {
   const text = sanitizeText(value);
   return MEMBER_GEOMETRY_MODES.has(text) ? text : 'level';
+}
+
+function normalizePlanLayerDisplayMode(value) {
+  const text = sanitizeText(value);
+  return PLAN_LAYER_DISPLAY_MODES.has(text) ? text : 'all';
+}
+
+function normalizeMember3DRenderMode(value) {
+  const text = sanitizeText(value);
+  return MEMBER_3D_RENDER_MODES.has(text) ? text : 'solid';
 }
 
 function normalizeRoofGenerationPattern(value) {

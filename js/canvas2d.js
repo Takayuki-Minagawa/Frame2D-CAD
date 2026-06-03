@@ -104,20 +104,30 @@ export class Canvas2D {
     this._drawSupports(ctx, selectedColor);
 
     // Members
+    const visibleNodeAlpha = new Map();
     for (const m of this.state.members) {
+      const layerStyle = this.state.getPlanLayerStyle(m.levelId);
+      if (!layerStyle.visible) continue;
       const n1 = this.state.getNode(m.startNodeId);
       const n2 = this.state.getNode(m.endNodeId);
       if (!n1 || !n2) continue;
 
       const isSelected = m.id === this.state.selectedMemberId;
+      const alpha = isSelected ? 1 : layerStyle.alpha;
+      visibleNodeAlpha.set(n1.id, Math.max(visibleNodeAlpha.get(n1.id) || 0, alpha));
+      visibleNodeAlpha.set(n2.id, Math.max(visibleNodeAlpha.get(n2.id) || 0, alpha));
 
+      ctx.save();
+      ctx.globalAlpha *= alpha;
       if (m.type === 'column') {
         this._drawColumn(ctx, m, n1, isSelected, selectedColor, memberDefault);
+        ctx.restore();
         continue;
       }
 
       if (m.type === 'vbrace') {
         this._drawVBrace(ctx, m, n1, n2, isSelected, selectedColor, memberDefault);
+        ctx.restore();
         continue;
       }
 
@@ -135,10 +145,19 @@ export class Canvas2D {
       ctx.lineTo(s2.x, s2.y);
       ctx.stroke();
       ctx.restore();
+      ctx.restore();
     }
 
     // Nodes
     for (const n of this.state.nodes) {
+      let nodeAlpha = visibleNodeAlpha.get(n.id);
+      if (!nodeAlpha) {
+        const isMemberNode = this.state.members.some(
+          m => m.startNodeId === n.id || m.endNodeId === n.id
+        );
+        if (isMemberNode) continue;
+        nodeAlpha = 1;
+      }
       const s = this.worldToScreen(n.x, n.y);
       const isEndOfSelected = this.state.selectedMemberId &&
         (() => {
@@ -147,6 +166,7 @@ export class Canvas2D {
         })();
 
       ctx.save();
+      ctx.globalAlpha *= isEndOfSelected ? 1 : nodeAlpha;
       ctx.fillStyle = isEndOfSelected ? selectedColor : nodeColor;
       ctx.beginPath();
       ctx.arc(s.x, s.y, isEndOfSelected ? 5 : 3, 0, Math.PI * 2);
@@ -320,10 +340,16 @@ export class Canvas2D {
     const wallOffset = this.state.settings.wallDisplayOffset || 120;
 
     for (const s of this.state.surfaces) {
+      const layerStyle = this.state.getPlanLayerStyle(s.levelId);
+      if (!layerStyle.visible) continue;
       const isWall = isWallSurfaceType(s.type);
       const isSelected = s.id === this.state.selectedSurfaceId;
       const surfaceColor = resolveSurfaceColor(s);
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points);
+      const alpha = isSelected ? 1 : layerStyle.alpha;
+
+      ctx.save();
+      ctx.globalAlpha *= alpha;
 
       if (isPolygon) {
         const offset = isWall ? wallOffset : 0;
@@ -337,11 +363,13 @@ export class Canvas2D {
           this._drawSurfacePolygon(ctx, points, s, isSelected, isWall, selectedColor);
         }
         if (isSlopedSurfaceType(s.type)) this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
+        ctx.restore();
         continue;
       }
 
       if (s.shape === 'line') {
         this._drawSurfaceLine(ctx, s, isSelected, selectedColor, wallOffset);
+        ctx.restore();
         continue;
       }
 
@@ -373,6 +401,7 @@ export class Canvas2D {
       } else if (isSlopedSurfaceType(s.type)) {
         this._drawRoofSlopeArrow(ctx, s, selectedColor, isSelected);
       }
+      ctx.restore();
     }
   }
 
@@ -469,7 +498,11 @@ export class Canvas2D {
 
   _drawLoads(ctx, selectedColor) {
     for (const ld of this.state.loads) {
+      const layerStyle = this.state.getPlanLayerStyle(ld.levelId);
+      if (!layerStyle.visible) continue;
       const isSelected = ld.id === this.state.selectedLoadId;
+      ctx.save();
+      ctx.globalAlpha *= isSelected ? 1 : layerStyle.alpha;
       if (ld.type === 'areaLoad') {
         this._drawAreaLoad(ctx, ld, isSelected, selectedColor);
       } else if (ld.type === 'lineLoad') {
@@ -477,6 +510,7 @@ export class Canvas2D {
       } else if (ld.type === 'pointLoad') {
         this._drawPointLoad(ctx, ld, isSelected, selectedColor);
       }
+      ctx.restore();
     }
   }
 
@@ -662,8 +696,13 @@ export class Canvas2D {
   _drawSupports(ctx, selectedColor) {
     if (!this.state.settings.showSupports) return;
     for (const sup of this.state.supports) {
+      const layerStyle = this.state.getPlanLayerStyle(sup.levelId);
+      if (!layerStyle.visible) continue;
       const isSelected = sup.id === this.state.selectedSupportId;
+      ctx.save();
+      ctx.globalAlpha *= isSelected ? 1 : layerStyle.alpha;
       this._drawSupport(ctx, sup, isSelected, selectedColor);
+      ctx.restore();
     }
   }
 
