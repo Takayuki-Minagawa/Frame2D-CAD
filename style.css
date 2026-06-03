@@ -3,6 +3,7 @@
 :root {
   --toolbar-w: 160px;
   --panel-w: 220px;
+  --side-resizer-w: 8px;
   --status-h: 28px;
   --tab-h: 36px;
   --bg: #1e1e2e;
@@ -59,8 +60,21 @@ html, body {
 
 body {
   display: grid;
-  grid-template-columns: var(--toolbar-w) 1fr var(--panel-w);
+  grid-template-columns: var(--toolbar-w) var(--side-resizer-w) 1fr var(--side-resizer-w) var(--panel-w);
   grid-template-rows: 1fr;
+}
+body.resizing-panels {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing-panels * {
+  cursor: col-resize !important;
+}
+body.toolbar-collapsed {
+  --toolbar-w: 0px;
+}
+body.property-collapsed {
+  --panel-w: 0px;
 }
 
 /* Toolbar */
@@ -72,6 +86,15 @@ body {
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
+  min-width: 0;
+}
+body.toolbar-collapsed #toolbar {
+  padding: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+body.toolbar-collapsed #toolbar > * {
+  display: none;
 }
 #toolbar h2 {
   font-size: 12px;
@@ -129,6 +152,53 @@ body {
   bottom: 16px;
   z-index: 1400;
   width: min(360px, calc(100vw - 24px));
+}
+
+.side-resizer {
+  position: relative;
+  z-index: 5;
+  background: var(--surface);
+  cursor: col-resize;
+  touch-action: none;
+}
+.side-resizer-left {
+  border-right: 1px solid var(--border);
+}
+.side-resizer-right {
+  border-left: 1px solid var(--border);
+}
+.side-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: rgba(137, 180, 250, 0.22);
+}
+.side-resizer:hover::before,
+.side-resizer.active::before {
+  background: var(--accent);
+}
+.panel-toggle-btn {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 16px;
+  padding: 0;
+}
+.panel-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .app-notice {
   border: 1px solid var(--border);
@@ -262,6 +332,15 @@ body {
   border-left: 1px solid var(--border);
   padding: 12px 10px;
   overflow-y: auto;
+  min-width: 0;
+}
+body.property-collapsed #property-panel {
+  padding: 0;
+  border-left: 0;
+  overflow: hidden;
+}
+body.property-collapsed #property-panel > * {
+  display: none;
 }
 #property-panel h2 {
   font-size: 12px;

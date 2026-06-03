@@ -238,6 +238,9 @@
     <button id="btn-import-trigger" title="Load CAD data">&#128194; <span data-i18n="import">CAD読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
   </aside>
+  <div id="toolbar-resizer" class="side-resizer side-resizer-left" role="separator" aria-label="Resize toolbar" aria-orientation="vertical">
+    <button id="btn-toggle-toolbar" class="panel-toggle-btn" type="button" aria-label="Hide toolbar" title="ツールパネルを隠す">‹</button>
+  </div>
 
   <!-- Main Area -->
   <main id="main-area">
@@ -262,6 +265,9 @@
       <span id="status-version">Ver.1.0.4</span>
     </footer>
   </main>
+  <div id="property-resizer" class="side-resizer side-resizer-right" role="separator" aria-label="Resize properties" aria-orientation="vertical">
+    <button id="btn-toggle-property" class="panel-toggle-btn" type="button" aria-label="Hide properties" title="プロパティパネルを隠す">›</button>
+  </div>
 
   <!-- Right Property Panel -->
   <aside id="property-panel">
