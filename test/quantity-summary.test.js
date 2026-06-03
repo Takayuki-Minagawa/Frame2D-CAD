@@ -54,7 +54,7 @@ test('wall height and weight fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.schemaVersion, 10);
   assert.equal(data.surfaces[0].heightMode, 'custom');
   assert.equal(data.surfaces[0].bottomOffset, 300);
   assert.equal(data.surfaces[0].topOffset, 1800);
@@ -87,7 +87,7 @@ test('roof plane fields survive CAD serialization', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.schemaVersion, 10);
   assert.equal(data.surfaces[0].type, 'roof');
   assert.equal(data.surfaces[0].roofSlope, 0.25);
   assert.equal(data.surfaces[0].roofDirection, 'yMinus');
@@ -259,7 +259,7 @@ test('eave surfaces use sloped geometry without roof grouping', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.schemaVersion, 10);
   assert.equal(data.surfaces[0].type, 'eave');
   assert.equal(data.surfaces[0].roofSlope, 0.2);
   assert.equal(data.surfaces[0].roofDirection, 'yPlus');
@@ -333,7 +333,7 @@ test('gable wall surfaces use trapezoid area and variable top offsets', () => {
   });
 
   const data = source.toJSON();
-  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.schemaVersion, 10);
   assert.equal(data.surfaces[0].type, 'gableWall');
   assert.equal(data.surfaces[0].gableStartTopOffset, 1200);
   assert.equal(data.surfaces[0].gableEndTopOffset, 2800);
@@ -525,7 +525,7 @@ test('roof edge members are generated with explicit 3D endpoints', () => {
   assert.equal(members[0].endZ, 4500);
 
   const data = state.toJSON();
-  assert.equal(data.schemaVersion, 9);
+  assert.equal(data.schemaVersion, 10);
   assert.equal(data.members[0].geometryMode, 'explicit3d');
   assert.equal(data.members[0].startZ, 3000);
   assert.equal(data.members[0].endZ, 4500);

@@ -73,6 +73,85 @@ test('member section changes update dimensions and color, and direct color edit 
   assert.equal(beam.color, '#654321');
 });
 
+test('member end presets default to pin and apply only when creating members', () => {
+  const state = new AppState();
+  state.addSpring({ symbol: 'SP_PRESET', memo: 'preset spring' });
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B_ENDS',
+    b: 300,
+    h: 500,
+    color: '#123456',
+    defaultEndI: { condition: 'rigid' },
+    defaultEndJ: { condition: 'spring', springSymbol: 'SP_PRESET' },
+  });
+
+  const defaultBeam = addBeam(state);
+  assert.deepEqual(defaultBeam.endI, { condition: 'pin', springSymbol: null });
+  assert.deepEqual(defaultBeam.endJ, { condition: 'pin', springSymbol: null });
+
+  const n1 = state.addNode(0, 1000);
+  const n2 = state.addNode(3000, 1000);
+  const presetBeam = state.addMember(n1.id, n2.id, { type: 'beam', sectionName: 'B_ENDS' });
+  assert.deepEqual(presetBeam.endI, { condition: 'rigid', springSymbol: null });
+  assert.deepEqual(presetBeam.endJ, { condition: 'spring', springSymbol: 'SP_PRESET' });
+
+  state.updateMember(defaultBeam.id, { endI: { condition: 'rigid' }, endJ: { condition: 'pin' } });
+  state.updateMember(defaultBeam.id, { sectionName: 'B_ENDS' });
+  assert.deepEqual(defaultBeam.endI, { condition: 'rigid', springSymbol: null });
+  assert.deepEqual(defaultBeam.endJ, { condition: 'pin', springSymbol: null });
+});
+
+test('section end preset updates do not rewrite placed member ends', () => {
+  const state = new AppState();
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B_MUTATE',
+    b: 300,
+    h: 500,
+    color: '#123456',
+    defaultEndI: { condition: 'rigid' },
+    defaultEndJ: { condition: 'rigid' },
+  });
+
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(3000, 0);
+  const beam = state.addMember(n1.id, n2.id, { type: 'beam', sectionName: 'B_MUTATE' });
+  state.updateMember(beam.id, { endI: { condition: 'pin' }, endJ: { condition: 'pin' } });
+
+  state.updateSection('member', 'beam', 'B_MUTATE', {
+    defaultEndI: { condition: 'rigid' },
+    defaultEndJ: { condition: 'rigid' },
+  });
+
+  assert.deepEqual(beam.endI, { condition: 'pin', springSymbol: null });
+  assert.deepEqual(beam.endJ, { condition: 'pin', springSymbol: null });
+});
+
+test('removeSpring blocks springs referenced by section end presets', () => {
+  const state = new AppState();
+  state.addSpring({ symbol: 'SP_PRESET_ONLY', memo: 'preset only' });
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B_SPRING_PRESET',
+    b: 300,
+    h: 500,
+    color: '#123456',
+    defaultEndI: { condition: 'spring', springSymbol: 'SP_PRESET_ONLY' },
+    defaultEndJ: { condition: 'pin' },
+  });
+
+  assert.equal(state.removeSpring('SP_PRESET_ONLY'), false);
+
+  state.updateSection('member', 'beam', 'B_SPRING_PRESET', {
+    defaultEndI: { condition: 'pin' },
+  });
+  assert.equal(state.removeSpring('SP_PRESET_ONLY'), true);
+});
+
 test('surface section changes update color and follow section catalog updates', () => {
   const state = new AppState();
   state.addSection({

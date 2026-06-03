@@ -438,6 +438,9 @@ body {
   padding: 2px;
   height: 26px;
 }
+.modal-body .user-def-table-input + .user-def-table-input {
+  margin-top: 4px;
+}
 .modal-body .user-def-table-btn {
   padding: 4px 8px;
   border: 1px solid var(--border);
@@ -511,7 +514,7 @@ body {
   width: min(400px, 90vw);
 }
 .modal-user-def-list {
-  width: min(760px, 94vw);
+  width: min(920px, 96vw);
 }
 .settings-group {
   display: flex;

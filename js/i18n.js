@@ -170,6 +170,8 @@ const dict = {
     userDefColor: '色',
     userDefWidthB: '幅 b (mm)',
     userDefHeightH: '高さ h (mm)',
+    userDefDefaultEndI: 'I端プリセット',
+    userDefDefaultEndJ: 'J端プリセット',
     userDefMemo: 'メモ',
     userDefListOpen: '同グループ一覧',
     userDefListTitle: '同グループ定義一覧',
@@ -179,6 +181,8 @@ const dict = {
     userDefListColMaterial: '材料',
     userDefListColB: '幅 b',
     userDefListColH: '高さ h',
+    userDefListColEndI: 'I端',
+    userDefListColEndJ: 'J端',
     userDefListColColor: '色',
     userDefListColMemo: 'メモ',
     userDefListColDefault: '既定',
@@ -332,7 +336,7 @@ const dict = {
   <li><b>ユーザー定義</b> - 断面定義 / バネ定義を追加・管理</li>
   <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
 </ul>
-<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。登録後は名前以外の項目（寸法・色・メモ）を更新でき、ユーザー定義は削除可能です（使用中の定義は削除できません）。</p>
+<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。線材の断面定義には、配置時に使う I端/J端の材端条件プリセットを設定できます。登録後は名前以外の項目（寸法・色・材端プリセット・メモ）を更新でき、ユーザー定義は削除可能です（使用中の定義は削除できません）。</p>
 <p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
 <p>「エクスポート」でユーザー定義をJSONファイルとしてダウンロード、「インポート」で別環境からユーザー定義を読み込めます。</p>
 
@@ -527,6 +531,8 @@ const dict = {
     userDefColor: 'Color',
     userDefWidthB: 'Width b (mm)',
     userDefHeightH: 'Height h (mm)',
+    userDefDefaultEndI: 'I End Preset',
+    userDefDefaultEndJ: 'J End Preset',
     userDefMemo: 'Memo',
     userDefListOpen: 'View Group List',
     userDefListTitle: 'Definition List (Group)',
@@ -536,6 +542,8 @@ const dict = {
     userDefListColMaterial: 'Material',
     userDefListColB: 'Width b',
     userDefListColH: 'Height h',
+    userDefListColEndI: 'I End',
+    userDefListColEndJ: 'J End',
     userDefListColColor: 'Color',
     userDefListColMemo: 'Memo',
     userDefListColDefault: 'Type',
@@ -689,7 +697,7 @@ const dict = {
   <li><b>User Definitions</b> - Add/manage section and spring definitions</li>
   <li><b>Help</b> - Opens this quick manual</li>
 </ul>
-<p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. After registration, fields other than name can be updated (size, color, memo), and custom definitions can be deleted unless they are currently in use.</p>
+<p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. Line section definitions can set I/J end condition presets used when placing new lines. After registration, fields other than name can be updated (size, color, end presets, memo), and custom definitions can be deleted unless they are currently in use.</p>
 <p>Use "Group List" to review registered definitions for the current group in a separate dialog.</p>
 <p>Use "Export" to download user definitions as a JSON file, and "Import" to load definitions from another environment.</p>
 

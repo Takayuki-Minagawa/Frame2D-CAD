@@ -183,7 +183,7 @@ export function importJSON(file, state, history) {
 }
 
 export function exportUserDefs(state) {
-  const sections = state.sectionCatalog.filter(s => !s.isDefault).map(s => ({ ...s }));
+  const sections = state.sectionCatalog.filter(s => !s.isDefault).map(s => cloneSectionDefinition(s));
   const springs = state.springCatalog.filter(s => !s.isDefault).map(s => ({ ...s }));
   if (sections.length === 0 && springs.length === 0) return false;
 
@@ -202,6 +202,14 @@ export function exportUserDefs(state) {
   return true;
 }
 
+function cloneSectionDefinition(section) {
+  return {
+    ...section,
+    defaultEndI: section.defaultEndI ? { ...section.defaultEndI } : undefined,
+    defaultEndJ: section.defaultEndJ ? { ...section.defaultEndJ } : undefined,
+  };
+}
+
 export function importUserDefs(file, state) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -214,17 +222,17 @@ export function importUserDefs(file, state) {
         }
         let added = 0;
         let skipped = 0;
-        if (Array.isArray(data.sections)) {
-          for (const entry of data.sections) {
-            if (entry.isDefault) continue;
-            const result = state.addSection(entry);
-            if (result) { added++; } else { skipped++; }
-          }
-        }
         if (Array.isArray(data.springs)) {
           for (const entry of data.springs) {
             if (entry.isDefault) continue;
             const result = state.addSpring(entry);
+            if (result) { added++; } else { skipped++; }
+          }
+        }
+        if (Array.isArray(data.sections)) {
+          for (const entry of data.sections) {
+            if (entry.isDefault) continue;
+            const result = state.addSection(entry);
             if (result) { added++; } else { skipped++; }
           }
         }

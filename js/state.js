@@ -9,10 +9,10 @@ import {
 import { normalizeRoofDirection, roofPlanPoints, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
 
 const DEFAULT_SECTION_DEFINITIONS = [
-  { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', isDefault: true },
-  { target: 'member', type: 'column', name: '_C', material: 'steel', b: 105, h: 105, color: '#666666', isDefault: true },
-  { target: 'member', type: 'hbrace', name: '_H', material: 'steel', b: 20, h: 20, color: '#666666', isDefault: true },
-  { target: 'member', type: 'vbrace', name: '_V', material: 'steel', b: 20, h: 20, color: '#666666', isDefault: true },
+  { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
+  { target: 'member', type: 'column', name: '_C', material: 'steel', b: 105, h: 105, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
+  { target: 'member', type: 'hbrace', name: '_H', material: 'steel', b: 20, h: 20, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
+  { target: 'member', type: 'vbrace', name: '_V', material: 'steel', b: 20, h: 20, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
   { target: 'surface', type: 'floor', name: '_S', material: '', b: null, h: null, color: '#67a9cf', isDefault: true },
   { target: 'surface', type: 'exteriorWall', name: '_OW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
   { target: 'surface', type: 'wall', name: '_IW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
@@ -30,7 +30,7 @@ const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.
 const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
-const CURRENT_SCHEMA_VERSION = 9;
+const CURRENT_SCHEMA_VERSION = 10;
 const SUPPORTED_SCHEMA_VERSIONS = new Set(
   Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, index) => index + 1)
 );
@@ -112,7 +112,7 @@ export class AppState {
 
   getSection(target, type, name) {
     const section = this._getSectionRef(target, type, name);
-    return section ? { ...section } : null;
+    return section ? cloneSection(section) : null;
   }
 
   listSections(target, type) {
@@ -123,7 +123,7 @@ export class AppState {
         if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
         return a.name.localeCompare(b.name);
       })
-      .map(s => ({ ...s }));
+      .map(s => cloneSection(s));
   }
 
   getDefaultSectionName(target, type) {
@@ -205,8 +205,9 @@ export class AppState {
     if (DEFAULT_SECTION_NAME_SET.has(normalized.name)) return null;
     if (this._getSectionRef(normalized.target, normalized.type, normalized.name)) return null;
     const section = { ...normalized, isDefault: false };
+    this._normalizeSectionEndDefaults(section);
     this.sectionCatalog.push(section);
-    return { ...section };
+    return cloneSection(section);
   }
 
   updateSection(target, type, name, props = {}) {
@@ -222,6 +223,12 @@ export class AppState {
       }
       if (hasOwn(props, 'h')) {
         section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, 400));
+      }
+      if (hasOwn(props, 'defaultEndI')) {
+        section.defaultEndI = this._normalizeMemberEnd(props.defaultEndI);
+      }
+      if (hasOwn(props, 'defaultEndJ')) {
+        section.defaultEndJ = this._normalizeMemberEnd(props.defaultEndJ);
       }
     }
     if (hasOwn(props, 'color')) {
@@ -245,7 +252,7 @@ export class AppState {
       }
     }
 
-    return { ...section };
+    return cloneSection(section);
   }
 
   removeSection(target, type, name) {
@@ -320,6 +327,13 @@ export class AppState {
       (m.endJ?.condition === 'spring' && m.endJ.springSymbol === symbol)
     );
     if (inUse) return false;
+    const inSectionPreset = this.sectionCatalog.some(s =>
+      s.target === 'member' && (
+        (s.defaultEndI?.condition === 'spring' && s.defaultEndI.springSymbol === symbol) ||
+        (s.defaultEndJ?.condition === 'spring' && s.defaultEndJ.springSymbol === symbol)
+      )
+    );
+    if (inSectionPreset) return false;
     this.springCatalog.splice(idx, 1);
     return true;
   }
@@ -364,6 +378,8 @@ export class AppState {
       b: sanitizePositiveNumber(b, 200),
       h: sanitizePositiveNumber(h, 400),
       color: sanitizeColor(color, defaultColorForSection('member', normalizedType)),
+      defaultEndI: { condition: 'pin', springSymbol: null },
+      defaultEndJ: { condition: 'pin', springSymbol: null },
       isDefault: false,
     };
     this.sectionCatalog.push(section);
@@ -418,6 +434,26 @@ export class AppState {
     member.color = sanitizeColor(member.color, defaultColorForSection('member', member.type));
   }
 
+  _getMemberSectionEndDefaults(member) {
+    const section = this._getSectionRef('member', member.type, member.sectionName);
+    return {
+      endI: this._normalizeMemberEnd(section?.defaultEndI),
+      endJ: this._normalizeMemberEnd(section?.defaultEndJ),
+    };
+  }
+
+  _normalizeSectionEndDefaults(section) {
+    if (section?.target !== 'member') return;
+    section.defaultEndI = this._normalizeMemberEnd(section.defaultEndI);
+    section.defaultEndJ = this._normalizeMemberEnd(section.defaultEndJ);
+  }
+
+  _normalizeSectionCatalogEndDefaults() {
+    for (const section of this.sectionCatalog) {
+      this._normalizeSectionEndDefaults(section);
+    }
+  }
+
   _ensureSurfaceSection(surface, requestedSectionName = null) {
     const normalizedType = this._normalizeSectionType('surface', surface.type);
     const sectionName = sanitizeText(requestedSectionName || surface.sectionName);
@@ -442,8 +478,8 @@ export class AppState {
 
   _normalizeMemberEnd(endInfo) {
     const raw = endInfo || {};
-    const rawCondition = sanitizeText(raw.condition || raw.fixity || raw.type) || 'rigid';
-    const condition = END_FIXITIES.has(rawCondition) ? rawCondition : 'rigid';
+    const rawCondition = sanitizeText(raw.condition || raw.fixity || raw.type) || 'pin';
+    const condition = END_FIXITIES.has(rawCondition) ? rawCondition : 'pin';
     const defaultSpring = this.springCatalog[0]?.symbol || null;
 
     let springSymbol = null;
@@ -707,6 +743,8 @@ export class AppState {
     const id = this.nextMemberId();
     const type = options.type || 'beam';
     let sectionName = sanitizeText(options.sectionName) || '';
+    const hasEndI = hasOwn(options, 'endI');
+    const hasEndJ = hasOwn(options, 'endJ');
 
     if (!sectionName && (
       (options.b !== undefined && options.b !== null) ||
@@ -737,10 +775,13 @@ export class AppState {
       endZ: sanitizeOptionalNumber(options.endZ),
       roofRole: sanitizeText(options.roofRole) || null,
       bracePattern: options.bracePattern || 'single',
-      endI: this._normalizeMemberEnd(options.endI),
-      endJ: this._normalizeMemberEnd(options.endJ),
+      endI: { condition: 'pin', springSymbol: null },
+      endJ: { condition: 'pin', springSymbol: null },
     };
     this._ensureMemberSection(member, sectionName);
+    const endDefaults = this._getMemberSectionEndDefaults(member);
+    member.endI = this._normalizeMemberEnd(hasEndI ? options.endI : endDefaults.endI);
+    member.endJ = this._normalizeMemberEnd(hasEndJ ? options.endJ : endDefaults.endJ);
     this.members.push(member);
     return member;
   }
@@ -1929,6 +1970,14 @@ export class AppState {
       if (m.endI?.condition === 'spring' && m.endI.springSymbol) usedSymbols.add(m.endI.springSymbol);
       if (m.endJ?.condition === 'spring' && m.endJ.springSymbol) usedSymbols.add(m.endJ.springSymbol);
     }
+    for (const section of this._usedSectionCatalog()) {
+      if (section.defaultEndI?.condition === 'spring' && section.defaultEndI.springSymbol) {
+        usedSymbols.add(section.defaultEndI.springSymbol);
+      }
+      if (section.defaultEndJ?.condition === 'spring' && section.defaultEndJ.springSymbol) {
+        usedSymbols.add(section.defaultEndJ.springSymbol);
+      }
+    }
     return this.springCatalog.filter(s => s.isDefault || usedSymbols.has(s.symbol));
   }
 
@@ -1939,7 +1988,7 @@ export class AppState {
       settings: { ...this.settings },
       levels: this.levels.map(l => ({ ...l })),
       nodes: this.nodes.map(n => ({ ...n })),
-      sectionCatalog: this._usedSectionCatalog().map(s => ({ ...s })),
+      sectionCatalog: this._usedSectionCatalog().map(s => cloneSection(s)),
       springCatalog: this._usedSpringCatalog().map(s => ({ ...s })),
       members: this.members.map(m => ({
         type: m.type,
@@ -2042,7 +2091,7 @@ export class AppState {
     this.springCatalog = this._hydrateSpringCatalog(data.springCatalog);
     for (const cs of prevCustomSections) {
       if (!this.sectionCatalog.some(s => s.target === cs.target && s.type === cs.type && s.name === cs.name)) {
-        this.sectionCatalog.push({ ...cs });
+        this.sectionCatalog.push(cloneSection(cs));
       }
     }
     for (const cs of prevCustomSprings) {
@@ -2050,6 +2099,7 @@ export class AppState {
         this.springCatalog.push({ ...cs });
       }
     }
+    this._normalizeSectionCatalogEndDefaults();
     this.members = (data.members || []).map((m, idx) =>
       this._normalizeLoadedMember({ id: m.id || `M${idx + 1}`, ...m })
     );
@@ -2112,6 +2162,8 @@ function createDefaultSectionCatalog() {
   return DEFAULT_SECTION_DEFINITIONS.map(s => ({
     ...s,
     type: MEMBER_SECTION_TYPE_ALIAS[s.type] || s.type,
+    defaultEndI: s.defaultEndI ? { ...s.defaultEndI } : undefined,
+    defaultEndJ: s.defaultEndJ ? { ...s.defaultEndJ } : undefined,
   }));
 }
 
@@ -2138,6 +2190,10 @@ function normalizeCatalogSectionEntry(entry) {
     color: sanitizeColor(entry.color, defaultColorForSection(entry.target, type)),
     memo: sanitizeText(entry.memo) || '',
   };
+  if (entry.target === 'member') {
+    normalized.defaultEndI = normalizeSectionDefaultEnd(entry.defaultEndI || entry.endI);
+    normalized.defaultEndJ = normalizeSectionDefaultEnd(entry.defaultEndJ || entry.endJ);
+  }
   return normalized;
 }
 
@@ -2160,8 +2216,35 @@ function isSameSectionDefinition(a, b) {
       sanitizeColor(b.color, defaultColorForSection(b.target, b.type)) &&
     (a.target !== 'member' || (
       sanitizePositiveNumber(a.b, 200) === sanitizePositiveNumber(b.b, 200) &&
-      sanitizePositiveNumber(a.h, 400) === sanitizePositiveNumber(b.h, 400)
+      sanitizePositiveNumber(a.h, 400) === sanitizePositiveNumber(b.h, 400) &&
+      isSameMemberEnd(a.defaultEndI, b.defaultEndI) &&
+      isSameMemberEnd(a.defaultEndJ, b.defaultEndJ)
     ));
+}
+
+function cloneSection(section) {
+  return {
+    ...section,
+    defaultEndI: section.defaultEndI ? { ...section.defaultEndI } : undefined,
+    defaultEndJ: section.defaultEndJ ? { ...section.defaultEndJ } : undefined,
+  };
+}
+
+function normalizeSectionDefaultEnd(endInfo) {
+  const raw = endInfo || {};
+  const rawCondition = sanitizeText(raw.condition || raw.fixity || raw.type) || 'pin';
+  const condition = END_FIXITIES.has(rawCondition) ? rawCondition : 'pin';
+  if (condition !== 'spring') {
+    return { condition, springSymbol: null };
+  }
+  const springSymbol = sanitizeText(raw.springSymbol || raw.symbol) || DEFAULT_SPRING_DEFINITIONS[0]?.symbol || null;
+  return { condition, springSymbol };
+}
+
+function isSameMemberEnd(a, b) {
+  const endA = normalizeSectionDefaultEnd(a);
+  const endB = normalizeSectionDefaultEnd(b);
+  return endA.condition === endB.condition && (endA.springSymbol || null) === (endB.springSymbol || null);
 }
 
 function hasOwn(obj, key) {
