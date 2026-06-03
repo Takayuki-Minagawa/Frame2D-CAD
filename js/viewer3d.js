@@ -224,31 +224,33 @@ export class Viewer3D {
 
     // Surfaces
     for (const s of this.state.surfaces || []) {
+      if (!this.state.isSurfaceVisible(s, '3d')) continue;
+      const layerAlpha = this.state.getPlanLayerStyle(s.levelId, { view: '3d' }).alpha;
       const range = resolveSurfaceVerticalRange(this.state, s);
       const base = range.bottom;
       const top = range.top;
       const isPolygon = s.shape === 'polygon' && Array.isArray(s.points) && s.points.length >= 3;
 
       if (isSlopedSurfaceType(s.type)) {
-        this._addRoofSurface3D(s);
+        this._addRoofSurface3D(s, layerAlpha);
         continue;
       }
 
       if (isPolygon) {
         if (s.type === 'exteriorWall') {
-          this._addExteriorWallEdges3D(s, base, top);
+          this._addExteriorWallEdges3D(s, base, top, layerAlpha);
         } else {
-          this._addPolygonSurface3D(s, base, top);
+          this._addPolygonSurface3D(s, base, top, layerAlpha);
         }
         continue;
       }
 
       if (s.shape === 'line') {
         if (isGableWallSurfaceType(s.type)) {
-          this._addGableWallLine3D(s);
+          this._addGableWallLine3D(s, layerAlpha);
           continue;
         }
-        this._addWallLine3D(s, base, top);
+        this._addWallLine3D(s, base, top, layerAlpha);
         continue;
       }
 
@@ -274,26 +276,31 @@ export class Viewer3D {
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(matColor),
         transparent: true,
-        opacity: isWallType ? 0.35 : 0.45,
+        opacity: (isWallType ? 0.35 : 0.45) * layerAlpha,
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(cx, yCenter, cz);
       this.surfaceGroup.add(mesh);
 
       const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * layerAlpha });
       const lineSegments = new THREE.LineSegments(edges, lineMat);
       lineSegments.position.copy(mesh.position);
       this.surfaceGroup.add(lineSegments);
     }
 
     // Members
+    const visibleMemberNodeIds = new Set();
     for (const m of this.state.members) {
+      if (!this.state.isMemberVisible(m, '3d')) continue;
+      const layerAlpha = this.state.getPlanLayerStyle(m.levelId, { view: '3d' }).alpha;
       const n1 = this.state.getNode(m.startNodeId);
       if (!n1) continue;
+      visibleMemberNodeIds.add(m.startNodeId);
+      visibleMemberNodeIds.add(m.endNodeId);
 
       if (m.type === 'column') {
-        this._addColumn3D(m, n1);
+        this._addColumn3D(m, n1, layerAlpha);
         continue;
       }
 
@@ -301,7 +308,7 @@ export class Viewer3D {
       if (!n2) continue;
 
       if (m.type === 'vbrace') {
-        this._addVBrace3D(m, n1, n2);
+        this._addVBrace3D(m, n1, n2, layerAlpha);
         continue;
       }
 
@@ -322,7 +329,7 @@ export class Viewer3D {
       if (length < 0.001) continue;
 
       if (this._isMemberLineMode()) {
-        this._addMemberLine3D(start, end, resolveMemberColor(m));
+        this._addMemberLine3D(start, end, resolveMemberColor(m), layerAlpha);
         continue;
       }
 
@@ -333,6 +340,8 @@ export class Viewer3D {
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(resolveMemberColor(m)),
         wireframe: this.showWireframe,
+        transparent: layerAlpha < 1,
+        opacity: layerAlpha,
       });
       const mesh = new THREE.Mesh(geometry, material);
 
@@ -350,7 +359,7 @@ export class Viewer3D {
 
       if (!this.showWireframe) {
         const edges = new THREE.EdgesGeometry(geometry);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * layerAlpha });
         const lineSegments = new THREE.LineSegments(edges, lineMat);
         lineSegments.position.copy(mesh.position);
         lineSegments.rotation.copy(mesh.rotation);
@@ -364,6 +373,7 @@ export class Viewer3D {
       const sphereMat = new THREE.MeshStandardMaterial({ color: 0x89b4fa });
 
       for (const n of this.state.nodes) {
+        if (!visibleMemberNodeIds.has(n.id)) continue;
         let y = 0;
         for (const m of this.state.members) {
           if (m.startNodeId === n.id || m.endNodeId === n.id) {
@@ -380,6 +390,8 @@ export class Viewer3D {
 
     // Loads
     for (const ld of this.state.loads || []) {
+      if (!this.state.isLoadVisible(ld, '3d')) continue;
+      const layerAlpha = this.state.getPlanLayerStyle(ld.levelId, { view: '3d' }).alpha;
       const level = this.state.levels.find(l => l.id === ld.levelId);
       const y = (level ? level.z : 0) / 1000 + 0.05;
 
@@ -391,7 +403,7 @@ export class Viewer3D {
         const geo = new THREE.BoxGeometry(xSize, 0.05, zSize);
         const mat = new THREE.MeshStandardMaterial({
           color: new THREE.Color(ld.color || '#e57373'),
-          transparent: true, opacity: 0.35,
+          transparent: true, opacity: 0.35 * layerAlpha,
         });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(cx, y, cz);
@@ -402,11 +414,11 @@ export class Viewer3D {
           new THREE.Vector3(ld.x2 / 1000, y, -ld.y2 / 1000),
         ];
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(ld.color || '#ffb74d'), linewidth: 2 });
+        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(ld.color || '#ffb74d'), transparent: layerAlpha < 1, opacity: layerAlpha, linewidth: 2 });
         this.loadGroup.add(new THREE.Line(geo, mat));
       } else if (ld.type === 'pointLoad') {
         const geo = new THREE.SphereGeometry(0.15, 8, 8);
-        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(ld.color || '#ba68c8') });
+        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(ld.color || '#ba68c8'), transparent: layerAlpha < 1, opacity: layerAlpha });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(ld.x1 / 1000, y, -ld.y1 / 1000);
         this.loadGroup.add(mesh);
@@ -416,9 +428,11 @@ export class Viewer3D {
     // Supports
     if (this.state.settings.showSupports) {
       for (const sup of this.state.supports || []) {
+        if (!this.state.isSupportVisible(sup, '3d')) continue;
+        const layerAlpha = this.state.getPlanLayerStyle(sup.levelId, { view: '3d' }).alpha;
         const level = this.state.levels.find(l => l.id === sup.levelId);
         const y = (level ? level.z : 0) / 1000;
-        this._addSupport3D(sup, y);
+        this._addSupport3D(sup, y, layerAlpha);
       }
     }
 
@@ -435,7 +449,7 @@ export class Viewer3D {
     this._sceneDirty = true;
   }
 
-  _addWallLine3D(surface, base, top) {
+  _addWallLine3D(surface, base, top, opacityMultiplier = 1) {
     const height = Math.max(0.1, Math.abs(top - base) / 1000);
     const yBase = Math.min(base, top) / 1000;
 
@@ -450,7 +464,7 @@ export class Viewer3D {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(resolveSurfaceColor(surface)),
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.35 * opacityMultiplier,
     });
     const mesh = new THREE.Mesh(geometry, material);
 
@@ -464,14 +478,14 @@ export class Viewer3D {
     this.surfaceGroup.add(mesh);
 
     const edges = new THREE.EdgesGeometry(geometry);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * opacityMultiplier });
     const lineSegments = new THREE.LineSegments(edges, lineMat);
     lineSegments.position.copy(mesh.position);
     lineSegments.rotation.copy(mesh.rotation);
     this.surfaceGroup.add(lineSegments);
   }
 
-  _addGableWallLine3D(surface) {
+  _addGableWallLine3D(surface, opacityMultiplier = 1) {
     const baseZ = this.state.getLevelZ(surface.levelId);
     const topFallback = finiteNumber(surface.topOffset, 0);
     const bottomY = (baseZ + finiteNumber(surface.bottomOffset, 0)) / 1000;
@@ -492,17 +506,17 @@ export class Viewer3D {
       color: new THREE.Color(resolveSurfaceColor(surface)),
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.38 * opacityMultiplier,
     });
     this.surfaceGroup.add(new THREE.Mesh(geometry, material));
 
     const outline = [...vertices, vertices[0]];
     const outlineGeo = new THREE.BufferGeometry().setFromPoints(outline);
-    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 });
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 * opacityMultiplier });
     this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
-  _addColumn3D(member, node) {
+  _addColumn3D(member, node, opacityMultiplier = 1) {
     const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
     const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
     if (!bottomLevel || !topLevel) return;
@@ -515,7 +529,7 @@ export class Viewer3D {
     if (this._isMemberLineMode()) {
       const start = new THREE.Vector3(node.x / 1000, bottomZ, -node.y / 1000);
       const end = new THREE.Vector3(node.x / 1000, topZ, -node.y / 1000);
-      this._addMemberLine3D(start, end, resolveMemberColor(member));
+      this._addMemberLine3D(start, end, resolveMemberColor(member), opacityMultiplier);
       return;
     }
 
@@ -526,6 +540,8 @@ export class Viewer3D {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(member.color || '#666666'),
       wireframe: this.showWireframe,
+      transparent: opacityMultiplier < 1,
+      opacity: opacityMultiplier,
     });
     const mesh = new THREE.Mesh(geometry, material);
     const midY = (bottomZ + topZ) / 2;
@@ -534,7 +550,7 @@ export class Viewer3D {
 
     if (!this.showWireframe) {
       const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * opacityMultiplier });
       const lineSegments = new THREE.LineSegments(edges, lineMat);
       lineSegments.position.copy(mesh.position);
       this.memberGroup.add(lineSegments);
@@ -545,17 +561,19 @@ export class Viewer3D {
     return this.state.settings?.member3dRenderMode === 'line';
   }
 
-  _addMemberLine3D(start, end, color) {
+  _addMemberLine3D(start, end, color, opacityMultiplier = 1) {
     const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
     // Browser WebGL implementations commonly clamp LineBasicMaterial to 1px.
     const mat = new THREE.LineBasicMaterial({
       color: new THREE.Color(color || '#666666'),
+      transparent: opacityMultiplier < 1,
+      opacity: opacityMultiplier,
       linewidth: 2,
     });
     this.memberGroup.add(new THREE.Line(geo, mat));
   }
 
-  _addVBrace3D(member, n1, n2) {
+  _addVBrace3D(member, n1, n2, opacityMultiplier = 1) {
     const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
     const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
     if (!bottomLevel || !topLevel) return;
@@ -563,7 +581,7 @@ export class Viewer3D {
     const yBottom = bottomLevel.z / 1000;
     const yTop = topLevel.z / 1000;
     const color = new THREE.Color(resolveMemberColor(member));
-    const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
+    const mat = new THREE.LineBasicMaterial({ color, transparent: opacityMultiplier < 1, opacity: opacityMultiplier, linewidth: 2 });
 
     const s1 = new THREE.Vector3(n1.x / 1000, yBottom, -n1.y / 1000);
     const s2 = new THREE.Vector3(n2.x / 1000, yBottom, -n2.y / 1000);
@@ -584,11 +602,11 @@ export class Viewer3D {
 
     // Frame outline (rectangle)
     const frameGeo = new THREE.BufferGeometry().setFromPoints([s1, s2, t2, t1, s1]);
-    const frameMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 });
+    const frameMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 * opacityMultiplier });
     this.memberGroup.add(new THREE.Line(frameGeo, frameMat));
   }
 
-  _addPolygonSurface3D(surface, base, top) {
+  _addPolygonSurface3D(surface, base, top, opacityMultiplier = 1) {
     const points = surface.points.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
     const shape = new THREE.Shape(points);
     const isWallType = isWallSurfaceType(surface.type);
@@ -598,7 +616,7 @@ export class Viewer3D {
       const height = Math.max(0.1, Math.abs(top - base) / 1000);
       const yBase = Math.min(base, top) / 1000;
       const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
-      const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.35 });
+      const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.35 * opacityMultiplier });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.y = yBase;
@@ -607,14 +625,14 @@ export class Viewer3D {
     }
 
     const geometry = new THREE.ShapeGeometry(shape);
-    const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+    const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.45 * opacityMultiplier, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.y = base / 1000 + 0.06;
     this.surfaceGroup.add(mesh);
   }
 
-  _addExteriorWallEdges3D(surface, base, top) {
+  _addExteriorWallEdges3D(surface, base, top, opacityMultiplier = 1) {
     const points = surface.points;
     if (!points || points.length < 2) return;
 
@@ -637,7 +655,7 @@ export class Viewer3D {
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(resolveSurfaceColor(surface)),
         transparent: true,
-        opacity: 0.35,
+        opacity: 0.35 * opacityMultiplier,
       });
       const mesh = new THREE.Mesh(geometry, material);
 
@@ -651,7 +669,7 @@ export class Viewer3D {
       this.surfaceGroup.add(mesh);
 
       const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 });
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * opacityMultiplier });
       const lineSegments = new THREE.LineSegments(edges, lineMat);
       lineSegments.position.copy(mesh.position);
       lineSegments.rotation.copy(mesh.rotation);
@@ -659,7 +677,7 @@ export class Viewer3D {
     }
   }
 
-  _addRoofSurface3D(surface) {
+  _addRoofSurface3D(surface, opacityMultiplier = 1) {
     const planPoints = roofPlanPoints(surface);
     const vertices3D = roofVertices3D(this.state, surface);
     if (planPoints.length < 3 || vertices3D.length !== planPoints.length) return;
@@ -685,7 +703,7 @@ export class Viewer3D {
       color: new THREE.Color(resolveSurfaceColor(surface)),
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.58,
+      opacity: 0.58 * opacityMultiplier,
     });
     const mesh = new THREE.Mesh(geometry, material);
     this.surfaceGroup.add(mesh);
@@ -693,11 +711,11 @@ export class Viewer3D {
     const outlinePoints = vertices3D.map(v => new THREE.Vector3(v.x / 1000, v.z / 1000, -v.y / 1000));
     outlinePoints.push(outlinePoints[0].clone());
     const outlineGeo = new THREE.BufferGeometry().setFromPoints(outlinePoints);
-    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
+    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 * opacityMultiplier });
     this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
-  _addSupport3D(sup, y) {
+  _addSupport3D(sup, y, opacityMultiplier = 1) {
     const px = sup.x / 1000;
     const pz = -sup.y / 1000;
     const allTrans = sup.dx && sup.dy && sup.dz;
@@ -712,7 +730,7 @@ export class Viewer3D {
     const coneMat = new THREE.MeshStandardMaterial({
       color,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.7 * opacityMultiplier,
     });
     const cone = new THREE.Mesh(coneGeo, coneMat);
     cone.position.set(px, y - coneHeight / 2, pz);
@@ -721,14 +739,14 @@ export class Viewer3D {
     if (isFixed) {
       // Fixed support: flat box as ground plate
       const plateGeo = new THREE.BoxGeometry(coneRadius * 2.4, 0.04, coneRadius * 2.4);
-      const plateMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5 });
+      const plateMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5 * opacityMultiplier });
       const plate = new THREE.Mesh(plateGeo, plateMat);
       plate.position.set(px, y - coneHeight - 0.02, pz);
       this.supportGroup.add(plate);
     } else {
       // Roller / partial: sphere under the cone
       const sphereGeo = new THREE.SphereGeometry(0.08, 8, 8);
-      const sphereMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7 });
+      const sphereMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7 * opacityMultiplier });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
       sphere.position.set(px, y - coneHeight - 0.08, pz);
       this.supportGroup.add(sphere);

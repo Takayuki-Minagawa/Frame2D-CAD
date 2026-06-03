@@ -31,6 +31,7 @@ const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
 const PLAN_LAYER_DISPLAY_MODES = new Set(['all', 'current', 'halftone']);
 const MEMBER_3D_RENDER_MODES = new Set(['solid', 'line']);
+const DISPLAY_PRESETS = new Set(['input', 'review', 'presentation']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
 const CURRENT_SCHEMA_VERSION = 10;
 const SUPPORTED_SCHEMA_VERSIONS = new Set(
@@ -55,7 +56,17 @@ export class AppState {
       showSupports: true,
       widePick: false,
       planLayerDisplayMode: 'all',
+      planLayerSelectionLock: false,
+      view3dLayerDisplayMode: 'all',
       member3dRenderMode: 'solid',
+      showMembers: true,
+      showSurfaces: true,
+      showLoads: true,
+      showMemberEndSymbols: false,
+      showPlacementLabels: true,
+      memberTypeFilter: 'all',
+      sectionFilter: 'all',
+      displayPreset: 'input',
     };
     this.levels = [
       { id: 'L0', name: 'GL', z: 0 },
@@ -161,17 +172,111 @@ export class AppState {
     return Math.max(0, this.getLevelZ(resolvedTopLevelId) - this.getLevelZ(levelId));
   }
 
-  getPlanLayerStyle(levelId) {
-    const mode = normalizePlanLayerDisplayMode(this.settings?.planLayerDisplayMode);
+  getPlanLayerStyle(levelId, options = {}) {
+    const mode = normalizePlanLayerDisplayMode(
+      options.view === '3d'
+        ? (this.settings?.view3dLayerDisplayMode || this.settings?.planLayerDisplayMode)
+        : this.settings?.planLayerDisplayMode
+    );
     const targetLevelId = levelId || this.activeLayerId || 'L0';
     const isActive = targetLevelId === this.activeLayerId;
+    const lockOtherLayers = options.view !== '3d' && !!this.settings?.planLayerSelectionLock;
     if (mode === 'current' && !isActive) {
-      return { visible: false, alpha: 0, halftone: false };
+      return { visible: false, alpha: 0, halftone: false, selectable: false };
     }
     if (mode === 'halftone' && !isActive) {
-      return { visible: true, alpha: 0.28, halftone: true };
+      return { visible: true, alpha: 0.28, halftone: true, selectable: !lockOtherLayers };
     }
-    return { visible: true, alpha: 1, halftone: false };
+    return { visible: true, alpha: 1, halftone: false, selectable: true };
+  }
+
+  isMemberVisible(member, view = '2d') {
+    if (this.settings?.showMembers === false) return false;
+    if (!member) return false;
+    const layerStyle = this.getPlanLayerStyle(member.levelId, { view });
+    if (!layerStyle.visible) return false;
+    const typeFilter = sanitizeText(this.settings?.memberTypeFilter) || 'all';
+    if (typeFilter !== 'all' && member.type !== typeFilter) return false;
+    const sectionFilter = sanitizeText(this.settings?.sectionFilter) || 'all';
+    if (sectionFilter !== 'all' && member.sectionName !== sectionFilter) return false;
+    return true;
+  }
+
+  isSurfaceVisible(surface, view = '2d') {
+    if (this.settings?.showSurfaces === false) return false;
+    if (!surface) return false;
+    return this.getPlanLayerStyle(surface.levelId, { view }).visible;
+  }
+
+  isLoadVisible(load, view = '2d') {
+    if (this.settings?.showLoads === false) return false;
+    if (!load) return false;
+    return this.getPlanLayerStyle(load.levelId, { view }).visible;
+  }
+
+  isSupportVisible(support, view = '2d') {
+    if (this.settings?.showSupports === false) return false;
+    if (!support) return false;
+    return this.getPlanLayerStyle(support.levelId, { view }).visible;
+  }
+
+  isMemberSelectable(member) {
+    return this.isMemberVisible(member, '2d') && this.getPlanLayerStyle(member.levelId).selectable;
+  }
+
+  isSurfaceSelectable(surface) {
+    return this.isSurfaceVisible(surface, '2d') && this.getPlanLayerStyle(surface.levelId).selectable;
+  }
+
+  isLoadSelectable(load) {
+    return this.isLoadVisible(load, '2d') && this.getPlanLayerStyle(load.levelId).selectable;
+  }
+
+  isSupportSelectable(support) {
+    return this.isSupportVisible(support, '2d') && this.getPlanLayerStyle(support.levelId).selectable;
+  }
+
+  applyDisplayPreset(name) {
+    const preset = DISPLAY_PRESETS.has(sanitizeText(name)) ? sanitizeText(name) : 'input';
+    this.settings.displayPreset = preset;
+    if (preset === 'review') {
+      Object.assign(this.settings, {
+        planLayerDisplayMode: 'halftone',
+        planLayerSelectionLock: true,
+        view3dLayerDisplayMode: 'halftone',
+        member3dRenderMode: 'line',
+        showMembers: true,
+        showSurfaces: true,
+        showLoads: true,
+        showMemberEndSymbols: true,
+        showPlacementLabels: true,
+      });
+    } else if (preset === 'presentation') {
+      Object.assign(this.settings, {
+        planLayerDisplayMode: 'current',
+        planLayerSelectionLock: true,
+        view3dLayerDisplayMode: 'current',
+        member3dRenderMode: 'solid',
+        showMembers: true,
+        showSurfaces: true,
+        showLoads: false,
+        showMemberEndSymbols: false,
+        showPlacementLabels: false,
+      });
+    } else {
+      Object.assign(this.settings, {
+        planLayerDisplayMode: 'all',
+        planLayerSelectionLock: false,
+        view3dLayerDisplayMode: 'all',
+        member3dRenderMode: 'solid',
+        showMembers: true,
+        showSurfaces: true,
+        showLoads: true,
+        showMemberEndSymbols: false,
+        showPlacementLabels: true,
+      });
+    }
+    return preset;
   }
 
   getSurfaceHeightOffsets(options = {}) {
@@ -1836,6 +1941,219 @@ export class AppState {
     return true;
   }
 
+  copyLevelElements(sourceLevelId, targetLevelId, options = {}) {
+    if (!sourceLevelId || !targetLevelId || sourceLevelId === targetLevelId) {
+      return { members: 0, surfaces: 0, loads: 0, supports: 0 };
+    }
+    if (!this.levels.some(l => l.id === sourceLevelId) || !this.levels.some(l => l.id === targetLevelId)) {
+      return { members: 0, surfaces: 0, loads: 0, supports: 0 };
+    }
+
+    const include = {
+      members: options.members !== false,
+      surfaces: options.surfaces !== false,
+      loads: options.loads !== false,
+      supports: options.supports !== false,
+    };
+    const counts = { members: 0, surfaces: 0, loads: 0, supports: 0 };
+    const zDelta = this.getLevelZ(targetLevelId) - this.getLevelZ(sourceLevelId);
+    const nodeMap = new Map();
+    const nodeFor = (nodeId) => {
+      if (nodeMap.has(nodeId)) return nodeMap.get(nodeId);
+      const sourceNode = this.getNode(nodeId);
+      if (!sourceNode) return null;
+      const node = this.addNode(sourceNode.x, sourceNode.y, sourceNode.z || 0);
+      nodeMap.set(nodeId, node);
+      return node;
+    };
+    const mapTopLevel = (topLevelId) => {
+      if (!topLevelId) return null;
+      if (topLevelId === sourceLevelId || topLevelId === this.getNextLevelId(sourceLevelId)) {
+        return this.getNextLevelId(targetLevelId) || targetLevelId;
+      }
+      return topLevelId;
+    };
+    const mapRoofGroupId = (roofGroupId) => {
+      const base = sanitizeRoofGroupId(roofGroupId, 'RG1');
+      return sanitizeRoofGroupId(`${base}_${targetLevelId}`, `${base}_${targetLevelId}`);
+    };
+
+    if (include.members) {
+      const sourceMembers = [...this.members].filter(m => m.levelId === sourceLevelId);
+      for (const member of sourceMembers) {
+        if (member.roofRole) continue;
+        const startNode = nodeFor(member.startNodeId);
+        const endNode = nodeFor(member.endNodeId);
+        if (!startNode || !endNode) continue;
+        const copied = this.addMember(startNode.id, endNode.id, {
+          type: member.type,
+          sectionName: member.sectionName,
+          levelId: targetLevelId,
+          topLevelId: (member.type === 'column' || member.type === 'vbrace')
+            ? (this.getNextLevelId(targetLevelId) || targetLevelId)
+            : mapTopLevel(member.topLevelId),
+          geometryMode: member.geometryMode,
+          startZ: member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.startZ))
+            ? Number(member.startZ) + zDelta
+            : member.startZ,
+          endZ: member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.endZ))
+            ? Number(member.endZ) + zDelta
+            : member.endZ,
+          roofRole: null,
+          bracePattern: member.bracePattern,
+          endI: member.endI,
+          endJ: member.endJ,
+        });
+        if (copied) counts.members++;
+      }
+    }
+
+    if (include.surfaces) {
+      const sourceSurfaces = [...this.surfaces].filter(s => s.levelId === sourceLevelId);
+      for (const surface of sourceSurfaces) {
+        const common = {
+          type: surface.type,
+          sectionName: surface.sectionName,
+          levelId: targetLevelId,
+          topLevelId: mapTopLevel(surface.topLevelId) || targetLevelId,
+          loadDirection: surface.loadDirection,
+          heightMode: surface.heightMode,
+          bottomOffset: surface.bottomOffset,
+          topOffset: surface.topOffset,
+          includeWind: surface.includeWind,
+          includeSeismicWeight: surface.includeSeismicWeight,
+          unitWeight: surface.unitWeight,
+          roofSlope: surface.roofSlope,
+          roofDirection: surface.roofDirection,
+          roofBaseOffset: surface.roofBaseOffset,
+          roofGroupId: isRoofSurfaceType(surface.type) ? mapRoofGroupId(surface.roofGroupId) : surface.roofGroupId,
+          gableStartTopOffset: surface.gableStartTopOffset,
+          gableEndTopOffset: surface.gableEndTopOffset,
+        };
+        let copied = null;
+        if (surface.shape === 'polygon' && Array.isArray(surface.points)) {
+          copied = this.addSurfacePolygon(surface.points.map(p => ({ ...p })), common);
+        } else if (surface.shape === 'line') {
+          copied = this.addSurfaceLine(surface.x1, surface.y1, surface.x2, surface.y2, common);
+        } else {
+          copied = this.addSurfaceRect(surface.x1, surface.y1, surface.x2, surface.y2, common);
+        }
+        if (copied) counts.surfaces++;
+      }
+    }
+
+    if (include.loads) {
+      const sourceLoads = [...this.loads].filter(l => l.levelId === sourceLevelId);
+      for (const load of sourceLoads) {
+        const props = { ...load, levelId: targetLevelId };
+        delete props.id;
+        if (this.addLoad(load.type, props)) counts.loads++;
+      }
+    }
+
+    if (include.supports) {
+      const sourceSupports = [...this.supports].filter(s => s.levelId === sourceLevelId);
+      for (const support of sourceSupports) {
+        const props = { ...support, levelId: targetLevelId };
+        delete props.id;
+        if (this.addSupport(support.x, support.y, props)) counts.supports++;
+      }
+    }
+
+    return counts;
+  }
+
+  validateModel() {
+    const issues = [];
+    const addIssue = (severity, code, message, ref = {}) => {
+      issues.push({ severity, code, message, ...ref });
+    };
+    const levelIds = new Set(this.levels.map(l => l.id));
+    const nodeIds = new Set(this.nodes.map(n => n.id));
+    const levelZ = new Map();
+    for (const level of this.levels) {
+      const zKey = String(Number(level.z));
+      if (levelZ.has(zKey)) {
+        addIssue('warning', 'duplicate-level-z', `階 ${level.name} は ${levelZ.get(zKey)} と同じz値です`, { elementType: 'level', elementId: level.id });
+      } else {
+        levelZ.set(zKey, level.name);
+      }
+    }
+
+    for (const member of this.members) {
+      const n1 = this.getNode(member.startNodeId);
+      const n2 = this.getNode(member.endNodeId);
+      if (!nodeIds.has(member.startNodeId) || !nodeIds.has(member.endNodeId) || !n1 || !n2) {
+        addIssue('error', 'missing-node', `線材 ${member.id} の参照ノードが見つかりません`, { elementType: 'member', elementId: member.id });
+        continue;
+      }
+      if (!levelIds.has(member.levelId)) {
+        addIssue('error', 'missing-level', `線材 ${member.id} の管理レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
+      }
+      if ((member.type === 'column' || member.type === 'vbrace') && !levelIds.has(member.topLevelId)) {
+        addIssue('error', 'missing-top-level', `線材 ${member.id} の上端レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
+      }
+      const startZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'startZ') : this.getLevelZ(member.levelId);
+      const endZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'endZ') : this.getLevelZ(member.levelId);
+      if (member.type !== 'column' && Math.hypot(n2.x - n1.x, n2.y - n1.y, endZ - startZ) < 1) {
+        addIssue('warning', 'zero-length-member', `線材 ${member.id} の長さが0です`, { elementType: 'member', elementId: member.id });
+      }
+      if (member.sectionName && !this._getSectionRef('member', member.type, member.sectionName)) {
+        addIssue('warning', 'missing-section', `線材 ${member.id} の断面 ${member.sectionName} が見つかりません`, { elementType: 'member', elementId: member.id });
+      }
+      if ((member.type === 'column' || member.type === 'vbrace') && member.topLevelId === member.levelId) {
+        addIssue('warning', 'same-top-level', `線材 ${member.id} の下端/上端レイヤーが同一です`, { elementType: 'member', elementId: member.id });
+      }
+    }
+
+    const usedNodes = new Set();
+    for (const member of this.members) {
+      usedNodes.add(member.startNodeId);
+      usedNodes.add(member.endNodeId);
+    }
+    for (const node of this.nodes) {
+      if (!usedNodes.has(node.id)) {
+        addIssue('info', 'orphan-node', `孤立ノード ${node.id} があります`, { elementType: 'node', elementId: node.id });
+      }
+    }
+
+    const memberKeys = new Map();
+    for (const member of this.members) {
+      const n1 = this.getNode(member.startNodeId);
+      const n2 = this.getNode(member.endNodeId);
+      if (!n1 || !n2) continue;
+      const startZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'startZ') : this.getLevelZ(member.levelId);
+      const endZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'endZ') : this.getLevelZ(member.levelId);
+      const points = [
+        `${Math.round(n1.x)}:${Math.round(n1.y)}:${Math.round(startZ)}`,
+        `${Math.round(n2.x)}:${Math.round(n2.y)}:${Math.round(endZ)}`,
+      ].sort();
+      const key = [member.type, member.levelId, member.topLevelId || '', ...points].join('|');
+      if (memberKeys.has(key)) {
+        addIssue('warning', 'duplicate-member', `線材 ${member.id} は ${memberKeys.get(key)} と重複しています`, { elementType: 'member', elementId: member.id });
+      } else {
+        memberKeys.set(key, member.id);
+      }
+    }
+
+    for (const surface of this.surfaces) {
+      if (!levelIds.has(surface.levelId)) {
+        addIssue('error', 'missing-level', `面材 ${surface.id} の管理レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
+      }
+      if (isWallSurfaceType(surface.type) && surface.topLevelId && !levelIds.has(surface.topLevelId)) {
+        addIssue('error', 'missing-top-level', `面材 ${surface.id} の上端レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
+      }
+      if (surface.shape === 'rect' && (Math.abs(surface.x2 - surface.x1) < 1 || Math.abs(surface.y2 - surface.y1) < 1)) {
+        addIssue('warning', 'zero-area-surface', `面材 ${surface.id} の面積が0です`, { elementType: 'surface', elementId: surface.id });
+      }
+      if (surface.sectionName && !this._getSectionRef('surface', surface.type, surface.sectionName)) {
+        addIssue('warning', 'missing-section', `面材 ${surface.id} の断面 ${surface.sectionName} が見つかりません`, { elementType: 'surface', elementId: surface.id });
+      }
+    }
+
+    return issues;
+  }
+
   // --- Loads ---
 
   nextLoadId() {
@@ -2090,10 +2408,32 @@ export class AppState {
       wallDisplayOffset: 120,
       showSupports: true,
       widePick: false,
+      planLayerDisplayMode: 'all',
+      planLayerSelectionLock: false,
+      view3dLayerDisplayMode: 'all',
+      member3dRenderMode: 'solid',
+      showMembers: true,
+      showSurfaces: true,
+      showLoads: true,
+      showMemberEndSymbols: false,
+      showPlacementLabels: true,
+      memberTypeFilter: 'all',
+      sectionFilter: 'all',
+      displayPreset: 'input',
       ...data.settings,
     };
     this.settings.planLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.planLayerDisplayMode);
+    this.settings.view3dLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.view3dLayerDisplayMode);
     this.settings.member3dRenderMode = normalizeMember3DRenderMode(this.settings.member3dRenderMode);
+    this.settings.planLayerSelectionLock = !!this.settings.planLayerSelectionLock;
+    this.settings.showMembers = this.settings.showMembers !== false;
+    this.settings.showSurfaces = this.settings.showSurfaces !== false;
+    this.settings.showLoads = this.settings.showLoads !== false;
+    this.settings.showMemberEndSymbols = !!this.settings.showMemberEndSymbols;
+    this.settings.showPlacementLabels = this.settings.showPlacementLabels !== false;
+    this.settings.memberTypeFilter = normalizeMemberTypeFilter(this.settings.memberTypeFilter);
+    this.settings.sectionFilter = sanitizeText(this.settings.sectionFilter) || 'all';
+    this.settings.displayPreset = normalizeDisplayPreset(this.settings.displayPreset);
     this.levels = Array.isArray(data.levels) && data.levels.length > 0
       ? data.levels.map(l => ({ ...l }))
       : [
@@ -2348,6 +2688,16 @@ function normalizePlanLayerDisplayMode(value) {
 function normalizeMember3DRenderMode(value) {
   const text = sanitizeText(value);
   return MEMBER_3D_RENDER_MODES.has(text) ? text : 'solid';
+}
+
+function normalizeMemberTypeFilter(value) {
+  const text = sanitizeText(value);
+  return ['all', 'beam', 'column', 'hbrace', 'vbrace', 'brace'].includes(text) ? text : 'all';
+}
+
+function normalizeDisplayPreset(value) {
+  const text = sanitizeText(value);
+  return DISPLAY_PRESETS.has(text) ? text : 'input';
 }
 
 function normalizeRoofGenerationPattern(value) {

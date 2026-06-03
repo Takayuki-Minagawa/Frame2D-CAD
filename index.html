@@ -139,8 +139,28 @@
       <span data-i18n="widePick">広域選択</span>
     </label>
     <label class="grid-label">
+      <span data-i18n="displayPreset">表示プリセット</span>
+      <select id="sel-display-preset">
+        <option value="input" data-i18n="displayPresetInput">入力用</option>
+        <option value="review" data-i18n="displayPresetReview">確認用</option>
+        <option value="presentation" data-i18n="displayPresetPresentation">3D確認用</option>
+      </select>
+    </label>
+    <label class="grid-label">
       <span data-i18n="planLayerDisplayMode">2Dレイヤー表示</span>
       <select id="sel-plan-layer-display-mode">
+        <option value="all" data-i18n="planLayerAll">全レイヤー</option>
+        <option value="current" data-i18n="planLayerCurrent">現在のみ</option>
+        <option value="halftone" data-i18n="planLayerHalftone">他レイヤー薄表示</option>
+      </select>
+    </label>
+    <label class="toggle-label">
+      <input type="checkbox" id="chk-plan-layer-selection-lock">
+      <span data-i18n="planLayerSelectionLock">他レイヤー選択ロック</span>
+    </label>
+    <label class="grid-label">
+      <span data-i18n="view3dLayerDisplayMode">3Dレイヤー表示</span>
+      <select id="sel-3d-layer-display-mode">
         <option value="all" data-i18n="planLayerAll">全レイヤー</option>
         <option value="current" data-i18n="planLayerCurrent">現在のみ</option>
         <option value="halftone" data-i18n="planLayerHalftone">他レイヤー薄表示</option>
@@ -153,6 +173,45 @@
         <option value="line" data-i18n="member3dLine">線表示</option>
       </select>
     </label>
+    <div class="tool-filter-group">
+      <span class="layer-label" data-i18n="displayFilters">表示フィルタ</span>
+      <label class="toggle-label compact-toggle">
+        <input type="checkbox" id="chk-show-members" checked>
+        <span data-i18n="member">線材</span>
+      </label>
+      <label class="toggle-label compact-toggle">
+        <input type="checkbox" id="chk-show-surfaces" checked>
+        <span data-i18n="surface">面材</span>
+      </label>
+      <label class="toggle-label compact-toggle">
+        <input type="checkbox" id="chk-show-loads" checked>
+        <span data-i18n="load">荷重</span>
+      </label>
+      <label class="toggle-label compact-toggle">
+        <input type="checkbox" id="chk-show-member-end-symbols">
+        <span data-i18n="showMemberEndSymbols">材端記号</span>
+      </label>
+      <label class="toggle-label compact-toggle">
+        <input type="checkbox" id="chk-show-placement-labels" checked>
+        <span data-i18n="showPlacementLabels">配置ラベル</span>
+      </label>
+    </div>
+    <label class="grid-label">
+      <span data-i18n="memberTypeFilter">線材種別フィルタ</span>
+      <select id="sel-member-type-filter">
+        <option value="all" data-i18n="filterAll">すべて</option>
+        <option value="beam" data-i18n="beam">梁</option>
+        <option value="column" data-i18n="column">柱</option>
+        <option value="hbrace" data-i18n="hbrace">水平ブレース</option>
+        <option value="vbrace" data-i18n="vbrace">垂直ブレース</option>
+      </select>
+    </label>
+    <label class="grid-label">
+      <span data-i18n="sectionFilter">断面フィルタ</span>
+      <select id="sel-section-filter">
+        <option value="all" data-i18n="filterAll">すべて</option>
+      </select>
+    </label>
     <label class="grid-label">
       <span data-i18n="grid">グリッド</span>
       <select id="sel-grid">
@@ -161,6 +220,19 @@
         <option value="2000">2000 mm</option>
       </select>
     </label>
+    <hr>
+    <div class="tool-filter-group">
+      <span class="layer-label" data-i18n="copyLevelTitle">階コピー</span>
+      <label class="grid-label">
+        <span data-i18n="copyLevelSource">コピー元</span>
+        <select id="sel-copy-source-layer"></select>
+      </label>
+      <label class="grid-label">
+        <span data-i18n="copyLevelTarget">コピー先</span>
+        <select id="sel-copy-target-layer"></select>
+      </label>
+      <button id="btn-copy-level" title="Copy level elements"><span data-i18n="copyLevelAction">階をコピー</span></button>
+    </div>
     <hr>
     <button id="btn-export" title="Save CAD data">&#128190; <span data-i18n="export">CAD保存</span></button>
     <button id="btn-import-trigger" title="Load CAD data">&#128194; <span data-i18n="import">CAD読込</span></button>
@@ -198,6 +270,8 @@
       <p class="prop-placeholder" data-i18n="noSelection">未選択</p>
     </div>
     <h2 data-i18n="quantitySummary">集計</h2>
+    <button id="btn-model-check" class="support-preset-btn" data-i18n="modelCheck">モデルチェック</button>
+    <div id="model-check-content"></div>
     <button id="btn-quantity-export" class="support-preset-btn" data-i18n="quantityCsvExport">CSV出力</button>
     <button id="btn-quantity-detail-export" class="support-preset-btn" data-i18n="quantityDetailCsvExport">詳細CSV出力</button>
     <div id="quantity-content"></div>

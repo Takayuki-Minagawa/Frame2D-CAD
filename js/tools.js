@@ -2,7 +2,7 @@
 
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
-import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
@@ -188,18 +188,26 @@ export class ToolManager {
     if ((e.key === 'Delete' || e.key === 'Backspace') &&
         e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') {
       if (this.state.selectedSupportId) {
+        const support = this.state.getSupport(this.state.selectedSupportId);
+        if (!this.state.isSupportSelectable(support)) return;
         this.history.save();
         this.state.removeSupport(this.state.selectedSupportId);
         this.onUpdate();
       } else if (this.state.selectedLoadId) {
+        const load = this.state.getLoad(this.state.selectedLoadId);
+        if (!this.state.isLoadSelectable(load)) return;
         this.history.save();
         this.state.removeLoad(this.state.selectedLoadId);
         this.onUpdate();
       } else if (this.state.selectedSurfaceId) {
+        const surface = this.state.getSurface(this.state.selectedSurfaceId);
+        if (!this.state.isSurfaceSelectable(surface)) return;
         this.history.save();
         this.state.removeSurface(this.state.selectedSurfaceId);
         this.onUpdate();
       } else if (this.state.selectedMemberId) {
+        const member = this.state.getMember(this.state.selectedMemberId);
+        if (!this.state.isMemberSelectable(member)) return;
         this.history.save();
         this.state.removeMember(this.state.selectedMemberId);
         this.onUpdate();
@@ -238,10 +246,7 @@ export class ToolManager {
     const tolerance = basePx / this.c.camera.scale;
 
     // Support hit first (small target, check before others) — skip if hidden
-    let support = this.state.settings.showSupports
-      ? this.state.findSupportAt(world.x, world.y, tolerance)
-      : null;
-    if (support && !this.state.getPlanLayerStyle(support.levelId).visible) support = null;
+    const support = this._findSelectableSupportAt(world.x, world.y, tolerance);
     if (support) {
       this.state.selectedSupportId = support.id;
       this.state.selectedLoadId = null;
@@ -253,8 +258,8 @@ export class ToolManager {
     }
 
     // Load hit
-    const load = this.state.findLoadAt(world.x, world.y);
-    if (load && this.state.getPlanLayerStyle(load.levelId).visible) {
+    const load = this._findSelectableLoadAt(world.x, world.y);
+    if (load) {
       this.state.selectedLoadId = load.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedMemberId = null;
@@ -265,8 +270,8 @@ export class ToolManager {
     }
 
     // Surface hit
-    const surface = this.state.findSurfaceAt(world.x, world.y);
-    if (surface && this.state.getPlanLayerStyle(surface.levelId).visible) {
+    const surface = this._findSelectableSurfaceAt(world.x, world.y);
+    if (surface) {
       this.state.selectedSurfaceId = surface.id;
       this.state.selectedMemberId = null;
       this.state.selectedLoadId = null;
@@ -277,13 +282,9 @@ export class ToolManager {
     }
 
     // Check node hit first (for dragging endpoints)
-    const node = this.state.findNodeAt(world.x, world.y, tolerance);
-    if (node) {
-      const member = this.state.members.find(
-        m => (m.startNodeId === node.id || m.endNodeId === node.id) &&
-          this.state.getPlanLayerStyle(m.levelId).visible
-      );
-      if (member) {
+    const nodeHit = this._findSelectableMemberNodeAt(world.x, world.y, tolerance);
+    if (nodeHit) {
+      const { member, node } = nodeHit;
         this.state.selectedMemberId = member.id;
         this.state.selectedSurfaceId = null;
         this.state.selectedLoadId = null;
@@ -293,12 +294,11 @@ export class ToolManager {
         this._dragStartPos = { x: world.x, y: world.y };
         this.onUpdate();
         return;
-      }
     }
 
     // Check member hit
-    const member = this.state.findMemberAt(world.x, world.y, tolerance);
-    if (member && this.state.getPlanLayerStyle(member.levelId).visible) {
+    const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
+    if (member) {
       this.state.selectedMemberId = member.id;
       this.state.selectedSurfaceId = null;
       this.state.selectedLoadId = null;
@@ -322,6 +322,81 @@ export class ToolManager {
     this.state.clearSelection();
     this._dragTarget = null;
     this.onUpdate();
+  }
+
+  _findSelectableMemberNodeAt(x, y, tolerance) {
+    let best = null;
+    let bestDist = tolerance;
+    for (const member of this.state.members) {
+      if (!this.state.isMemberSelectable(member)) continue;
+      for (const nodeId of [member.startNodeId, member.endNodeId]) {
+        const node = this.state.getNode(nodeId);
+        if (!node) continue;
+        const dist = Math.hypot(node.x - x, node.y - y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { member, node };
+        }
+      }
+    }
+    return best;
+  }
+
+  _findSelectableSupportAt(x, y, tolerance) {
+    if (this.state.settings.showSupports === false) return null;
+    let closest = null;
+    let minDist = tolerance;
+    for (const support of this.state.supports) {
+      if (!this.state.isSupportSelectable(support)) continue;
+      const dist = Math.hypot(support.x - x, support.y - y);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = support;
+      }
+    }
+    return closest;
+  }
+
+  _findSelectableLoadAt(x, y) {
+    for (let i = this.state.loads.length - 1; i >= 0; i--) {
+      const load = this.state.loads[i];
+      if (!this.state.isLoadSelectable(load)) continue;
+      if (load.type === 'areaLoad') {
+        if (x >= load.x1 && x <= load.x2 && y >= load.y1 && y <= load.y2) return load;
+      } else if (load.type === 'lineLoad') {
+        if (pointToSegmentDist(x, y, load.x1, load.y1, load.x2, load.y2) < 300) return load;
+      } else if (load.type === 'pointLoad') {
+        if (Math.hypot(x - load.x1, y - load.y1) < 300) return load;
+      }
+    }
+    return null;
+  }
+
+  _findSelectableSurfaceAt(x, y) {
+    const wallOffset = this.state.settings.wallDisplayOffset || 120;
+    for (let i = this.state.surfaces.length - 1; i >= 0; i--) {
+      const surface = this.state.surfaces[i];
+      if (!this.state.isSurfaceSelectable(surface)) continue;
+      if (surfaceHitAt(surface, x, y, wallOffset)) return surface;
+    }
+    return null;
+  }
+
+  _findSelectableMemberAt(x, y, tolerance) {
+    let closest = null;
+    let minDist = tolerance;
+    for (const member of this.state.members) {
+      if (!this.state.isMemberSelectable(member)) continue;
+      const n1 = this.state.getNode(member.startNodeId);
+      const n2 = this.state.getNode(member.endNodeId);
+      if (!n1 || !n2) continue;
+      const dist = pointToSegmentDist(x, y, n1.x, n1.y, n2.x, n2.y);
+      if (dist < minDist) {
+        minDist = dist;
+        closest = member;
+      }
+    }
+    return closest;
   }
 
   _selectMove(e) {
@@ -462,8 +537,22 @@ export class ToolManager {
       endX: snapped.x,
       endY: snapped.y,
       mode: 'line',
+      label: this._memberPreviewLabel(this._memberStart, snapped),
     };
     this.onUpdate();
+  }
+
+  _memberPreviewLabel(start, end) {
+    const type = this.state.memberDraftType || 'beam';
+    const sectionName = this.state.getDefaultSectionName('member', type) || '-';
+    const length = Math.round(Math.hypot(end.x - start.x, end.y - start.y));
+    const level = this.state.levels.find(l => l.id === this.state.activeLayerId);
+    const levelLabel = level ? level.name : (this.state.activeLayerId || '-');
+    if (type === 'vbrace') {
+      const top = this.state.levels.find(l => l.id === this._getAutoTopLevelId());
+      return `${t(type)} ${levelLabel}->${top?.name || '-'} ${sectionName} ${length}mm`;
+    }
+    return `${t(type)} ${levelLabel} ${sectionName} ${length}mm`;
   }
 
   // --- Surface Tool ---
@@ -599,6 +688,7 @@ export class ToolManager {
       endX: snapped.x,
       endY: snapped.y,
       mode: mode === 'line' ? 'line' : 'rect',
+      label: `${t(this.state.surfaceDraftType || 'surface')} ${t(mode === 'line' ? 'lineLoad' : 'rectMode')}`,
     };
     this.onUpdate();
   }
@@ -645,6 +735,7 @@ export class ToolManager {
       mode: 'polyline',
       points,
       closeHint: this._surfacePolyline.length >= 3,
+      label: `${t(this.state.surfaceDraftType || 'surface')} ${points.length}pt`,
     };
     this.onUpdate();
   }
@@ -751,6 +842,7 @@ export class ToolManager {
       endX: snapped.x,
       endY: snapped.y,
       mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
+      label: t(this.state.loadDraftType || 'load'),
     };
     this.onUpdate();
   }
@@ -763,7 +855,7 @@ export class ToolManager {
     const tolerance = basePx / this.c.camera.scale;
 
     // Check if clicking on an existing support
-    const existing = this.state.findSupportAt(snapped.x, snapped.y, tolerance);
+    const existing = this._findSelectableSupportAt(snapped.x, snapped.y, tolerance);
     if (existing) {
       this.state.selectedSupportId = existing.id;
       this.state.selectedMemberId = null;
@@ -791,4 +883,61 @@ export class ToolManager {
     const el = document.getElementById('status-coords');
     if (el) el.textContent = `X: ${Math.round(x)}  Y: ${Math.round(y)}`;
   }
+}
+
+function surfaceHitAt(surface, x, y, wallOffset) {
+  const isWallType = isWallSurfaceType(surface.type);
+  if (surface.shape === 'line') {
+    return pointToSegmentDist(
+      x,
+      y,
+      surface.x1 + wallOffset,
+      surface.y1 + wallOffset,
+      surface.x2 + wallOffset,
+      surface.y2 + wallOffset
+    ) < 300;
+  }
+  if (surface.shape === 'polygon' && Array.isArray(surface.points)) {
+    if (surface.type === 'exteriorWall') {
+      const oPts = offsetPolygonOutward(surface.points, wallOffset);
+      return oPts.some((point, index) => {
+        const next = oPts[(index + 1) % oPts.length];
+        return pointToSegmentDist(x, y, point.x, point.y, next.x, next.y) < 300;
+      });
+    }
+    const points = surface.points.map(p => ({
+      x: p.x + (isWallType ? wallOffset : 0),
+      y: p.y + (isWallType ? wallOffset : 0),
+    }));
+    return pointInPolygon(x, y, points);
+  }
+  const x1 = isWallType ? surface.x1 + wallOffset : surface.x1;
+  const y1 = isWallType ? surface.y1 + wallOffset : surface.y1;
+  const x2 = isWallType ? surface.x2 + wallOffset : surface.x2;
+  const y2 = isWallType ? surface.y2 + wallOffset : surface.y2;
+  return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+}
+
+function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx === 0 && dy === 0) return Math.hypot(px - x1, py - y1);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+  const x = x1 + t * dx;
+  const y = y1 + t * dy;
+  return Math.hypot(px - x, py - y);
+}
+
+function pointInPolygon(px, py, points) {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x;
+    const yi = points[i].y;
+    const xj = points[j].x;
+    const yj = points[j].y;
+    const intersect = ((yi > py) !== (yj > py)) &&
+      (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }

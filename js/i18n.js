@@ -241,13 +241,39 @@ const dict = {
     supportFree: '全解除',
     showSupports: '支点表示',
     widePick: '広域選択',
+    displayPreset: '表示プリセット',
+    displayPresetInput: '入力用',
+    displayPresetReview: '確認用',
+    displayPresetPresentation: '3D確認用',
     planLayerDisplayMode: '2Dレイヤー表示',
     planLayerAll: '全レイヤー',
     planLayerCurrent: '現在のみ',
     planLayerHalftone: '他レイヤー薄表示',
+    planLayerSelectionLock: '他レイヤー選択ロック',
+    view3dLayerDisplayMode: '3Dレイヤー表示',
     member3dRenderMode: '3D線材表示',
     member3dSolid: '断面形状',
     member3dLine: '線表示',
+    displayFilters: '表示フィルタ',
+    showMemberEndSymbols: '材端記号',
+    showPlacementLabels: '配置ラベル',
+    memberTypeFilter: '線材種別フィルタ',
+    sectionFilter: '断面フィルタ',
+    filterAll: 'すべて',
+    copyLevelTitle: '階コピー',
+    copyLevelSource: 'コピー元',
+    copyLevelTarget: 'コピー先',
+    copyLevelAction: '階をコピー',
+    copyLevelInvalid: 'コピー元とコピー先に別の階を指定してください',
+    copyLevelNoItems: 'コピー対象の要素がありません',
+    copyLevelDone: '階コピー完了: 線材 {members}, 面材 {surfaces}, 荷重 {loads}, 支点 {supports}',
+    modelCheck: 'モデルチェック',
+    modelCheckNoIssues: 'モデルチェック: 問題はありません',
+    modelCheckDone: 'モデルチェック: {count} 件の指摘があります',
+    modelCheckError: 'エラー',
+    modelCheckWarning: '警告',
+    modelCheckInfo: '情報',
+    modelCheckMore: 'ほか {count} 件',
     memberLayerHintPlan: '管理レイヤー: {layer}',
     memberLayerHintColumn: '下端管理: {base} / 上端: {top}',
     memberLayerHintVBrace: '下端管理: {base} / 上端: {top}',
@@ -338,7 +364,10 @@ const dict = {
   <tr><td><b>支点表示</b></td><td>OFFにすると支点を2D/3Dの両方で非表示にします。非表示中は支点のクリック選択もスキップされます</td></tr>
   <tr><td><b>広域選択</b></td><td>ONにするとクリックの許容範囲が広がり、グリッドからズレた部材も選択しやすくなります（通常 8px → 20px）</td></tr>
   <tr><td><b>2Dレイヤー表示</b></td><td>全レイヤー、現在レイヤーのみ、他レイヤーの薄表示を切り替えます</td></tr>
+  <tr><td><b>他レイヤー選択ロック</b></td><td>薄表示中の他レイヤーを参照表示だけにし、選択やドラッグを防ぎます</td></tr>
+  <tr><td><b>表示フィルタ</b></td><td>線材・面材・荷重、線材種別、断面、材端記号、配置ラベルを切り替えます</td></tr>
   <tr><td><b>3D線材表示</b></td><td>線材を断面形状または中心線で表示します。面材は面表示のままです</td></tr>
+  <tr><td><b>階コピー / モデルチェック</b></td><td>現在階の要素を別階へ複製し、欠落参照・重複・ゼロ長などを確認できます</td></tr>
 </table>
 
 <h3>設定 / ユーザー定義</h3>
@@ -615,13 +644,39 @@ const dict = {
     supportFree: 'Free',
     showSupports: 'Show Supports',
     widePick: 'Wide Pick',
+    displayPreset: 'Display Preset',
+    displayPresetInput: 'Input',
+    displayPresetReview: 'Review',
+    displayPresetPresentation: '3D Review',
     planLayerDisplayMode: '2D Layers',
     planLayerAll: 'All Layers',
     planLayerCurrent: 'Current Only',
     planLayerHalftone: 'Others Halftone',
+    planLayerSelectionLock: 'Lock Other Layers',
+    view3dLayerDisplayMode: '3D Layers',
     member3dRenderMode: '3D Lines',
     member3dSolid: 'Section Solids',
     member3dLine: 'Line View',
+    displayFilters: 'Display Filters',
+    showMemberEndSymbols: 'End Symbols',
+    showPlacementLabels: 'Placement Labels',
+    memberTypeFilter: 'Member Type Filter',
+    sectionFilter: 'Section Filter',
+    filterAll: 'All',
+    copyLevelTitle: 'Copy Level',
+    copyLevelSource: 'Source',
+    copyLevelTarget: 'Target',
+    copyLevelAction: 'Copy Level',
+    copyLevelInvalid: 'Choose different source and target levels',
+    copyLevelNoItems: 'No elements to copy',
+    copyLevelDone: 'Copied: members {members}, surfaces {surfaces}, loads {loads}, supports {supports}',
+    modelCheck: 'Model Check',
+    modelCheckNoIssues: 'Model check: no issues',
+    modelCheckDone: 'Model check: {count} issues',
+    modelCheckError: 'Error',
+    modelCheckWarning: 'Warning',
+    modelCheckInfo: 'Info',
+    modelCheckMore: '{count} more',
     memberLayerHintPlan: 'Managed layer: {layer}',
     memberLayerHintColumn: 'Base layer: {base} / Top: {top}',
     memberLayerHintVBrace: 'Base layer: {base} / Top: {top}',
@@ -712,7 +767,10 @@ const dict = {
   <tr><td><b>Show Supports</b></td><td>When OFF, hides supports in both 2D and 3D views. Click selection of supports is also skipped</td></tr>
   <tr><td><b>Wide Pick</b></td><td>When ON, widens the click tolerance for easier selection of off-grid elements (8px → 20px)</td></tr>
   <tr><td><b>2D Layers</b></td><td>Switch between all layers, current layer only, or halftone display for other layers</td></tr>
+  <tr><td><b>Lock Other Layers</b></td><td>Keeps halftone layers visible for reference while preventing selection and dragging</td></tr>
+  <tr><td><b>Display Filters</b></td><td>Toggle members, surfaces, loads, member types, sections, end symbols, and placement labels</td></tr>
   <tr><td><b>3D Lines</b></td><td>Show line members as section solids or center lines. Surfaces remain as faces</td></tr>
+  <tr><td><b>Copy Level / Model Check</b></td><td>Duplicate elements to another level and check missing references, duplicates, and zero-length elements</td></tr>
 </table>
 
 <h3>Settings / User Definitions</h3>
