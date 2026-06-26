@@ -1015,16 +1015,9 @@ if (userDefTypeSelect) userDefTypeSelect.addEventListener('change', () => {
 if (userDefEndIConditionSelect) userDefEndIConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
 if (userDefEndJConditionSelect) userDefEndJConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
 
-if (userDefModal) {
-  userDefModal.addEventListener('click', (e) => {
-    if (e.target === userDefModal) hideUserDefModal();
-  });
-}
-if (userDefListModal) {
-  userDefListModal.addEventListener('click', (e) => {
-    if (e.target === userDefListModal) hideUserDefListModal();
-  });
-}
+// User definition modals intentionally do NOT close on overlay (backdrop) click.
+// These forms hold in-progress input (section/spring definitions, inline table
+// edits), so closing must require an explicit button to avoid losing input.
 
 resetUserDefForm();
 
@@ -1215,14 +1208,15 @@ layerModal.addEventListener('click', (e) => {
   if (e.target === layerModal) hideLayerModal();
 });
 
-// Close modals on Escape
+// Close modals on Escape.
+// User definition modals are intentionally excluded: they hold in-progress
+// input, and Escape is also used by the IME to cancel a conversion, so closing
+// them must require an explicit button. When a user-def modal is open, Escape
+// is swallowed so it never falls through and closes another modal underneath.
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (userDefListModal.classList.contains('visible')) {
-      hideUserDefListModal();
-      e.stopPropagation();
-    } else if (userDefModal.classList.contains('visible')) {
-      hideUserDefModal();
+    if (userDefListModal.classList.contains('visible')
+      || userDefModal.classList.contains('visible')) {
       e.stopPropagation();
     } else if (helpModal.classList.contains('visible')) {
       hideHelpModal();
