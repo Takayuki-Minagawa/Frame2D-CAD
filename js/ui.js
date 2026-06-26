@@ -2,7 +2,7 @@
 
 import { t } from './i18n.js';
 import { resolveMemberColor, roofRoleLabelKey } from './member-style.js';
-import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
+import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, normalizeGridSize } from './state.js';
 import {
   computeMemberLengthM,
   computeQuantitySummary,
@@ -107,10 +107,12 @@ export class UI {
       this.callbacks.onModelCheck?.();
     });
 
-    // Grid size
+    // Grid size (integer mm, clamped to allowed range)
     document.getElementById('sel-grid').addEventListener('change', e => {
-      this.state.settings.gridSize = parseFloat(e.target.value);
-      this.callbacks.onGridChange?.(this.state.settings.gridSize);
+      const gridSize = normalizeGridSize(e.target.value);
+      this.state.settings.gridSize = gridSize;
+      e.target.value = String(gridSize);
+      this.callbacks.onGridChange?.(gridSize);
     });
 
     // Active layer

@@ -40,6 +40,9 @@ const SUPPORTED_SCHEMA_VERSIONS = new Set(
 const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
 };
+export const GRID_SIZE_MIN = 100;
+export const GRID_SIZE_MAX = 1000;
+export const GRID_SIZE_DEFAULT = 1000;
 
 export class AppState {
   constructor() {
@@ -2438,6 +2441,7 @@ export class AppState {
     this.settings.memberTypeFilter = normalizeMemberTypeFilter(this.settings.memberTypeFilter);
     this.settings.sectionFilter = sanitizeText(this.settings.sectionFilter) || 'all';
     this.settings.displayPreset = normalizeDisplayPreset(this.settings.displayPreset);
+    this.settings.gridSize = normalizeGridSize(this.settings.gridSize);
     this.levels = Array.isArray(data.levels) && data.levels.length > 0
       ? data.levels.map(l => ({ ...l }))
       : [
@@ -2702,6 +2706,12 @@ function normalizeMemberTypeFilter(value) {
 function normalizeDisplayPreset(value) {
   const text = sanitizeText(value);
   return DISPLAY_PRESETS.has(text) ? text : 'input';
+}
+
+export function normalizeGridSize(value) {
+  const num = Math.round(Number(value));
+  if (!Number.isFinite(num)) return GRID_SIZE_DEFAULT;
+  return Math.min(GRID_SIZE_MAX, Math.max(GRID_SIZE_MIN, num));
 }
 
 function normalizeRoofGenerationPattern(value) {
