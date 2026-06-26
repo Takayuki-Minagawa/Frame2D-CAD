@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AppState } from '../js/state.js';
+import { AppState, normalizeGridSize, GRID_SIZE_MIN, GRID_SIZE_MAX, GRID_SIZE_DEFAULT } from '../js/state.js';
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -112,6 +112,63 @@ test('display mode settings default, serialize, and normalize on load', () => {
   assert.equal(restored.settings.view3dLayerDisplayMode, 'all');
   assert.equal(restored.settings.member3dRenderMode, 'solid');
   assert.equal(restored.settings.memberTypeFilter, 'all');
+});
+
+test('normalizeGridSize rounds to integer and clamps to the allowed range', () => {
+  assert.equal(GRID_SIZE_MIN, 100);
+  assert.equal(GRID_SIZE_MAX, 1000);
+
+  // In-range integers pass through unchanged
+  assert.equal(normalizeGridSize(100), 100);
+  assert.equal(normalizeGridSize(455), 455);
+  assert.equal(normalizeGridSize(1000), 1000);
+
+  // Out-of-range values clamp to the boundaries
+  assert.equal(normalizeGridSize(50), 100);
+  assert.equal(normalizeGridSize(0), 100);
+  assert.equal(normalizeGridSize(-300), 100);
+  assert.equal(normalizeGridSize(5000), 1000);
+
+  // Fractional values round to the nearest integer
+  assert.equal(normalizeGridSize(455.4), 455);
+  assert.equal(normalizeGridSize(455.6), 456);
+  assert.equal(normalizeGridSize('250'), 250);
+
+  // Invalid values fall back to the default
+  assert.equal(normalizeGridSize('abc'), GRID_SIZE_DEFAULT);
+  assert.equal(normalizeGridSize(NaN), GRID_SIZE_DEFAULT);
+  assert.equal(normalizeGridSize(undefined), GRID_SIZE_DEFAULT);
+});
+
+test('gridSize serializes and is clamped/normalized on load', () => {
+  const state = new AppState();
+  assert.equal(state.settings.gridSize, GRID_SIZE_DEFAULT);
+
+  // A custom in-range integer survives a save/load round-trip
+  state.settings.gridSize = 350;
+  const data = state.toJSON();
+  assert.equal(data.settings.gridSize, 350);
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.equal(restored.settings.gridSize, 350);
+
+  // Out-of-range or fractional saved values are normalized on load
+  const tooSmall = new AppState();
+  tooSmall.loadJSON({ ...data, settings: { ...data.settings, gridSize: 10 } });
+  assert.equal(tooSmall.settings.gridSize, GRID_SIZE_MIN);
+
+  const tooLarge = new AppState();
+  tooLarge.loadJSON({ ...data, settings: { ...data.settings, gridSize: 9999 } });
+  assert.equal(tooLarge.settings.gridSize, GRID_SIZE_MAX);
+
+  const fractional = new AppState();
+  fractional.loadJSON({ ...data, settings: { ...data.settings, gridSize: 333.7 } });
+  assert.equal(fractional.settings.gridSize, 334);
+
+  const missing = new AppState();
+  missing.loadJSON({ ...data, settings: { ...data.settings, gridSize: undefined } });
+  assert.equal(missing.settings.gridSize, GRID_SIZE_DEFAULT);
 });
 
 test('hit tests accept predicates so locked or hidden elements do not block visible candidates', () => {

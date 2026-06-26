@@ -213,12 +213,8 @@
       </select>
     </label>
     <label class="grid-label">
-      <span data-i18n="grid">グリッド</span>
-      <select id="sel-grid">
-        <option value="500">500 mm</option>
-        <option value="1000" selected>1000 mm</option>
-        <option value="2000">2000 mm</option>
-      </select>
+      <span data-i18n="grid">グリッド (mm)</span>
+      <input type="number" id="sel-grid" min="100" max="1000" step="1" value="1000">
     </label>
     <hr>
     <div class="tool-filter-group">
