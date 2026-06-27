@@ -13,6 +13,7 @@ test('display workflow controls are exposed in the toolbar and property panel', 
     'sel-display-preset',
     'chk-plan-layer-selection-lock',
     'sel-3d-layer-display-mode',
+    'sel-beam-3d-section-mode',
     'chk-show-members',
     'chk-show-surfaces',
     'chk-show-loads',
@@ -66,4 +67,6 @@ test('3D viewer uses 3D layer display and element filters', async () => {
   assert.match(viewerSource, /isMemberVisible\(m,\s*'3d'\)/);
   assert.match(viewerSource, /getPlanLayerStyle\(m\.levelId,\s*\{\s*view:\s*'3d'\s*\}\)/);
   assert.match(viewerSource, /opacity:\s*0\.35 \* opacityMultiplier/);
+  assert.match(viewerSource, /_addBeamHSection3D/);
+  assert.match(viewerSource, /beam3dSectionMode/);
 });

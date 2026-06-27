@@ -79,6 +79,7 @@ test('display mode settings default, serialize, and normalize on load', () => {
 
   assert.equal(state.settings.planLayerDisplayMode, 'all');
   assert.equal(state.settings.member3dRenderMode, 'solid');
+  assert.equal(state.settings.beam3dSectionMode, 'box');
   assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 1, halftone: false, selectable: true });
   assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false, selectable: true });
 
@@ -87,6 +88,7 @@ test('display mode settings default, serialize, and normalize on load', () => {
   state.settings.planLayerSelectionLock = true;
   state.settings.view3dLayerDisplayMode = 'current';
   state.settings.member3dRenderMode = 'line';
+  state.settings.beam3dSectionMode = 'hWeak';
   assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 0.28, halftone: true, selectable: false });
   assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false, selectable: true });
   assert.deepEqual(state.getPlanLayerStyle('L0', { view: '3d' }), { visible: false, alpha: 0, halftone: false, selectable: false });
@@ -96,6 +98,7 @@ test('display mode settings default, serialize, and normalize on load', () => {
   assert.equal(data.settings.planLayerSelectionLock, true);
   assert.equal(data.settings.view3dLayerDisplayMode, 'current');
   assert.equal(data.settings.member3dRenderMode, 'line');
+  assert.equal(data.settings.beam3dSectionMode, 'hWeak');
 
   const restored = new AppState();
   restored.loadJSON({
@@ -105,12 +108,14 @@ test('display mode settings default, serialize, and normalize on load', () => {
       planLayerDisplayMode: 'bad-mode',
       view3dLayerDisplayMode: 'bad-mode',
       member3dRenderMode: 'bad-mode',
+      beam3dSectionMode: 'bad-mode',
       memberTypeFilter: 'brace',
     },
   });
   assert.equal(restored.settings.planLayerDisplayMode, 'all');
   assert.equal(restored.settings.view3dLayerDisplayMode, 'all');
   assert.equal(restored.settings.member3dRenderMode, 'solid');
+  assert.equal(restored.settings.beam3dSectionMode, 'box');
   assert.equal(restored.settings.memberTypeFilter, 'all');
 });
 
