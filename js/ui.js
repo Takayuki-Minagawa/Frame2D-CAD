@@ -675,6 +675,9 @@ export class UI {
         if (!current) return;
         this.state.setDraftSectionName('member', current.type, current.sectionName);
         this.state.memberDraftType = current.type;
+        const typeSel = document.getElementById('sel-member-type');
+        if (typeSel) typeSel.value = current.type;
+        this._updateMemberLayerHint();
         this.refreshDraftSectionSelectors();
         this.callbacks.onDraftSectionChange?.();
       });
@@ -970,6 +973,9 @@ export class UI {
         if (!current) return;
         this.state.setDraftSectionName('surface', current.type, current.sectionName);
         this.state.surfaceDraftType = current.type;
+        const typeSel = document.getElementById('sel-surface-type');
+        if (typeSel) typeSel.value = current.type;
+        this._updateSurfaceSubOptions();
         this.refreshDraftSectionSelectors();
         this.callbacks.onDraftSectionChange?.();
       });

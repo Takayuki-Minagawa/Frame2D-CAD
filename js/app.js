@@ -986,6 +986,7 @@ document.getElementById('file-user-def-import').addEventListener('change', async
       showNotice(msg, 'success');
       refreshUserDefEndSpringVisibility();
       update();
+      ui.refreshDraftSectionSelectors();
       if (userDefListModal?.classList.contains('visible')) {
         renderUserDefGroupList();
       }
