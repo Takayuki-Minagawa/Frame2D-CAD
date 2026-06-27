@@ -388,6 +388,21 @@ body.property-collapsed #property-panel > * {
 }
 .prop-row .prop-group { flex: 1; }
 
+.prop-inline-btn {
+  margin-top: 4px;
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.prop-inline-btn:hover {
+  background: var(--border);
+}
+
 .prop-check-label {
   display: flex;
   align-items: center;

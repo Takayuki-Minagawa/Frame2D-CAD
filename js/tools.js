@@ -450,10 +450,12 @@ export class ToolManager {
     let endNode = this.state.findNodeAt(end.x, end.y, 1);
     if (!endNode) endNode = this.state.addNode(end.x, end.y);
 
+    const memberType = this.state.memberDraftType || 'beam';
     const member = this.state.addMember(startNode.id, endNode.id, {
-      type: this.state.memberDraftType || 'beam',
+      type: memberType,
       levelId: this.state.activeLayerId || 'L0',
       topLevelId,
+      sectionName: this.state.getDraftSectionName('member', memberType),
     });
 
     this.state.selectedMemberId = member.id;
@@ -480,6 +482,7 @@ export class ToolManager {
       type: 'column',
       levelId: this.state.activeLayerId,
       topLevelId: topLevel.id,
+      sectionName: this.state.getDraftSectionName('member', 'column'),
     });
     this.state.selectedMemberId = member.id;
     this.state.selectedSurfaceId = null;
@@ -504,7 +507,7 @@ export class ToolManager {
 
   _memberPreviewLabel(start, end) {
     const type = this.state.memberDraftType || 'beam';
-    const sectionName = this.state.getDefaultSectionName('member', type) || '-';
+    const sectionName = this.state.getDraftSectionName('member', type) || '-';
     const length = Math.round(Math.hypot(end.x - start.x, end.y - start.y));
     const level = this.state.levels.find(l => l.id === this.state.activeLayerId);
     const levelLabel = level ? level.name : (this.state.activeLayerId || '-');
@@ -610,6 +613,7 @@ export class ToolManager {
         type: type || 'wall',
         levelId: this.state.activeLayerId || 'L0',
         topLevelId,
+        sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
         ...heightOptions,
         ...roofOptions,
       });
@@ -619,6 +623,7 @@ export class ToolManager {
         levelId: this.state.activeLayerId || 'L0',
         topLevelId,
         loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
+        sectionName: this.state.getDraftSectionName('surface', type || 'floor'),
         ...heightOptions,
         ...roofOptions,
       });
@@ -730,6 +735,7 @@ export class ToolManager {
       levelId: this.state.activeLayerId || 'L0',
       topLevelId,
       loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
+      sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
       ...this._getWallHeightOptions(topLevelId),
       ...this._getRoofOptions(),
     });

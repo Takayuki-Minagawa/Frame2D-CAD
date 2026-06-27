@@ -77,6 +77,7 @@ const ui = new UI(state, {
   onGridChange() { update(); },
   onLayerChange() { update(); },
   onPropertyChange() { update(); },
+  onDraftSectionChange() { showNotice(t('applyAsDraftHint'), 'success'); },
   onCopyLevel(sourceLevelId, targetLevelId) {
     if (!sourceLevelId || !targetLevelId || sourceLevelId === targetLevelId) {
       showNotice(t('copyLevelInvalid'), 'error');
@@ -793,6 +794,7 @@ function attachUserDefListHandlers() {
       }
       showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
       update();
+      ui.refreshDraftSectionSelectors();
       renderUserDefGroupList();
     });
   });
@@ -812,6 +814,7 @@ function attachUserDefListHandlers() {
       }
       showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
       update();
+      ui.refreshDraftSectionSelectors();
       renderUserDefGroupList();
     });
   });
@@ -882,6 +885,7 @@ function addUserDefinition() {
   clearUserDefFormError();
   showNotice(t('userDefAdded'), 'success');
   update();
+  ui.refreshDraftSectionSelectors();
   resetUserDefForm();
   if (userDefListModal?.classList.contains('visible')) {
     renderUserDefGroupList();
@@ -982,6 +986,7 @@ document.getElementById('file-user-def-import').addEventListener('change', async
       showNotice(msg, 'success');
       refreshUserDefEndSpringVisibility();
       update();
+      ui.refreshDraftSectionSelectors();
       if (userDefListModal?.classList.contains('visible')) {
         renderUserDefGroupList();
       }
