@@ -372,7 +372,7 @@ export class Viewer3D {
 
     // Nodes
     if (this.showNodes) {
-      const sphereGeo = new THREE.SphereGeometry(0.1, 8, 8);
+      const sphereGeo = new THREE.SphereGeometry(0.06, 8, 8);
       const sphereMat = new THREE.MeshStandardMaterial({ color: 0x89b4fa });
 
       for (const n of this.state.nodes) {
@@ -747,8 +747,8 @@ export class Viewer3D {
     const color = new THREE.Color(0x4ade80);
 
     // Cone (triangle symbol) — apex at the support point, base below
-    const coneRadius = 0.2;
-    const coneHeight = 0.35;
+    const coneRadius = 0.12;
+    const coneHeight = 0.22;
     const coneGeo = new THREE.ConeGeometry(coneRadius, coneHeight, 4);
     const coneMat = new THREE.MeshStandardMaterial({
       color,
@@ -761,17 +761,17 @@ export class Viewer3D {
 
     if (isFixed) {
       // Fixed support: flat box as ground plate
-      const plateGeo = new THREE.BoxGeometry(coneRadius * 2.4, 0.04, coneRadius * 2.4);
+      const plateGeo = new THREE.BoxGeometry(coneRadius * 2.3, 0.03, coneRadius * 2.3);
       const plateMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5 * opacityMultiplier });
       const plate = new THREE.Mesh(plateGeo, plateMat);
-      plate.position.set(px, y - coneHeight - 0.02, pz);
+      plate.position.set(px, y - coneHeight - 0.015, pz);
       this.supportGroup.add(plate);
     } else {
       // Roller / partial: sphere under the cone
-      const sphereGeo = new THREE.SphereGeometry(0.08, 8, 8);
+      const sphereGeo = new THREE.SphereGeometry(0.055, 8, 8);
       const sphereMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7 * opacityMultiplier });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-      sphere.position.set(px, y - coneHeight - 0.08, pz);
+      sphere.position.set(px, y - coneHeight - 0.055, pz);
       this.supportGroup.add(sphere);
     }
   }
