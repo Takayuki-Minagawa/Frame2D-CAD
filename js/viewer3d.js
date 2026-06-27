@@ -91,7 +91,7 @@ export class Viewer3D {
   }
 
   _setInitialObliqueViewToTarget(target, span) {
-    const distance = Math.max(8, span * 2.2);
+    const distance = Math.max(3, span * 1.5);
     const dir = new THREE.Vector3(1, 0.8, 1).normalize();
     const position = target.clone().addScaledVector(dir, distance);
     this.camera.position.copy(position);
@@ -122,7 +122,7 @@ export class Viewer3D {
     }
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    const span = Math.max(size.x, size.y, size.z, 4);
+    const span = Math.max(size.x, size.y, size.z, 2);
     this._setInitialObliqueViewToTarget(center, span);
   }
 
@@ -254,8 +254,8 @@ export class Viewer3D {
         continue;
       }
 
-      const xSize = Math.max(1, (s.x2 - s.x1) / 1000);
-      const zSize = Math.max(1, (s.y2 - s.y1) / 1000);
+      const xSize = Math.max(0.01, Math.abs(s.x2 - s.x1) / 1000);
+      const zSize = Math.max(0.01, Math.abs(s.y2 - s.y1) / 1000);
       const cx = (s.x1 + s.x2) / 2000;
       const cz = -((s.y1 + s.y2) / 2000);
 
@@ -268,8 +268,11 @@ export class Viewer3D {
         ySize = Math.max(0.1, Math.abs(top - base) / 1000);
         yCenter = (Math.min(base, top) / 1000) + ySize / 2;
       } else {
+        // Floors sit on top of the beams at their level so they read as a slab
+        // resting on the framing rather than slicing through it.
         ySize = 0.12;
-        yCenter = base / 1000 + ySize / 2;
+        const beamTopY = this._floorRestY(s, base);
+        yCenter = beamTopY + ySize / 2;
       }
 
       const geometry = new THREE.BoxGeometry(xSize, ySize, zSize);
@@ -628,8 +631,28 @@ export class Viewer3D {
     const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.45 * opacityMultiplier, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.y = base / 1000 + 0.06;
+    // Rest the slab on top of the beams at its level (falls back to the surface
+    // base elevation when no beams are present).
+    mesh.position.y = this._floorRestY(surface, base) + 0.06;
     this.surfaceGroup.add(mesh);
+  }
+
+  // Returns the Y (meters) a floor slab should rest at: the top of the tallest
+  // visible beam on the floor's level, or the surface base when none exists.
+  _floorRestY(surface, base) {
+    const baseY = base / 1000;
+    const level = this.state.levels.find(l => l.id === surface.levelId);
+    if (!level) return baseY;
+    const levelY = level.z / 1000;
+    let maxBeamH = null;
+    for (const m of this.state.members || []) {
+      if (m.type !== 'beam' || m.levelId !== surface.levelId) continue;
+      if (!this.state.isMemberVisible(m, '3d')) continue;
+      const h = (m.section?.h || 400) / 1000;
+      if (maxBeamH === null || h > maxBeamH) maxBeamH = h;
+    }
+    if (maxBeamH === null) return baseY;
+    return Math.max(baseY, levelY + maxBeamH);
   }
 
   _addExteriorWallEdges3D(surface, base, top, opacityMultiplier = 1) {

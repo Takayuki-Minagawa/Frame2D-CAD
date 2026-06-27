@@ -91,6 +91,11 @@ export class AppState {
     this.currentTool = 'member';
     this.activeLayerId = 'L0';
     this.memberDraftType = 'beam';
+    // Sticky ("paste") section per type: once a section is chosen for a type,
+    // newly drawn members/surfaces of that type reuse it instead of reverting
+    // to the built-in default. Keyed by normalized section type.
+    this.memberDraftSections = {};
+    this.surfaceDraftSections = {};
     this.surfaceDraftType = 'floor';
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';
@@ -155,6 +160,37 @@ export class AppState {
   getDefaultSection(target, type) {
     const name = this.getDefaultSectionName(target, type);
     return name ? this.getSection(target, type, name) : null;
+  }
+
+  _draftSectionStore(target) {
+    return target === 'surface' ? this.surfaceDraftSections : this.memberDraftSections;
+  }
+
+  // Returns the sticky ("paste") section for a type if one is set and still
+  // exists, otherwise falls back to the built-in default section.
+  getDraftSectionName(target, type) {
+    const normalizedType = this._normalizeSectionType(target, type);
+    const store = this._draftSectionStore(target);
+    const sticky = store ? store[normalizedType] : null;
+    if (sticky && this._getSectionRef(target, normalizedType, sticky)) {
+      return sticky;
+    }
+    return this.getDefaultSectionName(target, normalizedType);
+  }
+
+  // Sets (or clears) the sticky section for a type. Passing a falsy/unknown
+  // name clears it so subsequent draws revert to the built-in default.
+  setDraftSectionName(target, type, name) {
+    const normalizedType = this._normalizeSectionType(target, type);
+    const store = this._draftSectionStore(target);
+    if (!store) return null;
+    const sanitized = sanitizeText(name);
+    if (sanitized && this._getSectionRef(target, normalizedType, sanitized)) {
+      store[normalizedType] = sanitized;
+    } else {
+      delete store[normalizedType];
+    }
+    return this.getDraftSectionName(target, normalizedType);
   }
 
   getLevelZ(levelId) {
@@ -2492,6 +2528,8 @@ export class AppState {
     this.selectedSupportId = null;
     this.currentTool = 'member';
     this.memberDraftType = 'beam';
+    this.memberDraftSections = {};
+    this.surfaceDraftSections = {};
     this.surfaceDraftType = 'floor';
     this.surfaceDraftMode = 'rect';
     this.surfaceDraftLoadDir = 'twoWay';

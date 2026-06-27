@@ -127,12 +127,26 @@ export class UI {
     document.getElementById('sel-member-type').addEventListener('change', e => {
       this.state.memberDraftType = e.target.value;
       this._updateMemberLayerHint();
+      this.refreshDraftSectionSelectors();
+    });
+
+    // Sticky ("paste") draft section for new members
+    document.getElementById('sel-member-section')?.addEventListener('change', e => {
+      this.state.setDraftSectionName('member', this.state.memberDraftType, e.target.value);
+      this.refreshDraftSectionSelectors();
     });
 
     // Surface defaults
     document.getElementById('sel-surface-type').addEventListener('change', e => {
       this.state.surfaceDraftType = e.target.value;
       this._updateSurfaceSubOptions();
+      this.refreshDraftSectionSelectors();
+    });
+
+    // Sticky ("paste") draft section for new surfaces
+    document.getElementById('sel-surface-section')?.addEventListener('change', e => {
+      this.state.setDraftSectionName('surface', this.state.surfaceDraftType, e.target.value);
+      this.refreshDraftSectionSelectors();
     });
     document.getElementById('sel-surface-mode').addEventListener('change', e => {
       this.state.surfaceDraftMode = e.target.value;
@@ -350,6 +364,26 @@ export class UI {
     this._updateMemberLayerHint();
     this._syncWallHeightInputs(false);
     this._syncRoofInputs();
+    this.refreshDraftSectionSelectors();
+  }
+
+  // Populates the sticky ("paste") section dropdowns so the currently retained
+  // section for each draft type stays visible and selectable.
+  refreshDraftSectionSelectors() {
+    const fill = (selectId, target, type) => {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      const sections = this.state.listSections(target, type);
+      const current = this.state.getDraftSectionName(target, type);
+      sel.innerHTML = sections.length
+        ? sections.map(s =>
+          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
+        ).join('')
+        : `<option value="">-</option>`;
+      if (current && sections.some(s => s.name === current)) sel.value = current;
+    };
+    fill('sel-member-section', 'member', this.state.memberDraftType || 'beam');
+    fill('sel-surface-section', 'surface', this.state.surfaceDraftType || 'floor');
   }
 
   _refreshCopyLayerSelectors(layerHtml) {
@@ -516,6 +550,7 @@ export class UI {
       <div class="prop-group">
         <label>${t('propSection')}</label>
         <select id="prop-section-name">${sectionOptions}</select>
+        <button type="button" id="prop-apply-draft-section" class="prop-inline-btn" title="${escapeHtml(t('applyAsDraftHint'))}">${escapeHtml(t('applyAsDraft'))}</button>
       </div>
       <div class="prop-group">
         <label>${t('propLayer')}</label>
@@ -633,6 +668,17 @@ export class UI {
     };
 
     bind('prop-section-name', 'sectionName');
+    const applyDraftBtn = document.getElementById('prop-apply-draft-section');
+    if (applyDraftBtn) {
+      applyDraftBtn.addEventListener('click', () => {
+        const current = this.state.getMember(member.id);
+        if (!current) return;
+        this.state.setDraftSectionName('member', current.type, current.sectionName);
+        this.state.memberDraftType = current.type;
+        this.refreshDraftSectionSelectors();
+        this.callbacks.onDraftSectionChange?.();
+      });
+    }
     bindEnd('prop-endi-condition', 'prop-endi-spring', 'endI');
     bindEnd('prop-endj-condition', 'prop-endj-spring', 'endJ');
 
@@ -750,6 +796,7 @@ export class UI {
       <div class="prop-group">
         <label>${t('propSection')}</label>
         <select id="prop-surface-section">${sectionOptions}</select>
+        <button type="button" id="prop-apply-draft-surface-section" class="prop-inline-btn" title="${escapeHtml(t('applyAsDraftHint'))}">${escapeHtml(t('applyAsDraft'))}</button>
       </div>
       ${surface.type === 'floor' ? `
       <div class="prop-group">
@@ -916,6 +963,17 @@ export class UI {
     };
 
     bind('prop-surface-section', 'sectionName');
+    const applyDraftSurfaceBtn = document.getElementById('prop-apply-draft-surface-section');
+    if (applyDraftSurfaceBtn) {
+      applyDraftSurfaceBtn.addEventListener('click', () => {
+        const current = this.state.getSurface(surface.id);
+        if (!current) return;
+        this.state.setDraftSectionName('surface', current.type, current.sectionName);
+        this.state.surfaceDraftType = current.type;
+        this.refreshDraftSectionSelectors();
+        this.callbacks.onDraftSectionChange?.();
+      });
+    }
     bind('prop-surface-top-level', 'topLevelId');
     bind('prop-load-direction', 'loadDirection');
     bind('prop-wall-height-mode', 'heightMode');
