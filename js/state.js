@@ -2740,7 +2740,7 @@ function normalizeMember3DRenderMode(value) {
   return MEMBER_3D_RENDER_MODES.has(text) ? text : 'solid';
 }
 
-function normalizeBeam3DSectionMode(value) {
+export function normalizeBeam3DSectionMode(value) {
   const text = sanitizeText(value);
   return BEAM_3D_SECTION_MODES.has(text) ? text : 'box';
 }

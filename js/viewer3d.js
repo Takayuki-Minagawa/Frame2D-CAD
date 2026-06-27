@@ -4,7 +4,13 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { resolveMemberColor } from './member-style.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
-import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
+import {
+  isGableWallSurfaceType,
+  isSlopedSurfaceType,
+  isWallSurfaceType,
+  normalizeBeam3DSectionMode,
+  offsetPolygonOutward,
+} from './state.js';
 import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
 
@@ -555,9 +561,13 @@ export class Viewer3D {
     const totalZ = Math.max(0.01, strongAxis ? width : height);
     const sourceDepth = Math.max(0.01, height);
     const sourceWidth = Math.max(0.01, width);
+    // H-section plate thicknesses are visual approximations only. They make the
+    // web/flanges legible from the default view and are not structural section data.
     const flangeThickness = Math.min(Math.max(sourceDepth * 0.16, 0.02), sourceDepth * 0.35);
     const webThickness = Math.min(Math.max(sourceWidth * 0.28, 0.015), sourceWidth * 0.65);
     const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    // Use the rendered section depth so box, strong-axis, and weak-axis modes
+    // all rest on the same bottom baseline even when b and h differ.
     center.y += totalY / 2;
     const quat = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(1, 0, 0),
@@ -608,8 +618,7 @@ export class Viewer3D {
   }
 
   _beam3DSectionMode() {
-    const mode = this.state.settings?.beam3dSectionMode;
-    return mode === 'hStrong' || mode === 'hWeak' ? mode : 'box';
+    return normalizeBeam3DSectionMode(this.state.settings?.beam3dSectionMode);
   }
 
   _addMemberLine3D(start, end, color, opacityMultiplier = 1) {
