@@ -257,6 +257,10 @@ const dict = {
     member3dRenderMode: '3D線材表示',
     member3dSolid: '断面形状',
     member3dLine: '線表示',
+    beam3dSectionMode: '梁3D断面',
+    beam3dBox: 'ボックス',
+    beam3dHStrong: 'H形鋼（強軸）',
+    beam3dHWeak: 'H形鋼（弱軸）',
     displayFilters: '表示フィルタ',
     showMemberEndSymbols: '材端記号',
     showPlacementLabels: '配置ラベル',
@@ -369,7 +373,7 @@ const dict = {
   <tr><td><b>2Dレイヤー表示</b></td><td>全レイヤー、現在レイヤーのみ、他レイヤーの薄表示を切り替えます</td></tr>
   <tr><td><b>他レイヤー選択ロック</b></td><td>薄表示中の他レイヤーを参照表示だけにし、選択やドラッグを防ぎます</td></tr>
   <tr><td><b>表示フィルタ</b></td><td>線材・面材・荷重、線材種別、断面、材端記号、配置ラベルを切り替えます</td></tr>
-  <tr><td><b>3D線材表示</b></td><td>線材を断面形状または中心線で表示します。面材は面表示のままです</td></tr>
+  <tr><td><b>3D線材表示</b></td><td>線材を断面形状または中心線で表示します。梁3D断面で、梁だけをボックス、H形鋼（強軸）、H形鋼（弱軸）に切り替えられます。面材は面表示のままです</td></tr>
   <tr><td><b>階コピー / モデルチェック</b></td><td>現在階の要素を別階へ複製し、欠落参照・重複・ゼロ長などを確認できます</td></tr>
 </table>
 
@@ -663,6 +667,10 @@ const dict = {
     member3dRenderMode: '3D Lines',
     member3dSolid: 'Section Solids',
     member3dLine: 'Line View',
+    beam3dSectionMode: 'Beam 3D Section',
+    beam3dBox: 'Box',
+    beam3dHStrong: 'H-section (Strong)',
+    beam3dHWeak: 'H-section (Weak)',
     displayFilters: 'Display Filters',
     showMemberEndSymbols: 'End Symbols',
     showPlacementLabels: 'Placement Labels',
@@ -775,7 +783,7 @@ const dict = {
   <tr><td><b>2D Layers</b></td><td>Switch between all layers, current layer only, or halftone display for other layers</td></tr>
   <tr><td><b>Lock Other Layers</b></td><td>Keeps halftone layers visible for reference while preventing selection and dragging</td></tr>
   <tr><td><b>Display Filters</b></td><td>Toggle members, surfaces, loads, member types, sections, end symbols, and placement labels</td></tr>
-  <tr><td><b>3D Lines</b></td><td>Show line members as section solids or center lines. Surfaces remain as faces</td></tr>
+  <tr><td><b>3D Lines</b></td><td>Show line members as section solids or center lines. Beam 3D Section switches beams only between box, H-section strong-axis, and H-section weak-axis solids. Surfaces remain as faces</td></tr>
   <tr><td><b>Copy Level / Model Check</b></td><td>Duplicate elements to another level and check missing references, duplicates, and zero-length elements</td></tr>
 </table>
 

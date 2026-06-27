@@ -31,6 +31,7 @@ const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
 const PLAN_LAYER_DISPLAY_MODES = new Set(['all', 'current', 'halftone']);
 const MEMBER_3D_RENDER_MODES = new Set(['solid', 'line']);
+const BEAM_3D_SECTION_MODES = new Set(['box', 'hStrong', 'hWeak']);
 const DISPLAY_PRESETS = new Set(['input', 'review', 'presentation']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
 const CURRENT_SCHEMA_VERSION = 10;
@@ -62,6 +63,7 @@ export class AppState {
       planLayerSelectionLock: false,
       view3dLayerDisplayMode: 'all',
       member3dRenderMode: 'solid',
+      beam3dSectionMode: 'box',
       showMembers: true,
       showSurfaces: true,
       showLoads: true,
@@ -2455,6 +2457,7 @@ export class AppState {
       planLayerSelectionLock: false,
       view3dLayerDisplayMode: 'all',
       member3dRenderMode: 'solid',
+      beam3dSectionMode: 'box',
       showMembers: true,
       showSurfaces: true,
       showLoads: true,
@@ -2468,6 +2471,7 @@ export class AppState {
     this.settings.planLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.planLayerDisplayMode);
     this.settings.view3dLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.view3dLayerDisplayMode);
     this.settings.member3dRenderMode = normalizeMember3DRenderMode(this.settings.member3dRenderMode);
+    this.settings.beam3dSectionMode = normalizeBeam3DSectionMode(this.settings.beam3dSectionMode);
     this.settings.planLayerSelectionLock = !!this.settings.planLayerSelectionLock;
     this.settings.showMembers = this.settings.showMembers !== false;
     this.settings.showSurfaces = this.settings.showSurfaces !== false;
@@ -2734,6 +2738,11 @@ function normalizePlanLayerDisplayMode(value) {
 function normalizeMember3DRenderMode(value) {
   const text = sanitizeText(value);
   return MEMBER_3D_RENDER_MODES.has(text) ? text : 'solid';
+}
+
+function normalizeBeam3DSectionMode(value) {
+  const text = sanitizeText(value);
+  return BEAM_3D_SECTION_MODES.has(text) ? text : 'box';
 }
 
 function normalizeMemberTypeFilter(value) {

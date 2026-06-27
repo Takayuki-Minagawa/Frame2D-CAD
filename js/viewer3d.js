@@ -339,35 +339,13 @@ export class Viewer3D {
       const b = (m.section?.b || 200) / 1000;
       const h = (m.section?.h || 400) / 1000;
 
-      const geometry = new THREE.BoxGeometry(length, h, b);
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(resolveMemberColor(m)),
-        wireframe: this.showWireframe,
-        transparent: layerAlpha < 1,
-        opacity: layerAlpha,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-
-      const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-      mid.y += h / 2;
-      mesh.position.copy(mid);
-
-      const quat = new THREE.Quaternion().setFromUnitVectors(
-        new THREE.Vector3(1, 0, 0),
-        direction.clone().normalize()
-      );
-      mesh.quaternion.copy(quat);
-
-      this.memberGroup.add(mesh);
-
-      if (!this.showWireframe) {
-        const edges = new THREE.EdgesGeometry(geometry);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * layerAlpha });
-        const lineSegments = new THREE.LineSegments(edges, lineMat);
-        lineSegments.position.copy(mesh.position);
-        lineSegments.rotation.copy(mesh.rotation);
-        this.memberGroup.add(lineSegments);
+      const color = resolveMemberColor(m);
+      if (m.type === 'beam' && this._beam3DSectionMode() !== 'box') {
+        this._addBeamHSection3D(start, end, direction, length, b, h, color, layerAlpha);
+        continue;
       }
+
+      this._addMemberBox3D(start, end, direction, length, b, h, color, layerAlpha);
     }
 
     // Nodes
@@ -560,8 +538,78 @@ export class Viewer3D {
     }
   }
 
+  _addMemberBox3D(start, end, direction, length, width, height, color, opacityMultiplier = 1) {
+    const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    center.y += height / 2;
+    const quat = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(1, 0, 0),
+      direction.clone().normalize()
+    );
+    this._addMemberBoxPart3D(length, height, width, center, quat, new THREE.Vector3(), color, opacityMultiplier);
+  }
+
+  _addBeamHSection3D(start, end, direction, length, width, height, color, opacityMultiplier = 1) {
+    const mode = this._beam3DSectionMode();
+    const strongAxis = mode === 'hStrong';
+    const totalY = Math.max(0.01, strongAxis ? height : width);
+    const totalZ = Math.max(0.01, strongAxis ? width : height);
+    const sourceDepth = Math.max(0.01, height);
+    const sourceWidth = Math.max(0.01, width);
+    const flangeThickness = Math.min(Math.max(sourceDepth * 0.16, 0.02), sourceDepth * 0.35);
+    const webThickness = Math.min(Math.max(sourceWidth * 0.28, 0.015), sourceWidth * 0.65);
+    const center = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    center.y += totalY / 2;
+    const quat = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(1, 0, 0),
+      direction.clone().normalize()
+    );
+
+    if (strongAxis) {
+      const webHeight = Math.max(0.01, totalY - flangeThickness * 2);
+      const flangeOffset = (totalY - flangeThickness) / 2;
+      this._addMemberBoxPart3D(length, flangeThickness, totalZ, center, quat, new THREE.Vector3(0, flangeOffset, 0), color, opacityMultiplier);
+      this._addMemberBoxPart3D(length, flangeThickness, totalZ, center, quat, new THREE.Vector3(0, -flangeOffset, 0), color, opacityMultiplier);
+      this._addMemberBoxPart3D(length, webHeight, webThickness, center, quat, new THREE.Vector3(), color, opacityMultiplier);
+      return;
+    }
+
+    const webWidth = Math.max(0.01, totalZ - flangeThickness * 2);
+    const flangeOffset = (totalZ - flangeThickness) / 2;
+    this._addMemberBoxPart3D(length, totalY, flangeThickness, center, quat, new THREE.Vector3(0, 0, flangeOffset), color, opacityMultiplier);
+    this._addMemberBoxPart3D(length, totalY, flangeThickness, center, quat, new THREE.Vector3(0, 0, -flangeOffset), color, opacityMultiplier);
+    this._addMemberBoxPart3D(length, webThickness, webWidth, center, quat, new THREE.Vector3(), color, opacityMultiplier);
+  }
+
+  _addMemberBoxPart3D(length, height, width, center, quaternion, localOffset, color, opacityMultiplier = 1) {
+    const geometry = new THREE.BoxGeometry(length, height, width);
+    const material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      wireframe: this.showWireframe,
+      transparent: opacityMultiplier < 1,
+      opacity: opacityMultiplier,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.copy(center).add(localOffset.clone().applyQuaternion(quaternion));
+    mesh.quaternion.copy(quaternion);
+    this.memberGroup.add(mesh);
+
+    if (!this.showWireframe) {
+      const edges = new THREE.EdgesGeometry(geometry);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * opacityMultiplier });
+      const lineSegments = new THREE.LineSegments(edges, lineMat);
+      lineSegments.position.copy(mesh.position);
+      lineSegments.quaternion.copy(quaternion);
+      this.memberGroup.add(lineSegments);
+    }
+  }
+
   _isMemberLineMode() {
     return this.state.settings?.member3dRenderMode === 'line';
+  }
+
+  _beam3DSectionMode() {
+    const mode = this.state.settings?.beam3dSectionMode;
+    return mode === 'hStrong' || mode === 'hWeak' ? mode : 'box';
   }
 
   _addMemberLine3D(start, end, color, opacityMultiplier = 1) {

@@ -68,6 +68,11 @@ export class UI {
       this.callbacks.onPropertyChange?.();
     });
 
+    document.getElementById('sel-beam-3d-section-mode').addEventListener('change', e => {
+      this.state.settings.beam3dSectionMode = e.target.value;
+      this.callbacks.onPropertyChange?.();
+    });
+
     document.getElementById('sel-display-preset').addEventListener('change', e => {
       this.state.applyDisplayPreset(e.target.value);
       this.refreshLayerSelectors();
@@ -357,6 +362,8 @@ export class UI {
     if (sel3DLayerMode) sel3DLayerMode.value = this.state.settings.view3dLayerDisplayMode || 'all';
     const selMember3DMode = document.getElementById('sel-member-3d-render-mode');
     if (selMember3DMode) selMember3DMode.value = this.state.settings.member3dRenderMode || 'solid';
+    const selBeam3DSectionMode = document.getElementById('sel-beam-3d-section-mode');
+    if (selBeam3DSectionMode) selBeam3DSectionMode.value = this.state.settings.beam3dSectionMode || 'box';
     const selPreset = document.getElementById('sel-display-preset');
     if (selPreset) selPreset.value = this.state.settings.displayPreset || 'input';
     this._refreshDisplayFilters();
