@@ -68,3 +68,24 @@ test('t() resolves keys in the default language and echoes unknown keys', () => 
   assert.equal(t('tools'), 'ツール');
   assert.equal(t('no-such-key-xyz'), 'no-such-key-xyz');
 });
+
+test('t() substitutes {name} placeholders from params', () => {
+  assert.equal(getLang(), 'ja');
+  assert.equal(t('roofGeneratedPlanes', { n: 3 }), '3枚の屋根面を生成しました。');
+  assert.equal(
+    t('layerInUse', { m: 1, s: 2 }),
+    'このレイヤーは使用中です（線材: 1、面材: 2）。先に要素を削除またはレイヤー変更してください。'
+  );
+  assert.equal(
+    t('memberLayerHintColumn', { base: 'L1 (z=0)', top: 'L2 (z=3000)' }),
+    '下端管理: L1 (z=0) / 上端: L2 (z=3000)'
+  );
+});
+
+test('t() leaves unspecified placeholders untouched', () => {
+  assert.equal(
+    t('layerInUse', { m: 5 }),
+    'このレイヤーは使用中です（線材: 5、面材: {s}）。先に要素を削除またはレイヤー変更してください。'
+  );
+  assert.equal(t('roofGeneratedPlanes'), '{n}枚の屋根面を生成しました。');
+});

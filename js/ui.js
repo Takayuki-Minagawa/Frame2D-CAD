@@ -449,12 +449,12 @@ export class UI {
       <ul class="model-check-list">
         ${issues.slice(0, 12).map(issue => `
           <li class="model-check-item model-check-${escapeHtml(issue.severity)}">
-            <b>${escapeHtml(t(`modelCheck${capitalize(issue.severity)}`))}</b>
+            <b>${escapeHtml(t('modelCheck' + capitalize(issue.severity)))}</b>
             ${escapeHtml(issue.message)}
           </li>
         `).join('')}
       </ul>
-      ${issues.length > 12 ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore').replace('{count}', issues.length - 12))}</p>` : ''}
+      ${issues.length > 12 ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore', { count: issues.length - 12 }))}</p>` : ''}
     `;
   }
 
@@ -468,15 +468,11 @@ export class UI {
     const topLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : '-';
 
     if (this.state.memberDraftType === 'column') {
-      hint.textContent = t('memberLayerHintColumn')
-        .replace('{base}', activeLabel)
-        .replace('{top}', topLabel);
+      hint.textContent = t('memberLayerHintColumn', { base: activeLabel, top: topLabel });
     } else if (this.state.memberDraftType === 'vbrace') {
-      hint.textContent = t('memberLayerHintVBrace')
-        .replace('{base}', activeLabel)
-        .replace('{top}', topLabel);
+      hint.textContent = t('memberLayerHintVBrace', { base: activeLabel, top: topLabel });
     } else {
-      hint.textContent = t('memberLayerHintPlan').replace('{layer}', activeLabel);
+      hint.textContent = t('memberLayerHintPlan', { layer: activeLabel });
     }
   }
 
@@ -738,7 +734,7 @@ export class UI {
       ).join('')
       : `<option value="${escapeHtml(surface.sectionName || '')}" selected>${escapeHtml(surface.sectionName || '-')}</option>`;
     const heightModeOptions = ['full', 'waist', 'hanging', 'custom']
-      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t(`wallHeight${capitalize(mode)}`)}</option>`)
+      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t('wallHeight' + capitalize(mode))}</option>`)
       .join('');
     const windProjectionFields = isWindSurface ? `
       <div class="prop-group">
@@ -1032,7 +1028,7 @@ export class UI {
     document.getElementById('btn-roof-validate-group')?.addEventListener('click', () => {
       const result = this.state.validateRoofGroup(surface.roofGroupId || 'RG1');
       const message = result.issues.length
-        ? t('roofValidationIssues').replace('{n}', String(result.issues.length))
+        ? t('roofValidationIssues', { n: result.issues.length })
         : t('roofValidationOk');
       this._showInlineNotice(container, message);
     });
@@ -1153,7 +1149,7 @@ export class UI {
 
   _showGenerationNotice(container, count, messageKey) {
     const message = count > 0
-      ? t(messageKey).replace('{n}', String(count))
+      ? t(messageKey, { n: count })
       : t('roofGeneratedNone');
     this._showInlineNotice(container, message);
   }

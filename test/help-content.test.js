@@ -2,8 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+import { getHelpContent, helpContentJa, helpContentEn } from '../js/help-content.js';
+
 test('README and in-app help document the roof workflow', async () => {
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const helpContent = await readFile(new URL('../js/help-content.js', import.meta.url), 'utf8');
   const i18n = await readFile(new URL('../js/i18n.js', import.meta.url), 'utf8');
 
   assert.match(readme, /## Roof Workflow/);
@@ -17,13 +20,21 @@ test('README and in-app help document the roof workflow', async () => {
   assert.match(readme, /面材明細と屋根部材明細/);
   assert.match(readme, /数量CSV\/詳細CSV出力/);
 
-  assert.match(i18n, /<h3>屋根入力ワークフロー<\/h3>/);
-  assert.match(i18n, /<h3>Roof Workflow<\/h3>/);
-  assert.match(i18n, /roofGroupId/);
-  assert.match(i18n, /single-plane, X-ridge gable, Y-ridge gable, and hip presets/);
-  assert.match(i18n, /Generate ridge\/valley\/hip members/);
+  assert.match(helpContent, /<h3>屋根入力ワークフロー<\/h3>/);
+  assert.match(helpContent, /<h3>Roof Workflow<\/h3>/);
+  assert.match(helpContent, /roofGroupId/);
+  assert.match(helpContent, /single-plane, X-ridge gable, Y-ridge gable, and hip presets/);
+  assert.match(helpContent, /Generate ridge\/valley\/hip members/);
   assert.match(i18n, /Generate Eaves/);
-  assert.match(i18n, /generate eaves and gable walls/);
-  assert.match(i18n, /共有辺高さ不一致/);
-  assert.match(i18n, /summary\/detail CSV files/);
+  assert.match(helpContent, /generate eaves and gable walls/);
+  assert.match(helpContent, /共有辺高さ不一致/);
+  assert.match(helpContent, /summary\/detail CSV files/);
+});
+
+test('getHelpContent returns the language-specific help HTML', () => {
+  assert.equal(getHelpContent('ja'), helpContentJa);
+  assert.equal(getHelpContent('en'), helpContentEn);
+  assert.equal(getHelpContent('unknown'), helpContentJa);
+  assert.match(helpContentJa, /<h3>基本操作<\/h3>/);
+  assert.match(helpContentEn, /<h3>Basic Operations<\/h3>/);
 });

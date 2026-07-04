@@ -14,6 +14,7 @@ import {
   importUserDefs,
 } from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
+import { getHelpContent } from './help-content.js';
 import { escapeHtml } from './dom-utils.js';
 
 // --- Initialize ---
@@ -94,11 +95,12 @@ const ui = new UI(state, {
     }
     update();
     showNotice(
-      t('copyLevelDone')
-        .replace('{members}', counts.members)
-        .replace('{surfaces}', counts.surfaces)
-        .replace('{loads}', counts.loads)
-        .replace('{supports}', counts.supports),
+      t('copyLevelDone', {
+        members: counts.members,
+        surfaces: counts.surfaces,
+        loads: counts.loads,
+        supports: counts.supports,
+      }),
       'success'
     );
   },
@@ -106,7 +108,7 @@ const ui = new UI(state, {
     const issues = state.validateModel();
     showNotice(
       issues.length
-        ? t('modelCheckDone').replace('{count}', issues.length)
+        ? t('modelCheckDone', { count: issues.length })
         : t('modelCheckNoIssues'),
       issues.length ? 'error' : 'success'
     );
@@ -785,7 +787,7 @@ function attachUserDefListHandlers() {
       const name = btn.dataset.name || '';
       if (!name) return;
       const confirmed = window.confirm(
-        t('userDefDeleteConfirm').replace('{name}', name)
+        t('userDefDeleteConfirm', { name })
       );
       if (!confirmed) return;
       const removed = state.removeSection(target, type, name);
@@ -805,7 +807,7 @@ function attachUserDefListHandlers() {
       const symbol = btn.dataset.symbol || '';
       if (!symbol) return;
       const confirmed = window.confirm(
-        t('userDefDeleteConfirm').replace('{name}', symbol)
+        t('userDefDeleteConfirm', { name: symbol })
       );
       if (!confirmed) return;
       const removed = state.removeSpring(symbol);
@@ -973,8 +975,8 @@ document.getElementById('file-user-def-import').addEventListener('change', async
     const { added, skipped } = await importUserDefs(file, state);
     if (added > 0) {
       const msg = skipped > 0
-        ? t('userDefImportedWithSkip').replace('{n}', added).replace('{s}', skipped)
-        : t('userDefImported').replace('{n}', added);
+        ? t('userDefImportedWithSkip', { n: added, s: skipped })
+        : t('userDefImported', { n: added });
       showNotice(msg, 'success');
       refreshUserDefEndSpringVisibility();
       update();
@@ -983,7 +985,7 @@ document.getElementById('file-user-def-import').addEventListener('change', async
         renderUserDefGroupList();
       }
     } else if (skipped > 0) {
-      showNotice(t('userDefImportAllSkipped').replace('{s}', skipped), 'error');
+      showNotice(t('userDefImportAllSkipped', { s: skipped }), 'error');
     } else {
       showNotice(t('userDefImportNone'), 'error');
     }
@@ -1029,7 +1031,7 @@ const helpModal = document.getElementById('help-modal');
 const helpBody = document.getElementById('help-body');
 
 function showHelpModal() {
-  helpBody.innerHTML = t('helpContent');
+  helpBody.innerHTML = getHelpContent(getLang());
   const titleEl = helpModal.querySelector('[data-i18n="helpTitle"]');
   if (titleEl) titleEl.textContent = t('helpTitle');
   const closeEl = helpModal.querySelector('[data-i18n="helpClose"]');
@@ -1148,7 +1150,7 @@ function renderLayerList() {
       const total = usage.members.length + usage.surfaces.length;
       if (total > 0) {
         showNotice(
-          t('layerInUse').replace('{m}', usage.members.length).replace('{s}', usage.surfaces.length),
+          t('layerInUse', { m: usage.members.length, s: usage.surfaces.length }),
           'error'
         );
         return;
