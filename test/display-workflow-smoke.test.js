@@ -6,6 +6,7 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const sidePanelsSource = await readFile(new URL('../js/side-panels.js', import.meta.url), 'utf8');
 
   for (const id of [
     'toolbar-resizer',
@@ -35,12 +36,12 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   assert.match(css, /grid-template-columns:\s*var\(--toolbar-w\)\s+var\(--side-resizer-w\)\s+1fr\s+var\(--side-resizer-w\)\s+var\(--panel-w\)/);
   assert.match(css, /body\.toolbar-collapsed/);
   assert.match(css, /body\.property-collapsed/);
-  assert.match(appSource, /lineframe-toolbar-width/);
-  assert.match(appSource, /lineframe-property-panel-width/);
-  assert.match(appSource, /pointermove/);
-  assert.match(appSource, /pointercancel/);
-  assert.match(appSource, /layoutRefreshQueued/);
-  assert.match(appSource, /applyPanelWidth\(side,\s*nextWidth,\s*false\)/);
+  assert.match(sidePanelsSource, /lineframe-toolbar-width/);
+  assert.match(sidePanelsSource, /lineframe-property-panel-width/);
+  assert.match(sidePanelsSource, /pointermove/);
+  assert.match(sidePanelsSource, /pointercancel/);
+  assert.match(sidePanelsSource, /layoutRefreshQueued/);
+  assert.match(sidePanelsSource, /applyPanelWidth\(side,\s*nextWidth,\s*false\)/);
   assert.match(appSource, /canvas2d\.resize\(\)/);
 });
 
