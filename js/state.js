@@ -1,49 +1,98 @@
 // state.js - Data model and state management
 
 import {
-  edgeInwardNormal,
-  pointInPolygonInterior as isInteriorPlanPoint,
-  polygonVertexCentroid,
-  uniquePositiveNumbers,
+  DEFAULT_ROOF_GROUP_ID,
+  DEFAULT_ROOF_SLOPE_RATIO,
+  DEFAULT_SECTION_B_MM,
+  DEFAULT_SECTION_H_MM,
+  DEFAULT_STORY_HEIGHT_MM,
+  HANGING_WALL_DEPTH_MM,
+  HIT_TOLERANCE_MM,
+  WAIST_WALL_TOP_OFFSET_MM,
+  WALL_DISPLAY_OFFSET_MM,
+} from './constants.js';
+import {
+  finiteNumber as sanitizeNumber,
+  nonNegativeNumber as sanitizeNonNegativeNumber,
+  offsetPolygonOutward,
+  pointInPolygon,
+  pointToSegmentDist,
+  positiveNumber as sanitizePositiveNumber,
 } from './geometry-utils.js';
-import { normalizeRoofDirection, roofPlanPoints, roofPoint3D, roofSlopeMemberSegments, roofVertices3D } from './roof-geometry.js';
+import {
+  createDefaultSettings,
+  displayPresetSettings,
+  normalizeDisplayPreset,
+  normalizePlanLayerDisplayMode,
+} from './display-settings.js';
+import * as modelOps from './model-ops.js';
+import { normalizeRoofDirection } from './roof-geometry.js';
+import * as roofGen from './roof-generation.js';
+import {
+  cloneSection,
+  createDefaultSectionCatalog,
+  createDefaultSpringCatalog,
+  DEFAULT_SECTION_NAME_SET,
+  DEFAULT_SPRING_SYMBOL_SET,
+  defaultColorForSection,
+  normalizeCatalogSectionEntry,
+  normalizeMemberEndInfo,
+  normalizeSectionType,
+  normalizeSpringEntry,
+  sanitizeColor,
+} from './section-catalog.js';
+import { CURRENT_SCHEMA_VERSION, loadModelJSON, serializeModel } from './serialization.js';
 
-const DEFAULT_SECTION_DEFINITIONS = [
-  { target: 'member', type: 'beam', name: '_G', material: 'steel', b: 200, h: 400, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
-  { target: 'member', type: 'column', name: '_C', material: 'steel', b: 105, h: 105, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
-  { target: 'member', type: 'hbrace', name: '_H', material: 'steel', b: 20, h: 20, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
-  { target: 'member', type: 'vbrace', name: '_V', material: 'steel', b: 20, h: 20, color: '#666666', defaultEndI: { condition: 'pin', springSymbol: null }, defaultEndJ: { condition: 'pin', springSymbol: null }, isDefault: true },
-  { target: 'surface', type: 'floor', name: '_S', material: '', b: null, h: null, color: '#67a9cf', isDefault: true },
-  { target: 'surface', type: 'exteriorWall', name: '_OW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
-  { target: 'surface', type: 'wall', name: '_IW', material: '', b: null, h: null, color: '#b57a6b', isDefault: true },
-  { target: 'surface', type: 'roof', name: '_R', material: '', b: null, h: null, color: '#8b6f47', isDefault: true },
-  { target: 'surface', type: 'eave', name: '_E', material: '', b: null, h: null, color: '#4f9a8a', isDefault: true },
-  { target: 'surface', type: 'gableWall', name: '_GW', material: '', b: null, h: null, color: '#bf6f5e', isDefault: true },
-];
-
-const DEFAULT_SPRING_DEFINITIONS = [
-  { symbol: '_SP', memo: '回転バネ', isDefault: true },
-];
-
-const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(s => s.name));
-const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
-const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
-const PLAN_LAYER_DISPLAY_MODES = new Set(['all', 'current', 'halftone']);
-const MEMBER_3D_RENDER_MODES = new Set(['solid', 'line']);
-const BEAM_3D_SECTION_MODES = new Set(['box', 'hStrong', 'hWeak']);
-const DISPLAY_PRESETS = new Set(['input', 'review', 'presentation']);
 const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
-const CURRENT_SCHEMA_VERSION = 10;
-const SUPPORTED_SCHEMA_VERSIONS = new Set(
-  Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, index) => index + 1)
-);
-const MEMBER_SECTION_TYPE_ALIAS = {
-  brace: 'hbrace',
+const SELECTION_FIELDS = {
+  node: 'selectedNodeId',
+  member: 'selectedMemberId',
+  surface: 'selectedSurfaceId',
+  load: 'selectedLoadId',
+  support: 'selectedSupportId',
 };
-export const GRID_SIZE_MIN = 100;
-export const GRID_SIZE_MAX = 1000;
-export const GRID_SIZE_DEFAULT = 1000;
+// Re-exported for API compatibility (implementations in display-settings.js)
+export {
+  createDefaultSettings,
+  GRID_SIZE_DEFAULT,
+  GRID_SIZE_MAX,
+  GRID_SIZE_MIN,
+  normalizeBeam3DSectionMode,
+  normalizeGridSize,
+  normalizeSettings,
+} from './display-settings.js';
+
+// Per-field sanitizers applied to updateSurface() patches. Each receives the
+// raw patch value and the current surface (for fallbacks).
+const SURFACE_PATCH_SANITIZERS = {
+  heightMode: value => normalizeSurfaceHeightMode(value),
+  bottomOffset: (value, surface) => sanitizeNumber(value, surface.bottomOffset || 0),
+  topOffset: (value, surface) => sanitizeNumber(value, surface.topOffset || 0),
+  unitWeight: (value, surface) => sanitizeNonNegativeNumber(value, surface.unitWeight || 0),
+  includeWind: value => !!value,
+  includeSeismicWeight: value => !!value,
+  roofSlope: (value, surface) => sanitizeNonNegativeNumber(value, surface.roofSlope || 0),
+  roofDirection: value => normalizeRoofDirection(value),
+  roofBaseOffset: (value, surface) => sanitizeNumber(value, surface.roofBaseOffset || 0),
+  roofGroupId: (value, surface) => sanitizeRoofGroupId(value, surface.roofGroupId || DEFAULT_ROOF_GROUP_ID),
+  gableStartTopOffset: (value, surface) => sanitizeNumber(
+    value,
+    hasOwn(surface, 'gableStartTopOffset') ? surface.gableStartTopOffset : surface.topOffset
+  ),
+  gableEndTopOffset: (value, surface) => sanitizeNumber(
+    value,
+    hasOwn(surface, 'gableEndTopOffset') ? surface.gableEndTopOffset : surface.topOffset
+  ),
+};
+
+// Per-field sanitizers applied to updateMember() patches.
+const MEMBER_PATCH_SANITIZERS = {
+  geometryMode: value => normalizeMemberGeometryMode(value),
+  startZ: value => sanitizeOptionalNumber(value),
+  endZ: value => sanitizeOptionalNumber(value),
+  roofRole: value => sanitizeText(value) || null,
+};
 
 export class AppState {
   constructor() {
@@ -53,30 +102,8 @@ export class AppState {
       unit: 'mm',
       createdAt: new Date().toISOString(),
     };
-    this.settings = {
-      gridSize: 1000,
-      snap: true,
-      wallDisplayOffset: 120,
-      showSupports: true,
-      widePick: false,
-      planLayerDisplayMode: 'all',
-      planLayerSelectionLock: false,
-      view3dLayerDisplayMode: 'all',
-      member3dRenderMode: 'solid',
-      beam3dSectionMode: 'box',
-      showMembers: true,
-      showSurfaces: true,
-      showLoads: true,
-      showMemberEndSymbols: false,
-      showPlacementLabels: true,
-      memberTypeFilter: 'all',
-      sectionFilter: 'all',
-      displayPreset: 'input',
-    };
-    this.levels = [
-      { id: 'L0', name: 'GL', z: 0 },
-      { id: 'L1', name: '2F', z: 2800 },
-    ];
+    this.settings = createDefaultSettings();
+    this.levels = createDefaultLevels();
     this.nodes = [];
     this.members = [];
     this.surfaces = [];
@@ -85,31 +112,14 @@ export class AppState {
     this.sectionCatalog = createDefaultSectionCatalog();
     this.springCatalog = createDefaultSpringCatalog();
 
+    // Monotonic model revision counter; bumped by _touch() whenever a public
+    // method mutates the model. Not serialized.
+    this.revision = 0;
+
     // Runtime state (not serialized)
-    this.selectedMemberId = null;
-    this.selectedSurfaceId = null;
-    this.selectedLoadId = null;
-    this.selectedSupportId = null;
-    this.currentTool = 'member';
     this.activeLayerId = 'L0';
-    this.memberDraftType = 'beam';
-    // Sticky ("paste") section per type: once a section is chosen for a type,
-    // newly drawn members/surfaces of that type reuse it instead of reverting
-    // to the built-in default. Keyed by normalized section type.
-    this.memberDraftSections = {};
-    this.surfaceDraftSections = {};
-    this.surfaceDraftType = 'floor';
-    this.surfaceDraftMode = 'rect';
-    this.surfaceDraftLoadDir = 'twoWay';
     this.surfaceDraftTopLayerId = 'L1';
-    this.surfaceDraftHeightMode = 'full';
-    this.surfaceDraftBottomOffset = 0;
-    this.surfaceDraftTopOffset = 1200;
-    this.surfaceDraftRoofSlope = 0.3;
-    this.surfaceDraftRoofDirection = 'xPlus';
-    this.surfaceDraftRoofBaseOffset = 0;
-    this.surfaceDraftRoofGroupId = 'RG1';
-    this.loadDraftType = 'areaLoad';
+    this.resetRuntimeState();
 
     // Counters for ID generation
     this._nodeCounter = 0;
@@ -120,14 +130,66 @@ export class AppState {
     this._supportCounter = 0;
   }
 
+  // Bumps the model revision. Called by every mutating public method.
+  _touch() {
+    this.revision += 1;
+  }
+
+  // Resets selection, tool, and draft state to the initial defaults.
+  // activeLayerId / surfaceDraftTopLayerId are intentionally excluded: they
+  // are derived from the level list by the constructor and loadJSON.
+  resetRuntimeState() {
+    this.selectedNodeId = null;
+    this.selectedMemberId = null;
+    this.selectedSurfaceId = null;
+    this.selectedLoadId = null;
+    this.selectedSupportId = null;
+    this.currentTool = 'member';
+    this.memberDraftType = 'beam';
+    // Sticky ("paste") section per type: once a section is chosen for a type,
+    // newly drawn members/surfaces of that type reuse it instead of reverting
+    // to the built-in default. Keyed by normalized section type.
+    this.memberDraftSections = {};
+    this.surfaceDraftSections = {};
+    this.surfaceDraftType = 'floor';
+    this.surfaceDraftMode = 'rect';
+    this.surfaceDraftLoadDir = 'twoWay';
+    this.surfaceDraftHeightMode = 'full';
+    this.surfaceDraftBottomOffset = 0;
+    this.surfaceDraftTopOffset = WAIST_WALL_TOP_OFFSET_MM;
+    this.surfaceDraftRoofSlope = DEFAULT_ROOF_SLOPE_RATIO;
+    this.surfaceDraftRoofDirection = 'xPlus';
+    this.surfaceDraftRoofBaseOffset = 0;
+    this.surfaceDraftRoofGroupId = DEFAULT_ROOF_GROUP_ID;
+    this.loadDraftType = 'areaLoad';
+  }
+
+  // --- Selection ---
+
+  // Selects a single element, clearing every other selection first.
+  // kind: 'node' | 'member' | 'surface' | 'load' | 'support'.
+  // Passing a null/undefined id (or kind) clears all selections.
+  select(kind, id = null) {
+    this.clearSelection();
+    if (id === null || id === undefined) return null;
+    const field = SELECTION_FIELDS[kind];
+    if (!field) return null;
+    this[field] = id;
+    return id;
+  }
+
+  clearSelection() {
+    this.selectedNodeId = null;
+    this.selectedMemberId = null;
+    this.selectedSurfaceId = null;
+    this.selectedLoadId = null;
+    this.selectedSupportId = null;
+  }
+
   // --- Section & Spring catalogs ---
 
   _normalizeSectionType(target, type) {
-    if (!type) return '';
-    if (target === 'member') {
-      return MEMBER_SECTION_TYPE_ALIAS[type] || type;
-    }
-    return type;
+    return normalizeSectionType(target, type);
   }
 
   _getSectionRef(target, type, name) {
@@ -278,45 +340,10 @@ export class AppState {
   }
 
   applyDisplayPreset(name) {
-    const preset = DISPLAY_PRESETS.has(sanitizeText(name)) ? sanitizeText(name) : 'input';
+    const preset = normalizeDisplayPreset(name);
     this.settings.displayPreset = preset;
-    if (preset === 'review') {
-      Object.assign(this.settings, {
-        planLayerDisplayMode: 'halftone',
-        planLayerSelectionLock: true,
-        view3dLayerDisplayMode: 'halftone',
-        member3dRenderMode: 'line',
-        showMembers: true,
-        showSurfaces: true,
-        showLoads: true,
-        showMemberEndSymbols: true,
-        showPlacementLabels: true,
-      });
-    } else if (preset === 'presentation') {
-      Object.assign(this.settings, {
-        planLayerDisplayMode: 'current',
-        planLayerSelectionLock: true,
-        view3dLayerDisplayMode: 'current',
-        member3dRenderMode: 'solid',
-        showMembers: true,
-        showSurfaces: true,
-        showLoads: false,
-        showMemberEndSymbols: false,
-        showPlacementLabels: false,
-      });
-    } else {
-      Object.assign(this.settings, {
-        planLayerDisplayMode: 'all',
-        planLayerSelectionLock: false,
-        view3dLayerDisplayMode: 'all',
-        member3dRenderMode: 'solid',
-        showMembers: true,
-        showSurfaces: true,
-        showLoads: true,
-        showMemberEndSymbols: false,
-        showPlacementLabels: true,
-      });
-    }
+    Object.assign(this.settings, displayPresetSettings(preset));
+    this._touch();
     return preset;
   }
 
@@ -330,7 +357,7 @@ export class AppState {
       return {
         heightMode,
         bottomOffset: 0,
-        topOffset: Math.min(1200, storyHeight || 1200),
+        topOffset: Math.min(WAIST_WALL_TOP_OFFSET_MM, storyHeight || WAIST_WALL_TOP_OFFSET_MM),
       };
     }
 
@@ -338,14 +365,14 @@ export class AppState {
       const topOffset = storyHeight || 0;
       return {
         heightMode,
-        bottomOffset: Math.max(0, topOffset - 600),
+        bottomOffset: Math.max(0, topOffset - HANGING_WALL_DEPTH_MM),
         topOffset,
       };
     }
 
     if (heightMode === 'custom') {
       const bottomOffset = sanitizeNumber(options.bottomOffset, this.surfaceDraftBottomOffset || 0);
-      const fallbackTopOffset = Math.max(bottomOffset + 1, this.surfaceDraftTopOffset || storyHeight || 1200);
+      const fallbackTopOffset = Math.max(bottomOffset + 1, this.surfaceDraftTopOffset || storyHeight || WAIST_WALL_TOP_OFFSET_MM);
       const topOffset = sanitizeNumber(options.topOffset, fallbackTopOffset);
       return {
         heightMode,
@@ -370,6 +397,7 @@ export class AppState {
     const section = { ...normalized, isDefault: false };
     this._normalizeSectionEndDefaults(section);
     this.sectionCatalog.push(section);
+    this._touch();
     return cloneSection(section);
   }
 
@@ -382,10 +410,10 @@ export class AppState {
 
     if (target === 'member') {
       if (hasOwn(props, 'b')) {
-        section.b = sanitizePositiveNumber(props.b, sanitizePositiveNumber(section.b, 200));
+        section.b = sanitizePositiveNumber(props.b, sanitizePositiveNumber(section.b, DEFAULT_SECTION_B_MM));
       }
       if (hasOwn(props, 'h')) {
-        section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, 400));
+        section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, DEFAULT_SECTION_H_MM));
       }
       if (hasOwn(props, 'defaultEndI')) {
         section.defaultEndI = this._normalizeMemberEnd(props.defaultEndI);
@@ -415,6 +443,7 @@ export class AppState {
       }
     }
 
+    this._touch();
     return cloneSection(section);
   }
 
@@ -439,6 +468,7 @@ export class AppState {
     }
 
     this.sectionCatalog.splice(idx, 1);
+    this._touch();
     return true;
   }
 
@@ -469,6 +499,7 @@ export class AppState {
     if (this._getSpringRef(normalized.symbol)) return null;
     const spring = { ...normalized, isDefault: false };
     this.springCatalog.push(spring);
+    this._touch();
     return { ...spring };
   }
 
@@ -478,6 +509,7 @@ export class AppState {
     if (hasOwn(props, 'memo')) {
       spring.memo = sanitizeText(props.memo) || '';
     }
+    this._touch();
     return { ...spring };
   }
 
@@ -498,6 +530,7 @@ export class AppState {
     );
     if (inSectionPreset) return false;
     this.springCatalog.splice(idx, 1);
+    this._touch();
     return true;
   }
 
@@ -518,15 +551,15 @@ export class AppState {
   _findMemberSectionBySpec(memberType, material, b, h, color = null) {
     const normalizedType = this._normalizeSectionType('member', memberType);
     const targetMaterial = sanitizeText(material) || 'steel';
-    const targetB = sanitizePositiveNumber(b, 200);
-    const targetH = sanitizePositiveNumber(h, 400);
+    const targetB = sanitizePositiveNumber(b, DEFAULT_SECTION_B_MM);
+    const targetH = sanitizePositiveNumber(h, DEFAULT_SECTION_H_MM);
     const targetColor = sanitizeColor(color, defaultColorForSection('member', normalizedType));
     return this.sectionCatalog.find(s =>
       s.target === 'member' &&
       s.type === normalizedType &&
       (s.material || 'steel') === targetMaterial &&
-      sanitizePositiveNumber(s.b, 200) === targetB &&
-      sanitizePositiveNumber(s.h, 400) === targetH &&
+      sanitizePositiveNumber(s.b, DEFAULT_SECTION_B_MM) === targetB &&
+      sanitizePositiveNumber(s.h, DEFAULT_SECTION_H_MM) === targetH &&
       sanitizeColor(s.color, defaultColorForSection('member', normalizedType)) === targetColor
     ) || null;
   }
@@ -538,8 +571,8 @@ export class AppState {
       type: normalizedType,
       name: this._nextCustomSectionName('member', normalizedType),
       material: sanitizeText(material) || 'steel',
-      b: sanitizePositiveNumber(b, 200),
-      h: sanitizePositiveNumber(h, 400),
+      b: sanitizePositiveNumber(b, DEFAULT_SECTION_B_MM),
+      h: sanitizePositiveNumber(h, DEFAULT_SECTION_H_MM),
       color: sanitizeColor(color, defaultColorForSection('member', normalizedType)),
       defaultEndI: { condition: 'pin', springSymbol: null },
       defaultEndJ: { condition: 'pin', springSymbol: null },
@@ -549,19 +582,25 @@ export class AppState {
     return section;
   }
 
+  // Applies a catalog section to a member (name, material, b/h, color).
+  // The single write path for section-driven member fields.
   _applyMemberSection(member, sectionName) {
     const section = this._getSectionRef('member', member.type, sectionName);
     if (!section) return false;
     member.sectionName = section.name;
     member.material = section.material || 'steel';
     member.section = {
-      b: sanitizePositiveNumber(section.b, 200),
-      h: sanitizePositiveNumber(section.h, 400),
+      b: sanitizePositiveNumber(section.b, DEFAULT_SECTION_B_MM),
+      h: sanitizePositiveNumber(section.h, DEFAULT_SECTION_H_MM),
     };
     member.color = sanitizeColor(section.color, defaultColorForSection('member', member.type));
     return true;
   }
 
+  // Resolves the best catalog section for a member (requested name, then the
+  // type default, then any section of the type) and applies it via
+  // _applyMemberSection. Falls back to sanitizing inline values when the
+  // catalog has no section for the type at all.
   _ensureMemberSection(member, requestedSectionName = null) {
     const normalizedType = this._normalizeSectionType('member', member.type);
     const sectionName = sanitizeText(requestedSectionName || member.sectionName);
@@ -577,22 +616,13 @@ export class AppState {
       section = this.sectionCatalog.find(s => s.target === 'member' && s.type === normalizedType) || null;
     }
 
-    if (section) {
-      member.sectionName = section.name;
-      member.material = section.material || 'steel';
-      member.section = {
-        b: sanitizePositiveNumber(section.b, 200),
-        h: sanitizePositiveNumber(section.h, 400),
-      };
-      member.color = sanitizeColor(section.color, defaultColorForSection('member', member.type));
-      return;
-    }
+    if (section && this._applyMemberSection(member, section.name)) return;
 
     member.sectionName = sectionName || '';
     member.material = sanitizeText(member.material) || 'steel';
     member.section = {
-      b: sanitizePositiveNumber(member.section?.b, 200),
-      h: sanitizePositiveNumber(member.section?.h, 400),
+      b: sanitizePositiveNumber(member.section?.b, DEFAULT_SECTION_B_MM),
+      h: sanitizePositiveNumber(member.section?.h, DEFAULT_SECTION_H_MM),
     };
     member.color = sanitizeColor(member.color, defaultColorForSection('member', member.type));
   }
@@ -639,156 +669,10 @@ export class AppState {
     );
   }
 
+  // Member-end normalization validated against this state's spring catalog.
+  // (section-catalog.js normalizeSectionDefaultEnd is the catalog-free variant.)
   _normalizeMemberEnd(endInfo) {
-    const raw = endInfo || {};
-    const rawCondition = sanitizeText(raw.condition || raw.fixity || raw.type) || 'pin';
-    const condition = END_FIXITIES.has(rawCondition) ? rawCondition : 'pin';
-    const defaultSpring = this.springCatalog[0]?.symbol || null;
-
-    let springSymbol = null;
-    if (condition === 'spring') {
-      const requested = sanitizeText(raw.springSymbol || raw.symbol);
-      const spring = requested ? this._getSpringRef(requested) : null;
-      springSymbol = spring?.symbol || defaultSpring;
-    }
-    return { condition, springSymbol };
-  }
-
-  _hydrateSectionCatalog(rawCatalog) {
-    const catalog = createDefaultSectionCatalog();
-    if (!Array.isArray(rawCatalog)) return catalog;
-
-    const defaultsByName = new Map(
-      createDefaultSectionCatalog().map(s => [s.name, s])
-    );
-
-    for (const raw of rawCatalog) {
-      const normalized = normalizeCatalogSectionEntry(raw);
-      if (!normalized) continue;
-
-      const defaultDef = defaultsByName.get(normalized.name);
-      if (defaultDef) {
-        if (!isSameSectionDefinition(defaultDef, normalized)) {
-          throw new Error(`Reserved default section name: ${normalized.name}`);
-        }
-        continue;
-      }
-
-      if (catalog.some(s =>
-        s.target === normalized.target &&
-        s.type === normalized.type &&
-        s.name === normalized.name
-      )) {
-        throw new Error(`Duplicate section name: ${normalized.name}`);
-      }
-      catalog.push({ ...normalized, isDefault: false });
-    }
-    return catalog;
-  }
-
-  _hydrateSpringCatalog(rawCatalog) {
-    const catalog = createDefaultSpringCatalog();
-    if (!Array.isArray(rawCatalog)) return catalog;
-
-    const defaultsBySymbol = new Map(
-      createDefaultSpringCatalog().map(s => [s.symbol, s])
-    );
-
-    for (const raw of rawCatalog) {
-      const normalized = normalizeSpringEntry(raw);
-      if (!normalized) continue;
-
-      const defaultDef = defaultsBySymbol.get(normalized.symbol);
-      if (defaultDef) {
-        if ((defaultDef.memo || '') !== (normalized.memo || '')) {
-          throw new Error(`Reserved default spring symbol: ${normalized.symbol}`);
-        }
-        continue;
-      }
-
-      if (catalog.some(s => s.symbol === normalized.symbol)) {
-        throw new Error(`Duplicate spring symbol: ${normalized.symbol}`);
-      }
-      catalog.push({ ...normalized, isDefault: false });
-    }
-    return catalog;
-  }
-
-  _normalizeLoadedMember(raw) {
-    const member = {
-      ...raw,
-      type: raw.type || 'beam',
-      sectionName: sanitizeText(raw.sectionName) || '',
-      section: {
-        b: sanitizePositiveNumber(raw.section?.b, 200),
-        h: sanitizePositiveNumber(raw.section?.h, 400),
-      },
-      levelId: raw.levelId || this.activeLayerId || 'L0',
-      material: sanitizeText(raw.material) || 'steel',
-      color: raw.color || '#666666',
-      topLevelId: raw.topLevelId || null,
-      geometryMode: normalizeMemberGeometryMode(raw.geometryMode),
-      startZ: sanitizeOptionalNumber(raw.startZ),
-      endZ: sanitizeOptionalNumber(raw.endZ),
-      roofRole: sanitizeText(raw.roofRole) || null,
-      bracePattern: raw.bracePattern || 'single',
-      endI: this._normalizeMemberEnd(raw.endI || raw.iEnd),
-      endJ: this._normalizeMemberEnd(raw.endJ || raw.jEnd),
-    };
-
-    const byName = member.sectionName ? this._getSectionRef('member', member.type, member.sectionName) : null;
-    if (byName) {
-      this._applyMemberSection(member, byName.name);
-      return member;
-    }
-
-    const hasLegacySectionData = !!raw.section || !!raw.material;
-    if (hasLegacySectionData) {
-      const b = sanitizePositiveNumber(raw.section?.b, 200);
-      const h = sanitizePositiveNumber(raw.section?.h, 400);
-      const material = sanitizeText(raw.material) || 'steel';
-      const section = this._findMemberSectionBySpec(member.type, material, b, h, member.color) ||
-        this._createImportedMemberSection(member.type, material, b, h, member.color);
-      this._applyMemberSection(member, section.name);
-      return member;
-    }
-
-    this._ensureMemberSection(member, member.sectionName);
-    return member;
-  }
-
-  _normalizeLoadedSurface(raw) {
-    const type = raw.type || 'floor';
-    const levelId = raw.levelId || this.activeLayerId || 'L0';
-    const topLevelId = raw.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
-    const surface = {
-      ...raw,
-      type,
-      sectionName: sanitizeText(raw.sectionName) || '',
-      levelId,
-      topLevelId,
-      loadDirection: raw.loadDirection || 'twoWay',
-      color: raw.color || (raw.type === 'wall' || raw.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
-      shape: raw.shape || 'rect',
-      points: Array.isArray(raw.points) ? raw.points.map(p => ({ ...p })) : null,
-      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, raw),
-      ...this._normalizeSurfaceRoof(type, raw),
-    };
-    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, surface));
-    if (!isSlopedSurfaceType(type)) {
-      delete surface.roofSlope;
-      delete surface.roofDirection;
-      delete surface.roofBaseOffset;
-    }
-    if (!isRoofSurfaceType(type)) {
-      delete surface.roofGroupId;
-    }
-    if (!isGableWallSurfaceType(type)) {
-      delete surface.gableStartTopOffset;
-      delete surface.gableEndTopOffset;
-    }
-    this._ensureSurfaceSection(surface, surface.sectionName);
-    return surface;
+    return normalizeMemberEndInfo(endInfo, this.springCatalog);
   }
 
   _normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options = {}) {
@@ -826,12 +710,12 @@ export class AppState {
       return {};
     }
     const roofFields = {
-      roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
+      roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || DEFAULT_ROOF_SLOPE_RATIO),
       roofDirection: normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection),
       roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
     };
     if (isRoofSurfaceType(type)) {
-      roofFields.roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1');
+      roofFields.roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID);
     }
     return roofFields;
   }
@@ -840,7 +724,7 @@ export class AppState {
     if (!isGableWallSurfaceType(type)) return {};
     const bottomOffset = sanitizeNumber(options.bottomOffset, 0);
     const storyHeight = this.getStoryHeight(levelId, topLevelId);
-    const fallbackTop = Math.max(bottomOffset + 1, sanitizeNumber(options.topOffset, storyHeight || 2800));
+    const fallbackTop = Math.max(bottomOffset + 1, sanitizeNumber(options.topOffset, storyHeight || DEFAULT_STORY_HEIGHT_MM));
     const startTop = sanitizeNumber(options.gableStartTopOffset, fallbackTop);
     const endTop = sanitizeNumber(options.gableEndTopOffset, fallbackTop);
     const gableStartTopOffset = startTop >= bottomOffset ? startTop : fallbackTop;
@@ -865,6 +749,7 @@ export class AppState {
     const id = this.nextNodeId();
     const node = { id, x, y, z };
     this.nodes.push(node);
+    this._touch();
     return node;
   }
 
@@ -874,15 +759,20 @@ export class AppState {
 
   updateNode(id, props) {
     const node = this.getNode(id);
-    if (node) Object.assign(node, props);
+    if (node) {
+      Object.assign(node, props);
+      this._touch();
+    }
     return node;
   }
 
   removeNode(id) {
+    const before = this.nodes.length;
     this.nodes = this.nodes.filter(n => n.id !== id);
+    if (this.nodes.length !== before) this._touch();
   }
 
-  findNodeAt(x, y, tolerance = 300) {
+  findNodeAt(x, y, tolerance = HIT_TOLERANCE_MM) {
     let closest = null;
     let minDist = tolerance;
     for (const n of this.nodes) {
@@ -915,8 +805,8 @@ export class AppState {
       options.material
     )) {
       const material = sanitizeText(options.material) || 'steel';
-      const b = sanitizePositiveNumber(options.b, 200);
-      const h = sanitizePositiveNumber(options.h, 400);
+      const b = sanitizePositiveNumber(options.b, DEFAULT_SECTION_B_MM);
+      const h = sanitizePositiveNumber(options.h, DEFAULT_SECTION_H_MM);
       const section = this._findMemberSectionBySpec(type, material, b, h, options.color) ||
         this._createImportedMemberSection(type, material, b, h, options.color);
       sectionName = section.name;
@@ -928,7 +818,7 @@ export class AppState {
       startNodeId,
       endNodeId,
       sectionName,
-      section: { b: 200, h: 400 },
+      section: { b: DEFAULT_SECTION_B_MM, h: DEFAULT_SECTION_H_MM },
       levelId: options.levelId || this.activeLayerId || 'L0',
       material: 'steel',
       color: options.color || '#666666',
@@ -946,6 +836,7 @@ export class AppState {
     member.endI = this._normalizeMemberEnd(hasEndI ? options.endI : endDefaults.endI);
     member.endJ = this._normalizeMemberEnd(hasEndJ ? options.endJ : endDefaults.endJ);
     this.members.push(member);
+    this._touch();
     return member;
   }
 
@@ -965,10 +856,6 @@ export class AppState {
     const hasColor = hasOwn(patch, 'color');
     const hasEndI = hasOwn(patch, 'endI');
     const hasEndJ = hasOwn(patch, 'endJ');
-    const hasGeometryMode = hasOwn(patch, 'geometryMode');
-    const hasStartZ = hasOwn(patch, 'startZ');
-    const hasEndZ = hasOwn(patch, 'endZ');
-    const hasRoofRole = hasOwn(patch, 'roofRole');
 
     if (hasSection) {
       Object.assign(member.section, patch.section || {});
@@ -982,23 +869,11 @@ export class AppState {
       member.endJ = this._normalizeMemberEnd(patch.endJ);
       delete patch.endJ;
     }
-
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
     }
-    if (hasGeometryMode) {
-      patch.geometryMode = normalizeMemberGeometryMode(patch.geometryMode);
-    }
-    if (hasStartZ) {
-      patch.startZ = sanitizeOptionalNumber(patch.startZ);
-    }
-    if (hasEndZ) {
-      patch.endZ = sanitizeOptionalNumber(patch.endZ);
-    }
-    if (hasRoofRole) {
-      patch.roofRole = sanitizeText(patch.roofRole) || null;
-    }
+    sanitizePatchFields(patch, MEMBER_PATCH_SANITIZERS, member);
 
     Object.assign(member, patch);
 
@@ -1007,8 +882,8 @@ export class AppState {
 
     if (!hasSectionName && (hasSection || hasMaterial)) {
       const material = sanitizeText(member.material) || 'steel';
-      const b = sanitizePositiveNumber(member.section?.b, 200);
-      const h = sanitizePositiveNumber(member.section?.h, 400);
+      const b = sanitizePositiveNumber(member.section?.b, DEFAULT_SECTION_B_MM);
+      const h = sanitizePositiveNumber(member.section?.h, DEFAULT_SECTION_H_MM);
       const section = this._findMemberSectionBySpec(member.type, material, b, h, member.color) ||
         this._createImportedMemberSection(member.type, material, b, h, member.color);
       member.sectionName = section.name;
@@ -1017,6 +892,7 @@ export class AppState {
     if (hasType || hasSectionName || hasSection || hasMaterial || hasColor) {
       this._ensureMemberSection(member, member.sectionName);
     }
+    this._touch();
     return member;
   }
 
@@ -1037,9 +913,10 @@ export class AppState {
     if (this.selectedMemberId === id) {
       this.selectedMemberId = null;
     }
+    this._touch();
   }
 
-  findMemberAt(x, y, tolerance = 300, predicate = null) {
+  findMemberAt(x, y, tolerance = HIT_TOLERANCE_MM, predicate = null) {
     let closest = null;
     let minDist = tolerance;
     for (const m of this.members) {
@@ -1056,589 +933,6 @@ export class AppState {
     return closest;
   }
 
-  addRoofEdgeMembers(surfaceId, options = {}) {
-    const surface = this.getSurface(surfaceId);
-    if (!surface || !isRoofSurfaceType(surface.type)) return [];
-    const vertices = roofVertices3D(this, surface);
-    if (vertices.length < 3) return [];
-
-    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
-    const nodes = vertices.map(v => this.findNodeAt(v.x, v.y, nodeTolerance) || this.addNode(v.x, v.y));
-    let members = [];
-    for (let i = 0; i < vertices.length; i++) {
-      const a = vertices[i];
-      const b = vertices[(i + 1) % vertices.length];
-      if (this._hasSharedRoofGroupEdge(surface, a, b, nodeTolerance)) continue;
-      const startNode = nodes[i];
-      const endNode = nodes[(i + 1) % vertices.length];
-      if (startNode.id === endNode.id) continue;
-      const member = this.addMember(startNode.id, endNode.id, {
-        type: 'beam',
-        levelId: surface.levelId,
-        geometryMode: 'explicit3d',
-        startZ: a.z,
-        endZ: b.z,
-        roofRole: options.roofRole || 'roofEdge',
-        sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
-      });
-      members.push(member);
-    }
-    for (const node of this._roofSlopeBoundaryNodes(surface, nodeTolerance)) {
-      const split = this._splitRoofEdgeMemberAtNode(node, nodeTolerance);
-      if (!split) continue;
-      members = members.filter(member => member.id !== split.removedId);
-      members.push(...split.members);
-    }
-    return members;
-  }
-
-  addRoofSlopeMembers(surfaceId, options = {}) {
-    const surface = this.getSurface(surfaceId);
-    if (!surface || !isRoofSurfaceType(surface.type)) return [];
-    const segments = roofSlopeMemberSegments(surface, {
-      spacing: options.spacing,
-      minLength: options.minLength,
-    });
-    if (!segments.length) return [];
-
-    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
-    const members = [];
-    for (const segment of segments) {
-      const startPoint = roofPoint3D(this, surface, segment.start);
-      const endPoint = roofPoint3D(this, surface, segment.end);
-      const startNode = this.findNodeAt(startPoint.x, startPoint.y, nodeTolerance) || this.addNode(startPoint.x, startPoint.y);
-      const endNode = this.findNodeAt(endPoint.x, endPoint.y, nodeTolerance) || this.addNode(endPoint.x, endPoint.y);
-      if (startNode.id === endNode.id) continue;
-      const member = this.addMember(startNode.id, endNode.id, {
-        type: 'beam',
-        levelId: surface.levelId,
-        geometryMode: 'explicit3d',
-        startZ: startPoint.z,
-        endZ: endPoint.z,
-        roofRole: options.roofRole || 'roofSlopeBeam',
-        sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
-      });
-      this._splitRoofEdgeMemberAtNode(startNode, nodeTolerance);
-      this._splitRoofEdgeMemberAtNode(endNode, nodeTolerance);
-      members.push(member);
-    }
-    return members;
-  }
-
-  addRoofJointMembers(roofGroupId, options = {}) {
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    if (surfaces.length < 2) return [];
-
-    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
-    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
-    const members = [];
-    for (let i = 0; i < surfaces.length; i++) {
-      for (let j = i + 1; j < surfaces.length; j++) {
-        for (const edge of this._sharedRoofEdges(surfaces[i], surfaces[j], nodeTolerance, zTolerance)) {
-          const startNode = this.findNodeAt(edge.start.x, edge.start.y, nodeTolerance) || this.addNode(edge.start.x, edge.start.y);
-          const endNode = this.findNodeAt(edge.end.x, edge.end.y, nodeTolerance) || this.addNode(edge.end.x, edge.end.y);
-          if (startNode.id === endNode.id) continue;
-          this._removeRoofEdgeMembersOnSegment(edge.start, edge.end, nodeTolerance);
-          members.push(this.addMember(startNode.id, endNode.id, {
-            type: 'beam',
-            levelId: edge.surfaceA.levelId,
-            geometryMode: 'explicit3d',
-            startZ: edge.start.z,
-            endZ: edge.end.z,
-            roofRole: edge.roofRole,
-            sectionName: options.sectionName || this.getDefaultSectionName('member', 'beam'),
-          }));
-        }
-      }
-    }
-    return members;
-  }
-
-  addGableWallsFromRoofGroup(roofGroupId, options = {}) {
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    if (!surfaces.length) return [];
-
-    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
-    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
-    const bottomOffset = sanitizeNonNegativeNumber(options.bottomOffset, 0);
-    const walls = [];
-    for (const surface of surfaces) {
-      const vertices = roofVertices3D(this, surface);
-      if (vertices.length < 3) continue;
-      const baseZ = this.getLevelZ(surface.levelId);
-      for (let i = 0; i < vertices.length; i++) {
-        const start = vertices[i];
-        const end = vertices[(i + 1) % vertices.length];
-        if (this._hasSharedRoofGroupEdge(surface, start, end, nodeTolerance)) continue;
-        const startTopOffset = start.z - baseZ;
-        const endTopOffset = end.z - baseZ;
-        if (Math.abs(startTopOffset - endTopOffset) <= zTolerance) continue;
-        if (Math.max(startTopOffset, endTopOffset) <= bottomOffset + zTolerance) continue;
-        if (this._hasGableWallOnSegment(surface.levelId, start, end, nodeTolerance)) continue;
-        const wall = this.addSurfaceLine(start.x, start.y, end.x, end.y, {
-          type: 'gableWall',
-          levelId: surface.levelId,
-          topLevelId: surface.topLevelId || surface.levelId,
-          heightMode: 'custom',
-          bottomOffset,
-          topOffset: Math.max(startTopOffset, endTopOffset),
-          gableStartTopOffset: startTopOffset,
-          gableEndTopOffset: endTopOffset,
-          includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
-          includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
-          unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
-          sectionName: options.sectionName || this.getDefaultSectionName('surface', 'gableWall'),
-        });
-        walls.push(wall);
-      }
-    }
-    return walls;
-  }
-
-  addEavesFromRoofGroup(roofGroupId, options = {}) {
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    if (!surfaces.length) return [];
-
-    const nodeTolerance = sanitizeNonNegativeNumber(options.nodeTolerance, 1);
-    const depth = sanitizePositiveNumber(options.depth, 600);
-    const eaves = [];
-    for (const surface of surfaces) {
-      const points = roofPlanPoints(surface);
-      if (points.length < 3) continue;
-      for (const edge of this._roofPlanEdges(surface)) {
-        if (this._hasSharedRoofGroupEdge(surface, edge.start, edge.end, nodeTolerance)) continue;
-        if (this._hasEaveOnInnerSegment(surface.levelId, edge.start, edge.end, nodeTolerance)) continue;
-        const inward = edgeInwardNormal(edge.start, edge.end, points);
-        const outward = { x: -inward.x, y: -inward.y };
-        const outerStart = {
-          x: edge.start.x + outward.x * depth,
-          y: edge.start.y + outward.y * depth,
-        };
-        const outerEnd = {
-          x: edge.end.x + outward.x * depth,
-          y: edge.end.y + outward.y * depth,
-        };
-        const eave = this.addSurfacePolygon([
-          edge.start,
-          edge.end,
-          outerEnd,
-          outerStart,
-        ], {
-          type: 'eave',
-          levelId: surface.levelId,
-          topLevelId: surface.topLevelId || surface.levelId,
-          loadDirection: surface.loadDirection,
-          roofSlope: surface.roofSlope,
-          roofDirection: surface.roofDirection,
-          roofBaseOffset: surface.roofBaseOffset,
-          includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
-          includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
-          unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
-          sectionName: options.sectionName || this.getDefaultSectionName('surface', 'eave'),
-        });
-        eaves.push(eave);
-      }
-    }
-    return eaves;
-  }
-
-  addRoofPlanesFromSurface(sourceSurfaceId, options = {}) {
-    const source = this.getSurface(sourceSurfaceId);
-    const points = surfaceOutlinePoints(source);
-    if (points.length < 3) return [];
-
-    const pattern = normalizeRoofGenerationPattern(options.pattern);
-    const direction = normalizeRoofDirection(options.roofDirection || this.surfaceDraftRoofDirection);
-    const planes = roofGenerationPlanes(points, pattern, direction);
-    if (!planes.length) return [];
-
-    const levelId = options.levelId || source.topLevelId || source.levelId || this.activeLayerId || 'L0';
-    const roofGroupId = sanitizeRoofGroupId(options.roofGroupId, this.surfaceDraftRoofGroupId || 'RG1');
-    const common = {
-      type: 'roof',
-      levelId,
-      topLevelId: options.topLevelId || levelId,
-      roofSlope: sanitizeNonNegativeNumber(options.roofSlope, this.surfaceDraftRoofSlope || 0.3),
-      roofBaseOffset: sanitizeNumber(options.roofBaseOffset, this.surfaceDraftRoofBaseOffset || 0),
-      roofGroupId,
-      includeWind: hasOwn(options, 'includeWind') ? !!options.includeWind : true,
-      includeSeismicWeight: hasOwn(options, 'includeSeismicWeight') ? !!options.includeSeismicWeight : false,
-      unitWeight: sanitizeNonNegativeNumber(options.unitWeight, 0),
-      sectionName: options.sectionName || this.getDefaultSectionName('surface', 'roof'),
-    };
-
-    return planes.map(plane =>
-      this.addSurfacePolygon(plane.points, {
-        ...common,
-        roofDirection: plane.roofDirection,
-      })
-    );
-  }
-
-  validateRoofGroup(roofGroupId, options = {}) {
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    const tolerance = sanitizeNonNegativeNumber(options.tolerance, 1);
-    const zTolerance = sanitizeNonNegativeNumber(options.zTolerance, 1);
-    const issues = [];
-    if (!surfaces.length) {
-      issues.push({ code: 'roofGroupEmpty', roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1') });
-      return { roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1'), surfaceCount: 0, issues };
-    }
-
-    for (const surface of surfaces) {
-      const points = roofPlanPoints(surface);
-      if (points.length < 3) {
-        issues.push({ code: 'roofInvalidOutline', surfaceId: surface.id });
-        continue;
-      }
-      if (polygonHasSelfIntersections(points, tolerance)) {
-        issues.push({ code: 'roofSelfIntersection', surfaceId: surface.id });
-      }
-    }
-
-    for (let i = 0; i < surfaces.length; i++) {
-      for (let j = i + 1; j < surfaces.length; j++) {
-        const edgePairs = matchingRoofPlanEdges(this._roofPlanEdges(surfaces[i]), this._roofPlanEdges(surfaces[j]), tolerance);
-        for (const { edgeA } of edgePairs) {
-          const startA = roofPoint3D(this, surfaces[i], edgeA.start);
-          const endA = roofPoint3D(this, surfaces[i], edgeA.end);
-          const startB = roofPoint3D(this, surfaces[j], edgeA.start);
-          const endB = roofPoint3D(this, surfaces[j], edgeA.end);
-          if (Math.abs(startA.z - startB.z) > zTolerance || Math.abs(endA.z - endB.z) > zTolerance) {
-            issues.push({
-              code: 'roofSharedEdgeHeightMismatch',
-              surfaceAId: surfaces[i].id,
-              surfaceBId: surfaces[j].id,
-            });
-          }
-        }
-      }
-    }
-
-    return {
-      roofGroupId: sanitizeRoofGroupId(roofGroupId, 'RG1'),
-      surfaceCount: surfaces.length,
-      issues,
-    };
-  }
-
-  removeRoofGeneratedElements(roofGroupId, options = {}) {
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    if (!surfaces.length) return { members: 0, eaves: 0, gableWalls: 0, total: 0 };
-    const tolerance = sanitizeNonNegativeNumber(options.tolerance, 1);
-    const removeMembers = hasOwn(options, 'members') ? !!options.members : true;
-    const removeEaves = hasOwn(options, 'eaves') ? !!options.eaves : true;
-    const removeGableWalls = hasOwn(options, 'gableWalls') ? !!options.gableWalls : true;
-    const outerEdges = this._roofGroupOuterEdges(surfaces, tolerance);
-
-    let members = 0;
-    if (removeMembers) {
-      const memberIds = this.members
-        .filter(member => member.roofRole && this._isRoofMemberInGroup(member, surfaces, tolerance))
-        .map(member => member.id);
-      for (const id of memberIds) {
-        this.removeMember(id);
-        members += 1;
-      }
-    }
-
-    let eaves = 0;
-    let gableWalls = 0;
-    const surfaceIds = [];
-    for (const surface of this.surfaces) {
-      if (removeEaves && isEaveSurfaceType(surface.type) && this._isEaveOnRoofOuterEdges(surface, outerEdges, tolerance)) {
-        surfaceIds.push(surface.id);
-        eaves += 1;
-      } else if (removeGableWalls && isGableWallSurfaceType(surface.type) && this._isGableOnRoofOuterEdges(surface, outerEdges, tolerance)) {
-        surfaceIds.push(surface.id);
-        gableWalls += 1;
-      }
-    }
-    for (const id of surfaceIds) {
-      this.removeSurface(id);
-    }
-
-    return {
-      members,
-      eaves,
-      gableWalls,
-      total: members + eaves + gableWalls,
-    };
-  }
-
-  regenerateRoofGeneratedElements(roofGroupId, options = {}) {
-    const removed = this.removeRoofGeneratedElements(roofGroupId, options);
-    const surfaces = this.getRoofGroupSurfaces(roofGroupId);
-    const spacing = sanitizePositiveNumber(options.spacing, 910);
-    const depth = sanitizePositiveNumber(options.depth, 600);
-    const generated = {
-      roofEdges: 0,
-      roofSlopeBeams: 0,
-      roofJoints: 0,
-      eaves: 0,
-      gableWalls: 0,
-    };
-    for (const surface of surfaces) {
-      generated.roofEdges += this.addRoofEdgeMembers(surface.id).length;
-      generated.roofSlopeBeams += this.addRoofSlopeMembers(surface.id, { spacing }).length;
-    }
-    generated.roofJoints = this.addRoofJointMembers(roofGroupId).length;
-    generated.eaves = this.addEavesFromRoofGroup(roofGroupId, { depth }).length;
-    generated.gableWalls = this.addGableWallsFromRoofGroup(roofGroupId).length;
-    const generatedTotal = Object.values(generated).reduce((sum, count) => sum + count, 0);
-    return {
-      removed,
-      generated,
-      generatedTotal,
-      total: removed.total + generatedTotal,
-    };
-  }
-
-  listRoofGroups() {
-    const groups = new Map();
-    for (const surface of this.surfaces) {
-      if (!isRoofSurfaceType(surface.type)) continue;
-      const groupId = sanitizeRoofGroupId(surface.roofGroupId, 'RG1');
-      const group = groups.get(groupId) || { id: groupId, surfaces: [] };
-      group.surfaces.push(surface);
-      groups.set(groupId, group);
-    }
-    return [...groups.values()].sort((a, b) => a.id.localeCompare(b.id));
-  }
-
-  getRoofGroupSurfaces(groupId) {
-    const normalizedGroupId = sanitizeRoofGroupId(groupId, 'RG1');
-    return this.surfaces.filter(surface =>
-      isRoofSurfaceType(surface.type) &&
-      sanitizeRoofGroupId(surface.roofGroupId, 'RG1') === normalizedGroupId
-    );
-  }
-
-  _sharedRoofEdges(surfaceA, surfaceB, tolerance = 1, zTolerance = 1) {
-    const edges = [];
-    const edgesA = this._roofPlanEdges(surfaceA);
-    const edgesB = this._roofPlanEdges(surfaceB);
-    for (const edgeA of edgesA) {
-      for (const edgeB of edgesB) {
-        if (!sameSegment(edgeA.start, edgeA.end, edgeB.start, edgeB.end, tolerance)) continue;
-        const startA = roofPoint3D(this, surfaceA, edgeA.start);
-        const endA = roofPoint3D(this, surfaceA, edgeA.end);
-        const startB = roofPoint3D(this, surfaceB, edgeA.start);
-        const endB = roofPoint3D(this, surfaceB, edgeA.end);
-        if (Math.abs(startA.z - startB.z) > zTolerance || Math.abs(endA.z - endB.z) > zTolerance) continue;
-        const start = { x: edgeA.start.x, y: edgeA.start.y, z: (startA.z + startB.z) / 2 };
-        const end = { x: edgeA.end.x, y: edgeA.end.y, z: (endA.z + endB.z) / 2 };
-        edges.push({
-          surfaceA,
-          surfaceB,
-          start,
-          end,
-          roofRole: this._classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance),
-        });
-      }
-    }
-    return edges;
-  }
-
-  _roofPlanEdges(surface) {
-    const points = roofPlanPoints(surface);
-    return points.map((start, index) => ({
-      start,
-      end: points[(index + 1) % points.length],
-    }));
-  }
-
-  _hasSharedRoofGroupEdge(surface, start, end, tolerance = 1) {
-    if (!isRoofSurfaceType(surface.type)) return false;
-    const groupSurfaces = this.getRoofGroupSurfaces(surface.roofGroupId);
-    return groupSurfaces.some(other => {
-      if (other.id === surface.id) return false;
-      return this._roofPlanEdges(other).some(edge =>
-        sameSegment(start, end, edge.start, edge.end, tolerance)
-      );
-    });
-  }
-
-  _hasGableWallOnSegment(levelId, start, end, tolerance = 1) {
-    return this.surfaces.some(surface => (
-      isGableWallSurfaceType(surface.type) &&
-      surface.levelId === levelId &&
-      sameSegment(
-        { x: surface.x1, y: surface.y1 },
-        { x: surface.x2, y: surface.y2 },
-        start,
-        end,
-        tolerance
-      )
-    ));
-  }
-
-  _hasEaveOnInnerSegment(levelId, start, end, tolerance = 1) {
-    return this.surfaces.some(surface => {
-      if (!isEaveSurfaceType(surface.type) || surface.levelId !== levelId) return false;
-      const points = roofPlanPoints(surface);
-      if (points.length < 2) return false;
-      return sameSegment(start, end, points[0], points[1], tolerance);
-    });
-  }
-
-  _roofGroupOuterEdges(surfaces, tolerance = 1) {
-    const edges = [];
-    for (const surface of surfaces) {
-      for (const edge of this._roofPlanEdges(surface)) {
-        const isShared = surfaces.some(other =>
-          other.id !== surface.id &&
-          this._roofPlanEdges(other).some(otherEdge =>
-            sameSegment(edge.start, edge.end, otherEdge.start, otherEdge.end, tolerance)
-          )
-        );
-        if (!isShared) edges.push({ ...edge, surface });
-      }
-    }
-    return edges;
-  }
-
-  _isRoofMemberInGroup(member, surfaces, tolerance = 1) {
-    const start = this.getNode(member.startNodeId);
-    const end = this.getNode(member.endNodeId);
-    if (!start || !end) return false;
-    return surfaces.some(surface =>
-      isPlanPointInOrOnRoofSurface(start, surface, tolerance) &&
-      isPlanPointInOrOnRoofSurface(end, surface, tolerance)
-    );
-  }
-
-  _isEaveOnRoofOuterEdges(surface, outerEdges, tolerance = 1) {
-    const points = roofPlanPoints(surface);
-    if (points.length < 2) return false;
-    return outerEdges.some(edge => (
-      surface.levelId === edge.surface.levelId &&
-      sameSegment(points[0], points[1], edge.start, edge.end, tolerance)
-    ));
-  }
-
-  _isGableOnRoofOuterEdges(surface, outerEdges, tolerance = 1) {
-    return outerEdges.some(edge => (
-      surface.levelId === edge.surface.levelId &&
-      sameSegment(
-        { x: surface.x1, y: surface.y1 },
-        { x: surface.x2, y: surface.y2 },
-        edge.start,
-        edge.end,
-        tolerance
-      )
-    ));
-  }
-
-  _removeRoofEdgeMembersOnSegment(start, end, tolerance = 1) {
-    const removedIds = new Set();
-    this.members = this.members.filter(member => {
-      if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return true;
-      const startNode = this.getNode(member.startNodeId);
-      const endNode = this.getNode(member.endNodeId);
-      if (!startNode || !endNode) return true;
-      const matches = sameSegment(start, end, startNode, endNode, tolerance);
-      if (matches) removedIds.add(member.id);
-      return !matches;
-    });
-    if (removedIds.has(this.selectedMemberId)) this.selectedMemberId = null;
-  }
-
-  _classifyRoofJoint(surfaceA, surfaceB, start, end, zTolerance = 1) {
-    const edgeZ = (start.z + end.z) / 2;
-    const deltaA = this._roofInteriorZDelta(surfaceA, start, end, edgeZ);
-    const deltaB = this._roofInteriorZDelta(surfaceB, start, end, edgeZ);
-    if (deltaA > zTolerance && deltaB > zTolerance) {
-      return Math.abs(start.z - end.z) <= zTolerance ? 'roofRidge' : 'roofHip';
-    }
-    if (deltaA < -zTolerance && deltaB < -zTolerance) return 'roofValley';
-    return 'roofJoint';
-  }
-
-  _roofInteriorZDelta(surface, start, end, edgeZ) {
-    const sample = this._roofInteriorSamplePoint(surface, start, end);
-    if (!sample) return 0;
-    return edgeZ - roofPoint3D(this, surface, sample).z;
-  }
-
-  _roofInteriorSamplePoint(surface, start, end) {
-    const points = roofPlanPoints(surface);
-    if (points.length < 3) return null;
-    const mid = {
-      x: (start.x + end.x) / 2,
-      y: (start.y + end.y) / 2,
-    };
-    const edge = this._roofPlanEdges(surface).find(candidate =>
-      sameSegment(candidate.start, candidate.end, start, end, 1)
-    );
-    if (edge) {
-      const inward = edgeInwardNormal(edge.start, edge.end, points);
-      const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-      const distances = uniquePositiveNumbers([
-        Math.min(250, length * 0.25),
-        Math.min(100, length * 0.1),
-        10,
-        1,
-      ]);
-      for (const distance of distances) {
-        const sample = {
-          x: mid.x + inward.x * distance,
-          y: mid.y + inward.y * distance,
-        };
-        if (isInteriorPlanPoint(sample, points, 0.001)) return sample;
-      }
-    }
-
-    const centroid = polygonVertexCentroid(points);
-    if (isInteriorPlanPoint(centroid, points, 0.001)) return centroid;
-    return null;
-  }
-
-  _splitRoofEdgeMemberAtNode(node, tolerance = 1) {
-    const edge = this.members.find(member => {
-      if (member.roofRole !== 'roofEdge' || member.geometryMode !== 'explicit3d') return false;
-      if (member.startNodeId === node.id || member.endNodeId === node.id) return false;
-      const startNode = this.getNode(member.startNodeId);
-      const endNode = this.getNode(member.endNodeId);
-      if (!startNode || !endNode) return false;
-      const t = segmentParameter(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y);
-      return t > 0.000001 && t < 0.999999 &&
-        pointToSegmentDist(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y) <= tolerance;
-    });
-    if (!edge) return null;
-
-    const startNode = this.getNode(edge.startNodeId);
-    const endNode = this.getNode(edge.endNodeId);
-    const t = segmentParameter(node.x, node.y, startNode.x, startNode.y, endNode.x, endNode.y);
-    const startZ = this._memberEndpointZ(edge, 'startZ');
-    const endZ = this._memberEndpointZ(edge, 'endZ');
-    const splitZ = startZ + (endZ - startZ) * t;
-    this.members = this.members.filter(member => member.id !== edge.id);
-    if (this.selectedMemberId === edge.id) this.selectedMemberId = null;
-    const first = this._addRoofEdgeSegment(edge, edge.startNodeId, node.id, startZ, splitZ);
-    const second = this._addRoofEdgeSegment(edge, node.id, edge.endNodeId, splitZ, endZ);
-    return {
-      removedId: edge.id,
-      members: [first, second],
-    };
-  }
-
-  _addRoofEdgeSegment(source, startNodeId, endNodeId, startZ, endZ) {
-    return this.addMember(startNodeId, endNodeId, {
-      type: source.type,
-      levelId: source.levelId,
-      topLevelId: source.topLevelId,
-      geometryMode: 'explicit3d',
-      startZ,
-      endZ,
-      roofRole: source.roofRole,
-      sectionName: source.sectionName,
-      bracePattern: source.bracePattern,
-      endI: source.endI,
-      endJ: source.endJ,
-    });
-  }
-
   _memberEndpointZ(member, key) {
     const value = Number(member[key]);
     if (Number.isFinite(value)) return value;
@@ -1646,27 +940,50 @@ export class AppState {
     return sanitizeNumber(level?.z, 0);
   }
 
-  _roofSlopeBoundaryNodes(surface, tolerance = 1) {
-    const nodeIds = new Set();
-    for (const member of this.members) {
-      if (member.roofRole !== 'roofSlopeBeam' || member.geometryMode !== 'explicit3d') continue;
-      for (const nodeId of [member.startNodeId, member.endNodeId]) {
-        const node = this.getNode(nodeId);
-        if (node && this._isNodeOnRoofBoundary(surface, node, tolerance)) {
-          nodeIds.add(nodeId);
-        }
-      }
-    }
-    return [...nodeIds].map(id => this.getNode(id)).filter(Boolean);
+  // --- Roof auto-generation (implementation lives in roof-generation.js) ---
+
+  addRoofEdgeMembers(surfaceId, options = {}) {
+    return roofGen.addRoofEdgeMembers(this, surfaceId, options);
   }
 
-  _isNodeOnRoofBoundary(surface, node, tolerance = 1) {
-    const points = roofPlanPoints(surface);
-    if (points.length < 3) return false;
-    return points.some((point, index) => {
-      const next = points[(index + 1) % points.length];
-      return pointToSegmentDist(node.x, node.y, point.x, point.y, next.x, next.y) <= tolerance;
-    });
+  addRoofSlopeMembers(surfaceId, options = {}) {
+    return roofGen.addRoofSlopeMembers(this, surfaceId, options);
+  }
+
+  addRoofJointMembers(roofGroupId, options = {}) {
+    return roofGen.addRoofJointMembers(this, roofGroupId, options);
+  }
+
+  addGableWallsFromRoofGroup(roofGroupId, options = {}) {
+    return roofGen.addGableWallsFromRoofGroup(this, roofGroupId, options);
+  }
+
+  addEavesFromRoofGroup(roofGroupId, options = {}) {
+    return roofGen.addEavesFromRoofGroup(this, roofGroupId, options);
+  }
+
+  addRoofPlanesFromSurface(sourceSurfaceId, options = {}) {
+    return roofGen.addRoofPlanesFromSurface(this, sourceSurfaceId, options);
+  }
+
+  validateRoofGroup(roofGroupId, options = {}) {
+    return roofGen.validateRoofGroup(this, roofGroupId, options);
+  }
+
+  removeRoofGeneratedElements(roofGroupId, options = {}) {
+    return roofGen.removeRoofGeneratedElements(this, roofGroupId, options);
+  }
+
+  regenerateRoofGeneratedElements(roofGroupId, options = {}) {
+    return roofGen.regenerateRoofGeneratedElements(this, roofGroupId, options);
+  }
+
+  listRoofGroups() {
+    return roofGen.listRoofGroups(this);
+  }
+
+  getRoofGroupSurfaces(groupId) {
+    return roofGen.getRoofGroupSurfaces(this, groupId);
   }
 
   // --- Surfaces ---
@@ -1676,43 +993,54 @@ export class AppState {
     return `S${this._surfaceCounter}`;
   }
 
-  addSurfaceRect(x1, y1, x2, y2, options = {}) {
-    const id = this.nextSurfaceId();
-    const type = options.type || 'floor';
-    const levelId = options.levelId || this.activeLayerId || 'L0';
-    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
+  // Shared surface factory: assigns the id and applies section / height /
+  // roof / gable normalization before registering the surface.
+  _createSurface(base, options) {
+    const { type, levelId, topLevelId } = base;
     const surface = {
-      id,
-      type,
+      id: this.nextSurfaceId(),
       sectionName: sanitizeText(options.sectionName) || '',
-      levelId,
-      topLevelId,
-      loadDirection: options.loadDirection || 'twoWay', // x | y | twoWay
-      color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
-      x1: Math.min(x1, x2),
-      y1: Math.min(y1, y2),
-      x2: Math.max(x1, x2),
-      y2: Math.max(y1, y2),
-      points: null,
-      shape: 'rect',
+      ...base,
       ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
       ...this._normalizeSurfaceRoof(type, options),
     };
     Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
     this._ensureSurfaceSection(surface, surface.sectionName);
     this.surfaces.push(surface);
+    this._touch();
     return surface;
   }
 
+  addSurfaceRect(x1, y1, x2, y2, options = {}) {
+    const type = options.type || 'floor';
+    const levelId = options.levelId || this.activeLayerId || 'L0';
+    // NOTE: rect/polygon surfaces prefer the draft top layer over the next
+    // level, while line surfaces prefer the next level first (see
+    // addSurfaceLine). The asymmetry is historical and intentionally kept.
+    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
+    return this._createSurface({
+      type,
+      levelId,
+      topLevelId,
+      loadDirection: options.loadDirection || 'twoWay', // x | y | twoWay
+      color: options.color || defaultSurfaceDrawColor(options.type),
+      x1: Math.min(x1, x2),
+      y1: Math.min(y1, y2),
+      x2: Math.max(x1, x2),
+      y2: Math.max(y1, y2),
+      points: null,
+      shape: 'rect',
+    }, options);
+  }
+
   addSurfaceLine(x1, y1, x2, y2, options = {}) {
-    const id = this.nextSurfaceId();
     const type = options.type || 'wall';
     const levelId = options.levelId || this.activeLayerId || 'L0';
+    // NOTE: topLevelId fallback order differs from addSurfaceRect/Polygon:
+    // line surfaces prefer the next level before the draft top layer.
     const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLayerId || levelId;
-    const surface = {
-      id,
+    return this._createSurface({
       type,
-      sectionName: sanitizeText(options.sectionName) || '',
       levelId,
       topLevelId,
       loadDirection: 'twoWay',
@@ -1720,44 +1048,30 @@ export class AppState {
       x1, y1, x2, y2,
       points: [{ x: x1, y: y1 }, { x: x2, y: y2 }],
       shape: 'line',
-      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
-      ...this._normalizeSurfaceRoof(type, options),
-    };
-    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
-    this._ensureSurfaceSection(surface, surface.sectionName);
-    this.surfaces.push(surface);
-    return surface;
+    }, options);
   }
 
   addSurfacePolygon(points, options = {}) {
     if (!Array.isArray(points) || points.length < 3) return null;
-    const id = this.nextSurfaceId();
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
     const type = options.type || 'wall';
     const levelId = options.levelId || this.activeLayerId || 'L0';
+    // NOTE: same fallback order as addSurfaceRect (differs from addSurfaceLine).
     const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
-    const surface = {
-      id,
+    return this._createSurface({
       type,
-      sectionName: sanitizeText(options.sectionName) || '',
       levelId,
       topLevelId,
       loadDirection: options.loadDirection || 'twoWay',
-      color: options.color || (options.type === 'wall' || options.type === 'exteriorWall' ? '#b57a6b' : '#67a9cf'),
+      color: options.color || defaultSurfaceDrawColor(options.type),
       x1: Math.min(...xs),
       y1: Math.min(...ys),
       x2: Math.max(...xs),
       y2: Math.max(...ys),
       points: points.map(p => ({ x: p.x, y: p.y })),
       shape: 'polygon',
-      ...this._normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options),
-      ...this._normalizeSurfaceRoof(type, options),
-    };
-    Object.assign(surface, this._normalizeSurfaceGable(type, levelId, topLevelId, { ...surface, ...options }));
-    this._ensureSurfaceSection(surface, surface.sectionName);
-    this.surfaces.push(surface);
-    return surface;
+    }, options);
   }
 
   getSurface(id) {
@@ -1774,75 +1088,16 @@ export class AppState {
     const hasHeightMode = hasOwn(patch, 'heightMode');
     const hasBottomOffset = hasOwn(patch, 'bottomOffset');
     const hasTopOffset = hasOwn(patch, 'topOffset');
-    const hasUnitWeight = hasOwn(patch, 'unitWeight');
-    const hasIncludeWind = hasOwn(patch, 'includeWind');
-    const hasIncludeSeismicWeight = hasOwn(patch, 'includeSeismicWeight');
-    const hasRoofSlope = hasOwn(patch, 'roofSlope');
-    const hasRoofDirection = hasOwn(patch, 'roofDirection');
-    const hasRoofBaseOffset = hasOwn(patch, 'roofBaseOffset');
-    const hasRoofGroupId = hasOwn(patch, 'roofGroupId');
     const hasGableStartTopOffset = hasOwn(patch, 'gableStartTopOffset');
     const hasGableEndTopOffset = hasOwn(patch, 'gableEndTopOffset');
     if (hasColor) {
       // Color is section-driven, so direct color patching is ignored.
       delete patch.color;
     }
-    if (hasHeightMode) {
-      patch.heightMode = normalizeSurfaceHeightMode(patch.heightMode);
-    }
-    if (hasBottomOffset) {
-      patch.bottomOffset = sanitizeNumber(patch.bottomOffset, surface.bottomOffset || 0);
-    }
-    if (hasTopOffset) {
-      patch.topOffset = sanitizeNumber(patch.topOffset, surface.topOffset || 0);
-    }
-    if (hasUnitWeight) {
-      patch.unitWeight = sanitizeNonNegativeNumber(patch.unitWeight, surface.unitWeight || 0);
-    }
-    if (hasIncludeWind) {
-      patch.includeWind = !!patch.includeWind;
-    }
-    if (hasIncludeSeismicWeight) {
-      patch.includeSeismicWeight = !!patch.includeSeismicWeight;
-    }
-    if (hasRoofSlope) {
-      patch.roofSlope = sanitizeNonNegativeNumber(patch.roofSlope, surface.roofSlope || 0);
-    }
-    if (hasRoofDirection) {
-      patch.roofDirection = normalizeRoofDirection(patch.roofDirection);
-    }
-    if (hasRoofBaseOffset) {
-      patch.roofBaseOffset = sanitizeNumber(patch.roofBaseOffset, surface.roofBaseOffset || 0);
-    }
-    if (hasRoofGroupId) {
-      patch.roofGroupId = sanitizeRoofGroupId(patch.roofGroupId, surface.roofGroupId || 'RG1');
-    }
-    const currentGableStartTopOffset = hasOwn(surface, 'gableStartTopOffset')
-      ? surface.gableStartTopOffset
-      : surface.topOffset;
-    const currentGableEndTopOffset = hasOwn(surface, 'gableEndTopOffset')
-      ? surface.gableEndTopOffset
-      : surface.topOffset;
-    if (hasGableStartTopOffset) {
-      patch.gableStartTopOffset = sanitizeNumber(patch.gableStartTopOffset, currentGableStartTopOffset);
-    }
-    if (hasGableEndTopOffset) {
-      patch.gableEndTopOffset = sanitizeNumber(patch.gableEndTopOffset, currentGableEndTopOffset);
-    }
+    sanitizePatchFields(patch, SURFACE_PATCH_SANITIZERS, surface);
 
     const prospectiveType = patch.type || surface.type;
-    if (!isSlopedSurfaceType(prospectiveType)) {
-      delete patch.roofSlope;
-      delete patch.roofDirection;
-      delete patch.roofBaseOffset;
-    }
-    if (!isRoofSurfaceType(prospectiveType)) {
-      delete patch.roofGroupId;
-    }
-    if (!isGableWallSurfaceType(prospectiveType)) {
-      delete patch.gableStartTopOffset;
-      delete patch.gableEndTopOffset;
-    }
+    stripSurfaceFieldsForType(patch, prospectiveType);
     if (isWallSurfaceType(prospectiveType) && (hasBottomOffset || hasTopOffset)) {
       const prospectiveBottom = hasBottomOffset ? patch.bottomOffset : surface.bottomOffset;
       const prospectiveTop = hasTopOffset ? patch.topOffset : surface.topOffset;
@@ -1875,34 +1130,27 @@ export class AppState {
     if (hasType) {
       if (isSlopedSurfaceType(surface.type)) {
         Object.assign(surface, this._normalizeSurfaceRoof(surface.type, surface));
-      } else {
-        delete surface.roofSlope;
-        delete surface.roofDirection;
-        delete surface.roofBaseOffset;
       }
-      if (!isRoofSurfaceType(surface.type)) {
-        delete surface.roofGroupId;
-      }
-      if (!isGableWallSurfaceType(surface.type)) {
-        delete surface.gableStartTopOffset;
-        delete surface.gableEndTopOffset;
-      }
+      stripSurfaceFieldsForType(surface, surface.type);
     }
     if (hasType || hasSectionName || hasColor) {
       this._ensureSurfaceSection(surface, surface.sectionName);
     }
+    this._touch();
     return surface;
   }
 
   removeSurface(id) {
+    const before = this.surfaces.length;
     this.surfaces = this.surfaces.filter(s => s.id !== id);
     if (this.selectedSurfaceId === id) {
       this.selectedSurfaceId = null;
     }
+    if (this.surfaces.length !== before) this._touch();
   }
 
   findSurfaceAt(x, y, predicate = null) {
-    const wallOffset = this.settings.wallDisplayOffset || 120;
+    const wallOffset = this.settings.wallDisplayOffset || WALL_DISPLAY_OFFSET_MM;
     for (let i = this.surfaces.length - 1; i >= 0; i--) {
       const s = this.surfaces[i];
       if (predicate && !predicate(s)) continue;
@@ -1912,7 +1160,7 @@ export class AppState {
         const ly1 = s.y1 + wallOffset;
         const lx2 = s.x2 + wallOffset;
         const ly2 = s.y2 + wallOffset;
-        if (pointToSegmentDist(x, y, lx1, ly1, lx2, ly2) < 300) {
+        if (pointToSegmentDist(x, y, lx1, ly1, lx2, ly2) < HIT_TOLERANCE_MM) {
           return s;
         }
         continue;
@@ -1920,14 +1168,14 @@ export class AppState {
       if (s.shape === 'polygon' && Array.isArray(s.points)) {
         if (s.type === 'exteriorWall') {
           // Hit test against outward-offset edges
-          if (hitExteriorWallEdges(x, y, s.points, wallOffset, 300)) return s;
+          if (hitExteriorWallEdges(x, y, s.points, wallOffset, HIT_TOLERANCE_MM)) return s;
           continue;
         }
         const pts = s.points.map(p => ({
           x: p.x + (isWallType ? wallOffset : 0),
           y: p.y + (isWallType ? wallOffset : 0),
         }));
-        if (pointInPolygon(x, y, pts)) {
+        if (pointInPolygon({ x, y }, pts)) {
           return s;
         }
         continue;
@@ -1954,12 +1202,16 @@ export class AppState {
     const id = this.nextLevelId();
     const level = { id, name, z };
     this.levels.push(level);
+    this._touch();
     return level;
   }
 
   updateLevel(id, props) {
     const level = this.levels.find(l => l.id === id);
-    if (level) Object.assign(level, props);
+    if (level) {
+      Object.assign(level, props);
+      this._touch();
+    }
     return level;
   }
 
@@ -1981,220 +1233,16 @@ export class AppState {
     if (this.surfaceDraftTopLayerId === id) {
       this.surfaceDraftTopLayerId = this.levels[this.levels.length - 1].id;
     }
+    this._touch();
     return true;
   }
 
   copyLevelElements(sourceLevelId, targetLevelId, options = {}) {
-    if (!sourceLevelId || !targetLevelId || sourceLevelId === targetLevelId) {
-      return { members: 0, surfaces: 0, loads: 0, supports: 0 };
-    }
-    if (!this.levels.some(l => l.id === sourceLevelId) || !this.levels.some(l => l.id === targetLevelId)) {
-      return { members: 0, surfaces: 0, loads: 0, supports: 0 };
-    }
-
-    const include = {
-      members: options.members !== false,
-      surfaces: options.surfaces !== false,
-      loads: options.loads !== false,
-      supports: options.supports !== false,
-    };
-    const counts = { members: 0, surfaces: 0, loads: 0, supports: 0 };
-    const zDelta = this.getLevelZ(targetLevelId) - this.getLevelZ(sourceLevelId);
-    const nodeMap = new Map();
-    const nodeFor = (nodeId) => {
-      if (nodeMap.has(nodeId)) return nodeMap.get(nodeId);
-      const sourceNode = this.getNode(nodeId);
-      if (!sourceNode) return null;
-      const node = this.addNode(sourceNode.x, sourceNode.y, sourceNode.z || 0);
-      nodeMap.set(nodeId, node);
-      return node;
-    };
-    const mapTopLevel = (topLevelId) => {
-      if (!topLevelId) return null;
-      if (topLevelId === sourceLevelId || topLevelId === this.getNextLevelId(sourceLevelId)) {
-        return this.getNextLevelId(targetLevelId) || targetLevelId;
-      }
-      return topLevelId;
-    };
-    const mapRoofGroupId = (roofGroupId) => {
-      const base = sanitizeRoofGroupId(roofGroupId, 'RG1');
-      return sanitizeRoofGroupId(`${base}_${targetLevelId}`, `${base}_${targetLevelId}`);
-    };
-
-    if (include.members) {
-      const sourceMembers = [...this.members].filter(m => m.levelId === sourceLevelId);
-      for (const member of sourceMembers) {
-        if (member.roofRole) continue;
-        const startNode = nodeFor(member.startNodeId);
-        const endNode = nodeFor(member.endNodeId);
-        if (!startNode || !endNode) continue;
-        const copied = this.addMember(startNode.id, endNode.id, {
-          type: member.type,
-          sectionName: member.sectionName,
-          levelId: targetLevelId,
-          topLevelId: (member.type === 'column' || member.type === 'vbrace')
-            ? (this.getNextLevelId(targetLevelId) || targetLevelId)
-            : mapTopLevel(member.topLevelId),
-          geometryMode: member.geometryMode,
-          startZ: member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.startZ))
-            ? Number(member.startZ) + zDelta
-            : member.startZ,
-          endZ: member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.endZ))
-            ? Number(member.endZ) + zDelta
-            : member.endZ,
-          roofRole: null,
-          bracePattern: member.bracePattern,
-          endI: member.endI,
-          endJ: member.endJ,
-        });
-        if (copied) counts.members++;
-      }
-    }
-
-    if (include.surfaces) {
-      const sourceSurfaces = [...this.surfaces].filter(s => s.levelId === sourceLevelId);
-      for (const surface of sourceSurfaces) {
-        const common = {
-          type: surface.type,
-          sectionName: surface.sectionName,
-          levelId: targetLevelId,
-          topLevelId: mapTopLevel(surface.topLevelId) || targetLevelId,
-          loadDirection: surface.loadDirection,
-          heightMode: surface.heightMode,
-          bottomOffset: surface.bottomOffset,
-          topOffset: surface.topOffset,
-          includeWind: surface.includeWind,
-          includeSeismicWeight: surface.includeSeismicWeight,
-          unitWeight: surface.unitWeight,
-          roofSlope: surface.roofSlope,
-          roofDirection: surface.roofDirection,
-          roofBaseOffset: surface.roofBaseOffset,
-          roofGroupId: isRoofSurfaceType(surface.type) ? mapRoofGroupId(surface.roofGroupId) : surface.roofGroupId,
-          gableStartTopOffset: surface.gableStartTopOffset,
-          gableEndTopOffset: surface.gableEndTopOffset,
-        };
-        let copied = null;
-        if (surface.shape === 'polygon' && Array.isArray(surface.points)) {
-          copied = this.addSurfacePolygon(surface.points.map(p => ({ ...p })), common);
-        } else if (surface.shape === 'line') {
-          copied = this.addSurfaceLine(surface.x1, surface.y1, surface.x2, surface.y2, common);
-        } else {
-          copied = this.addSurfaceRect(surface.x1, surface.y1, surface.x2, surface.y2, common);
-        }
-        if (copied) counts.surfaces++;
-      }
-    }
-
-    if (include.loads) {
-      const sourceLoads = [...this.loads].filter(l => l.levelId === sourceLevelId);
-      for (const load of sourceLoads) {
-        const props = { ...load, levelId: targetLevelId };
-        delete props.id;
-        if (this.addLoad(load.type, props)) counts.loads++;
-      }
-    }
-
-    if (include.supports) {
-      const sourceSupports = [...this.supports].filter(s => s.levelId === sourceLevelId);
-      for (const support of sourceSupports) {
-        const props = { ...support, levelId: targetLevelId };
-        delete props.id;
-        if (this.addSupport(support.x, support.y, props)) counts.supports++;
-      }
-    }
-
-    return counts;
+    return modelOps.copyLevelElements(this, sourceLevelId, targetLevelId, options);
   }
 
   validateModel() {
-    const issues = [];
-    const addIssue = (severity, code, message, ref = {}) => {
-      issues.push({ severity, code, message, ...ref });
-    };
-    const levelIds = new Set(this.levels.map(l => l.id));
-    const nodeIds = new Set(this.nodes.map(n => n.id));
-    const levelZ = new Map();
-    for (const level of this.levels) {
-      const zKey = String(Number(level.z));
-      if (levelZ.has(zKey)) {
-        addIssue('warning', 'duplicate-level-z', `階 ${level.name} は ${levelZ.get(zKey)} と同じz値です`, { elementType: 'level', elementId: level.id });
-      } else {
-        levelZ.set(zKey, level.name);
-      }
-    }
-
-    for (const member of this.members) {
-      const n1 = this.getNode(member.startNodeId);
-      const n2 = this.getNode(member.endNodeId);
-      if (!nodeIds.has(member.startNodeId) || !nodeIds.has(member.endNodeId) || !n1 || !n2) {
-        addIssue('error', 'missing-node', `線材 ${member.id} の参照ノードが見つかりません`, { elementType: 'member', elementId: member.id });
-        continue;
-      }
-      if (!levelIds.has(member.levelId)) {
-        addIssue('error', 'missing-level', `線材 ${member.id} の管理レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
-      }
-      if ((member.type === 'column' || member.type === 'vbrace') && !levelIds.has(member.topLevelId)) {
-        addIssue('error', 'missing-top-level', `線材 ${member.id} の上端レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
-      }
-      const startZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'startZ') : this.getLevelZ(member.levelId);
-      const endZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'endZ') : this.getLevelZ(member.levelId);
-      if (member.type !== 'column' && Math.hypot(n2.x - n1.x, n2.y - n1.y, endZ - startZ) < 1) {
-        addIssue('warning', 'zero-length-member', `線材 ${member.id} の長さが0です`, { elementType: 'member', elementId: member.id });
-      }
-      if (member.sectionName && !this._getSectionRef('member', member.type, member.sectionName)) {
-        addIssue('warning', 'missing-section', `線材 ${member.id} の断面 ${member.sectionName} が見つかりません`, { elementType: 'member', elementId: member.id });
-      }
-      if ((member.type === 'column' || member.type === 'vbrace') && member.topLevelId === member.levelId) {
-        addIssue('warning', 'same-top-level', `線材 ${member.id} の下端/上端レイヤーが同一です`, { elementType: 'member', elementId: member.id });
-      }
-    }
-
-    const usedNodes = new Set();
-    for (const member of this.members) {
-      usedNodes.add(member.startNodeId);
-      usedNodes.add(member.endNodeId);
-    }
-    for (const node of this.nodes) {
-      if (!usedNodes.has(node.id)) {
-        addIssue('info', 'orphan-node', `孤立ノード ${node.id} があります`, { elementType: 'node', elementId: node.id });
-      }
-    }
-
-    const memberKeys = new Map();
-    for (const member of this.members) {
-      const n1 = this.getNode(member.startNodeId);
-      const n2 = this.getNode(member.endNodeId);
-      if (!n1 || !n2) continue;
-      const startZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'startZ') : this.getLevelZ(member.levelId);
-      const endZ = member.geometryMode === 'explicit3d' ? this._memberEndpointZ(member, 'endZ') : this.getLevelZ(member.levelId);
-      const points = [
-        `${Math.round(n1.x)}:${Math.round(n1.y)}:${Math.round(startZ)}`,
-        `${Math.round(n2.x)}:${Math.round(n2.y)}:${Math.round(endZ)}`,
-      ].sort();
-      const key = [member.type, member.levelId, member.topLevelId || '', ...points].join('|');
-      if (memberKeys.has(key)) {
-        addIssue('warning', 'duplicate-member', `線材 ${member.id} は ${memberKeys.get(key)} と重複しています`, { elementType: 'member', elementId: member.id });
-      } else {
-        memberKeys.set(key, member.id);
-      }
-    }
-
-    for (const surface of this.surfaces) {
-      if (!levelIds.has(surface.levelId)) {
-        addIssue('error', 'missing-level', `面材 ${surface.id} の管理レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
-      }
-      if (isWallSurfaceType(surface.type) && surface.topLevelId && !levelIds.has(surface.topLevelId)) {
-        addIssue('error', 'missing-top-level', `面材 ${surface.id} の上端レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
-      }
-      if (surface.shape === 'rect' && (Math.abs(surface.x2 - surface.x1) < 1 || Math.abs(surface.y2 - surface.y1) < 1)) {
-        addIssue('warning', 'zero-area-surface', `面材 ${surface.id} の面積が0です`, { elementType: 'surface', elementId: surface.id });
-      }
-      if (surface.sectionName && !this._getSectionRef('surface', surface.type, surface.sectionName)) {
-        addIssue('warning', 'missing-section', `面材 ${surface.id} の断面 ${surface.sectionName} が見つかりません`, { elementType: 'surface', elementId: surface.id });
-      }
-    }
-
-    return issues;
+    return modelOps.validateModel(this);
   }
 
   // --- Loads ---
@@ -2233,6 +1281,7 @@ export class AppState {
       });
     }
     this.loads.push(base);
+    this._touch();
     return base;
   }
 
@@ -2242,15 +1291,20 @@ export class AppState {
 
   updateLoad(id, props) {
     const load = this.getLoad(id);
-    if (load) Object.assign(load, props);
+    if (load) {
+      Object.assign(load, props);
+      this._touch();
+    }
     return load;
   }
 
   removeLoad(id) {
+    const before = this.loads.length;
     this.loads = this.loads.filter(l => l.id !== id);
     if (this.selectedLoadId === id) {
       this.selectedLoadId = null;
     }
+    if (this.loads.length !== before) this._touch();
   }
 
   findLoadAt(x, y, predicate = null) {
@@ -2260,9 +1314,9 @@ export class AppState {
       if (ld.type === 'areaLoad') {
         if (x >= ld.x1 && x <= ld.x2 && y >= ld.y1 && y <= ld.y2) return ld;
       } else if (ld.type === 'lineLoad') {
-        if (pointToSegmentDist(x, y, ld.x1, ld.y1, ld.x2, ld.y2) < 300) return ld;
+        if (pointToSegmentDist(x, y, ld.x1, ld.y1, ld.x2, ld.y2) < HIT_TOLERANCE_MM) return ld;
       } else if (ld.type === 'pointLoad') {
-        if (Math.hypot(x - ld.x1, y - ld.y1) < 300) return ld;
+        if (Math.hypot(x - ld.x1, y - ld.y1) < HIT_TOLERANCE_MM) return ld;
       }
     }
     return null;
@@ -2290,6 +1344,7 @@ export class AppState {
       rz: options.rz !== undefined ? !!options.rz : false,
     };
     this.supports.push(support);
+    this._touch();
     return support;
   }
 
@@ -2299,18 +1354,23 @@ export class AppState {
 
   updateSupport(id, props) {
     const support = this.getSupport(id);
-    if (support) Object.assign(support, props);
+    if (support) {
+      Object.assign(support, props);
+      this._touch();
+    }
     return support;
   }
 
   removeSupport(id) {
+    const before = this.supports.length;
     this.supports = this.supports.filter(s => s.id !== id);
     if (this.selectedSupportId === id) {
       this.selectedSupportId = null;
     }
+    if (this.supports.length !== before) this._touch();
   }
 
-  findSupportAt(x, y, tolerance = 300, predicate = null) {
+  findSupportAt(x, y, tolerance = HIT_TOLERANCE_MM, predicate = null) {
     let closest = null;
     let minDist = tolerance;
     for (const s of this.supports) {
@@ -2324,240 +1384,19 @@ export class AppState {
     return closest;
   }
 
-  clearSelection() {
-    this.selectedMemberId = null;
-    this.selectedSurfaceId = null;
-    this.selectedLoadId = null;
-    this.selectedSupportId = null;
-  }
-
-  // --- Serialization ---
-
-  _usedSectionCatalog() {
-    const usedNames = new Set();
-    for (const m of this.members) {
-      if (m.sectionName) usedNames.add(m.sectionName);
-    }
-    for (const s of this.surfaces) {
-      if (s.sectionName) usedNames.add(s.sectionName);
-    }
-    return this.sectionCatalog.filter(s => s.isDefault || usedNames.has(s.name));
-  }
-
-  _usedSpringCatalog() {
-    const usedSymbols = new Set();
-    for (const m of this.members) {
-      if (m.endI?.condition === 'spring' && m.endI.springSymbol) usedSymbols.add(m.endI.springSymbol);
-      if (m.endJ?.condition === 'spring' && m.endJ.springSymbol) usedSymbols.add(m.endJ.springSymbol);
-    }
-    for (const section of this._usedSectionCatalog()) {
-      if (section.defaultEndI?.condition === 'spring' && section.defaultEndI.springSymbol) {
-        usedSymbols.add(section.defaultEndI.springSymbol);
-      }
-      if (section.defaultEndJ?.condition === 'spring' && section.defaultEndJ.springSymbol) {
-        usedSymbols.add(section.defaultEndJ.springSymbol);
-      }
-    }
-    return this.springCatalog.filter(s => s.isDefault || usedSymbols.has(s.symbol));
-  }
+  // --- Serialization (implementation lives in serialization.js) ---
 
   toJSON() {
-    return {
-      schemaVersion: this.schemaVersion,
-      meta: { ...this.meta },
-      settings: { ...this.settings },
-      levels: this.levels.map(l => ({ ...l })),
-      nodes: this.nodes.map(n => ({ ...n })),
-      sectionCatalog: this._usedSectionCatalog().map(s => cloneSection(s)),
-      springCatalog: this._usedSpringCatalog().map(s => ({ ...s })),
-      members: this.members.map(m => ({
-        type: m.type,
-        startNodeId: m.startNodeId,
-        endNodeId: m.endNodeId,
-        sectionName: m.sectionName,
-        levelId: m.levelId,
-        color: m.color,
-        topLevelId: m.topLevelId,
-        geometryMode: m.geometryMode,
-        startZ: m.startZ,
-        endZ: m.endZ,
-        roofRole: m.roofRole,
-        bracePattern: m.bracePattern,
-        endI: { ...m.endI },
-        endJ: { ...m.endJ },
-      })),
-      surfaces: this.surfaces.map(s => {
-        const surface = {
-          type: s.type,
-          sectionName: s.sectionName,
-          levelId: s.levelId,
-          topLevelId: s.topLevelId,
-          loadDirection: s.loadDirection,
-          heightMode: s.heightMode,
-          bottomOffset: s.bottomOffset,
-          topOffset: s.topOffset,
-          includeWind: s.includeWind,
-          includeSeismicWeight: s.includeSeismicWeight,
-          unitWeight: s.unitWeight,
-          color: s.color,
-          x1: s.x1,
-          y1: s.y1,
-          x2: s.x2,
-          y2: s.y2,
-          shape: s.shape,
-          points: Array.isArray(s.points) ? s.points.map(p => ({ ...p })) : null,
-        };
-        if (isSlopedSurfaceType(s.type)) {
-          surface.roofSlope = s.roofSlope;
-          surface.roofDirection = s.roofDirection;
-          surface.roofBaseOffset = s.roofBaseOffset;
-        }
-        if (isRoofSurfaceType(s.type)) {
-          surface.roofGroupId = sanitizeRoofGroupId(s.roofGroupId, 'RG1');
-        }
-        if (isGableWallSurfaceType(s.type)) {
-          surface.gableStartTopOffset = s.gableStartTopOffset;
-          surface.gableEndTopOffset = s.gableEndTopOffset;
-        }
-        return surface;
-      }),
-      loads: this.loads.map(l => {
-        const rest = { ...l };
-        delete rest.id;
-        return { ...rest };
-      }),
-      supports: this.supports.map(s => ({
-        x: s.x,
-        y: s.y,
-        levelId: s.levelId,
-        dx: s.dx,
-        dy: s.dy,
-        dz: s.dz,
-        rx: s.rx,
-        ry: s.ry,
-        rz: s.rz,
-      })),
-    };
+    return serializeModel(this);
   }
 
   loadJSON(data) {
-    const version = data?.schemaVersion || 1;
-    if (!data || !isSupportedSchemaVersion(version)) {
-      throw new Error('Unsupported schema version');
-    }
-    this.schemaVersion = CURRENT_SCHEMA_VERSION;
-    this.meta = { ...data.meta };
-    this.settings = {
-      gridSize: 1000,
-      snap: true,
-      wallDisplayOffset: 120,
-      showSupports: true,
-      widePick: false,
-      planLayerDisplayMode: 'all',
-      planLayerSelectionLock: false,
-      view3dLayerDisplayMode: 'all',
-      member3dRenderMode: 'solid',
-      beam3dSectionMode: 'box',
-      showMembers: true,
-      showSurfaces: true,
-      showLoads: true,
-      showMemberEndSymbols: false,
-      showPlacementLabels: true,
-      memberTypeFilter: 'all',
-      sectionFilter: 'all',
-      displayPreset: 'input',
-      ...data.settings,
-    };
-    this.settings.planLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.planLayerDisplayMode);
-    this.settings.view3dLayerDisplayMode = normalizePlanLayerDisplayMode(this.settings.view3dLayerDisplayMode);
-    this.settings.member3dRenderMode = normalizeMember3DRenderMode(this.settings.member3dRenderMode);
-    this.settings.beam3dSectionMode = normalizeBeam3DSectionMode(this.settings.beam3dSectionMode);
-    this.settings.planLayerSelectionLock = !!this.settings.planLayerSelectionLock;
-    this.settings.showMembers = this.settings.showMembers !== false;
-    this.settings.showSurfaces = this.settings.showSurfaces !== false;
-    this.settings.showLoads = this.settings.showLoads !== false;
-    this.settings.showMemberEndSymbols = !!this.settings.showMemberEndSymbols;
-    this.settings.showPlacementLabels = this.settings.showPlacementLabels !== false;
-    this.settings.memberTypeFilter = normalizeMemberTypeFilter(this.settings.memberTypeFilter);
-    this.settings.sectionFilter = sanitizeText(this.settings.sectionFilter) || 'all';
-    this.settings.displayPreset = normalizeDisplayPreset(this.settings.displayPreset);
-    this.settings.gridSize = normalizeGridSize(this.settings.gridSize);
-    this.levels = Array.isArray(data.levels) && data.levels.length > 0
-      ? data.levels.map(l => ({ ...l }))
-      : [
-          { id: 'L0', name: 'GL', z: 0 },
-          { id: 'L1', name: '2F', z: 2800 },
-        ];
-    this.activeLayerId = this.levels[0]?.id || 'L0';
-    this.surfaceDraftTopLayerId = this.levels[1]?.id || this.activeLayerId;
-    this.nodes = (data.nodes || []).map(n => ({ ...n }));
-    // Preserve current custom user definitions across CAD load
-    const prevCustomSections = this.sectionCatalog.filter(s => !s.isDefault);
-    const prevCustomSprings = this.springCatalog.filter(s => !s.isDefault);
-    this.sectionCatalog = this._hydrateSectionCatalog(data.sectionCatalog);
-    this.springCatalog = this._hydrateSpringCatalog(data.springCatalog);
-    for (const cs of prevCustomSections) {
-      if (!this.sectionCatalog.some(s => s.target === cs.target && s.type === cs.type && s.name === cs.name)) {
-        this.sectionCatalog.push(cloneSection(cs));
-      }
-    }
-    for (const cs of prevCustomSprings) {
-      if (!this.springCatalog.some(s => s.symbol === cs.symbol)) {
-        this.springCatalog.push({ ...cs });
-      }
-    }
-    this._normalizeSectionCatalogEndDefaults();
-    this.members = (data.members || []).map((m, idx) =>
-      this._normalizeLoadedMember({ id: m.id || `M${idx + 1}`, ...m })
-    );
-    this.surfaces = (data.surfaces || []).map((s, idx) =>
-      this._normalizeLoadedSurface({ id: s.id || `S${idx + 1}`, ...s })
-    );
-    this.loads = (data.loads || []).map((l, idx) => ({ id: l.id || `LD${idx + 1}`, ...l }));
-    this.supports = (data.supports || []).map((s, idx) => ({
-      id: s.id || `SUP${idx + 1}`,
-      x: s.x || 0,
-      y: s.y || 0,
-      levelId: s.levelId || this.activeLayerId || 'L0',
-      dx: !!s.dx,
-      dy: !!s.dy,
-      dz: !!s.dz,
-      rx: !!s.rx,
-      ry: !!s.ry,
-      rz: !!s.rz,
-    }));
-    this.selectedMemberId = null;
-    this.selectedSurfaceId = null;
-    this.selectedLoadId = null;
-    this.selectedSupportId = null;
-    this.currentTool = 'member';
-    this.memberDraftType = 'beam';
-    this.memberDraftSections = {};
-    this.surfaceDraftSections = {};
-    this.surfaceDraftType = 'floor';
-    this.surfaceDraftMode = 'rect';
-    this.surfaceDraftLoadDir = 'twoWay';
-    this.surfaceDraftHeightMode = 'full';
-    this.surfaceDraftBottomOffset = 0;
-    this.surfaceDraftTopOffset = 1200;
-    this.surfaceDraftRoofSlope = 0.3;
-    this.surfaceDraftRoofDirection = 'xPlus';
-    this.surfaceDraftRoofBaseOffset = 0;
-    this.surfaceDraftRoofGroupId = 'RG1';
-    this.loadDraftType = 'areaLoad';
-
-    // Restore counters
-    this._nodeCounter = maxIdNum(this.nodes);
-    this._memberCounter = maxIdNum(this.members);
-    this._surfaceCounter = maxIdNum(this.surfaces);
-    this._levelCounter = maxIdNum(this.levels);
-    this._loadCounter = maxIdNumPrefix(this.loads, 'LD');
-    this._supportCounter = maxIdNumPrefix(this.supports, 'SUP');
+    loadModelJSON(this, data);
   }
 
   // Deep clone for undo/redo snapshots
   snapshot() {
-    return JSON.parse(JSON.stringify(this.toJSON()));
+    return structuredClone(this.toJSON());
   }
 
   restoreSnapshot(snap) {
@@ -2567,119 +1406,44 @@ export class AppState {
 
 // --- Utility ---
 
-function createDefaultSectionCatalog() {
-  return DEFAULT_SECTION_DEFINITIONS.map(s => ({
-    ...s,
-    type: MEMBER_SECTION_TYPE_ALIAS[s.type] || s.type,
-    defaultEndI: s.defaultEndI ? { ...s.defaultEndI } : undefined,
-    defaultEndJ: s.defaultEndJ ? { ...s.defaultEndJ } : undefined,
-  }));
-}
-
-function createDefaultSpringCatalog() {
-  return DEFAULT_SPRING_DEFINITIONS.map(s => ({ ...s }));
-}
-
-function normalizeCatalogSectionEntry(entry) {
-  if (!entry || (entry.target !== 'member' && entry.target !== 'surface')) return null;
-  const type = entry.target === 'member'
-    ? (MEMBER_SECTION_TYPE_ALIAS[entry.type] || entry.type)
-    : entry.type;
-  const name = sanitizeText(entry.name);
-  if (!type || !name) return null;
-  const material = sanitizeText(entry.material) || (entry.target === 'member' ? 'steel' : '');
-
-  const normalized = {
-    target: entry.target,
-    type,
-    name,
-    material,
-    b: entry.target === 'member' ? sanitizePositiveNumber(entry.b, 200) : null,
-    h: entry.target === 'member' ? sanitizePositiveNumber(entry.h, 400) : null,
-    color: sanitizeColor(entry.color, defaultColorForSection(entry.target, type)),
-    memo: sanitizeText(entry.memo) || '',
-  };
-  if (entry.target === 'member') {
-    normalized.defaultEndI = normalizeSectionDefaultEnd(entry.defaultEndI || entry.endI);
-    normalized.defaultEndJ = normalizeSectionDefaultEnd(entry.defaultEndJ || entry.endJ);
-  }
-  return normalized;
-}
-
-function normalizeSpringEntry(entry) {
-  if (!entry) return null;
-  const symbol = sanitizeText(entry.symbol || entry.name);
-  if (!symbol) return null;
-  return {
-    symbol,
-    memo: sanitizeText(entry.memo) || '',
-  };
-}
-
-function isSameSectionDefinition(a, b) {
-  return a.target === b.target &&
-    (MEMBER_SECTION_TYPE_ALIAS[a.type] || a.type) === (MEMBER_SECTION_TYPE_ALIAS[b.type] || b.type) &&
-    a.name === b.name &&
-    (a.material || '') === (b.material || '') &&
-    sanitizeColor(a.color, defaultColorForSection(a.target, a.type)) ===
-      sanitizeColor(b.color, defaultColorForSection(b.target, b.type)) &&
-    (a.target !== 'member' || (
-      sanitizePositiveNumber(a.b, 200) === sanitizePositiveNumber(b.b, 200) &&
-      sanitizePositiveNumber(a.h, 400) === sanitizePositiveNumber(b.h, 400) &&
-      isSameMemberEnd(a.defaultEndI, b.defaultEndI) &&
-      isSameMemberEnd(a.defaultEndJ, b.defaultEndJ)
-    ));
-}
-
-function cloneSection(section) {
-  return {
-    ...section,
-    defaultEndI: section.defaultEndI ? { ...section.defaultEndI } : undefined,
-    defaultEndJ: section.defaultEndJ ? { ...section.defaultEndJ } : undefined,
-  };
-}
-
-function normalizeSectionDefaultEnd(endInfo) {
-  const raw = endInfo || {};
-  const rawCondition = sanitizeText(raw.condition || raw.fixity || raw.type) || 'pin';
-  const condition = END_FIXITIES.has(rawCondition) ? rawCondition : 'pin';
-  if (condition !== 'spring') {
-    return { condition, springSymbol: null };
-  }
-  const springSymbol = sanitizeText(raw.springSymbol || raw.symbol) || DEFAULT_SPRING_DEFINITIONS[0]?.symbol || null;
-  return { condition, springSymbol };
-}
-
-function isSameMemberEnd(a, b) {
-  const endA = normalizeSectionDefaultEnd(a);
-  const endB = normalizeSectionDefaultEnd(b);
-  return endA.condition === endB.condition && (endA.springSymbol || null) === (endB.springSymbol || null);
+export function createDefaultLevels() {
+  return [
+    { id: 'L0', name: 'GL', z: 0 },
+    { id: 'L1', name: '2F', z: DEFAULT_STORY_HEIGHT_MM },
+  ];
 }
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 
-function isSupportedSchemaVersion(version) {
-  return Number.isInteger(version) && SUPPORTED_SCHEMA_VERSIONS.has(version);
+// Applies the per-field sanitizer table to a patch object in place.
+function sanitizePatchFields(patch, sanitizers, current) {
+  for (const [key, sanitize] of Object.entries(sanitizers)) {
+    if (hasOwn(patch, key)) {
+      patch[key] = sanitize(patch[key], current);
+    }
+  }
 }
 
-function sanitizePositiveNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+// Removes surface fields that do not apply to the given type. Shared by
+// updateSurface (patch + record) and _normalizeLoadedSurface.
+export function stripSurfaceFieldsForType(target, type) {
+  if (!isSlopedSurfaceType(type)) {
+    delete target.roofSlope;
+    delete target.roofDirection;
+    delete target.roofBaseOffset;
+  }
+  if (!isRoofSurfaceType(type)) {
+    delete target.roofGroupId;
+  }
+  if (!isGableWallSurfaceType(type)) {
+    delete target.gableStartTopOffset;
+    delete target.gableEndTopOffset;
+  }
 }
 
-function sanitizeNonNegativeNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) && n >= 0 ? n : fallback;
-}
-
-function sanitizeNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function sanitizeOptionalNumber(value) {
+export function sanitizeOptionalNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -2689,35 +1453,13 @@ function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function sanitizeRoofGroupId(value, fallback = 'RG1') {
-  return sanitizeText(value) || sanitizeText(fallback) || 'RG1';
+export function sanitizeRoofGroupId(value, fallback = DEFAULT_ROOF_GROUP_ID) {
+  return sanitizeText(value) || sanitizeText(fallback) || DEFAULT_ROOF_GROUP_ID;
 }
 
-function sanitizeColor(value, fallback) {
-  const text = sanitizeText(value);
-  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toLowerCase();
-  const safeFallback = sanitizeText(fallback);
-  return /^#[0-9a-fA-F]{6}$/.test(safeFallback) ? safeFallback.toLowerCase() : '#666666';
-}
-
-function defaultColorForSection(target, type) {
-  const normalizedType = target === 'member'
-    ? (MEMBER_SECTION_TYPE_ALIAS[type] || type)
-    : type;
-  const def = DEFAULT_SECTION_DEFINITIONS.find(
-    s => s.target === target && (MEMBER_SECTION_TYPE_ALIAS[s.type] || s.type) === normalizedType
-  );
-  if (def && /^#[0-9a-fA-F]{6}$/.test(def.color || '')) {
-    return def.color.toLowerCase();
-  }
-  if (target === 'surface') {
-    if (normalizedType === 'floor') return '#67a9cf';
-    if (normalizedType === 'roof') return '#8b6f47';
-    if (normalizedType === 'eave') return '#4f9a8a';
-    if (normalizedType === 'gableWall') return '#bf6f5e';
-    return '#b57a6b';
-  }
-  return '#666666';
+// Initial draw color for a surface before the section color is applied.
+export function defaultSurfaceDrawColor(type) {
+  return type === 'wall' || type === 'exteriorWall' ? '#b57a6b' : '#67a9cf';
 }
 
 function normalizeSurfaceHeightMode(value) {
@@ -2725,46 +1467,9 @@ function normalizeSurfaceHeightMode(value) {
   return SURFACE_HEIGHT_MODES.has(text) ? text : 'full';
 }
 
-function normalizeMemberGeometryMode(value) {
+export function normalizeMemberGeometryMode(value) {
   const text = sanitizeText(value);
   return MEMBER_GEOMETRY_MODES.has(text) ? text : 'level';
-}
-
-function normalizePlanLayerDisplayMode(value) {
-  const text = sanitizeText(value);
-  return PLAN_LAYER_DISPLAY_MODES.has(text) ? text : 'all';
-}
-
-function normalizeMember3DRenderMode(value) {
-  const text = sanitizeText(value);
-  return MEMBER_3D_RENDER_MODES.has(text) ? text : 'solid';
-}
-
-export function normalizeBeam3DSectionMode(value) {
-  const text = sanitizeText(value);
-  return BEAM_3D_SECTION_MODES.has(text) ? text : 'box';
-}
-
-function normalizeMemberTypeFilter(value) {
-  const text = sanitizeText(value);
-  return ['all', 'beam', 'column', 'hbrace', 'vbrace'].includes(text) ? text : 'all';
-}
-
-function normalizeDisplayPreset(value) {
-  const text = sanitizeText(value);
-  return DISPLAY_PRESETS.has(text) ? text : 'input';
-}
-
-export function normalizeGridSize(value) {
-  const num = Math.round(Number(value));
-  if (!Number.isFinite(num)) return GRID_SIZE_DEFAULT;
-  return Math.min(GRID_SIZE_MAX, Math.max(GRID_SIZE_MIN, num));
-}
-
-function normalizeRoofGenerationPattern(value) {
-  const text = sanitizeText(value);
-  if (text === 'gableX' || text === 'gableY' || text === 'hip') return text;
-  return 'single';
 }
 
 export function isWallSurfaceType(type) {
@@ -2787,364 +1492,6 @@ export function isSlopedSurfaceType(type) {
   return type === 'roof' || type === 'eave';
 }
 
-function pointToSegmentDist(px, py, ax, ay, bx, by) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay);
-  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-function segmentParameter(px, py, ax, ay, bx, by) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return 0;
-  return ((px - ax) * dx + (py - ay) * dy) / lenSq;
-}
-
-function sameSegment(a1, a2, b1, b2, tolerance = 1) {
-  return (
-    pointsClose(a1, b1, tolerance) && pointsClose(a2, b2, tolerance)
-  ) || (
-    pointsClose(a1, b2, tolerance) && pointsClose(a2, b1, tolerance)
-  );
-}
-
-function pointsClose(a, b, tolerance = 1) {
-  return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
-}
-
-function surfaceOutlinePoints(surface) {
-  if (!surface) return [];
-  if (surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
-    return surface.points.map(point => ({
-      x: sanitizeNumber(point.x, 0),
-      y: sanitizeNumber(point.y, 0),
-    }));
-  }
-  if (surface.shape === 'rect') {
-    const x1 = sanitizeNumber(surface.x1, 0);
-    const y1 = sanitizeNumber(surface.y1, 0);
-    const x2 = sanitizeNumber(surface.x2, x1);
-    const y2 = sanitizeNumber(surface.y2, y1);
-    if (Math.abs(x2 - x1) <= 0.001 || Math.abs(y2 - y1) <= 0.001) return [];
-    return [
-      { x: x1, y: y1 },
-      { x: x2, y: y1 },
-      { x: x2, y: y2 },
-      { x: x1, y: y2 },
-    ];
-  }
-  return [];
-}
-
-function roofGenerationPlanes(points, pattern, singleDirection) {
-  if (pattern === 'single') {
-    return [{ points: points.map(point => ({ ...point })), roofDirection: singleDirection }];
-  }
-
-  const rect = axisAlignedRectangleFromPoints(points);
-  if (!rect) return [];
-  if (pattern === 'gableX') return gableXRoofPlanes(rect);
-  if (pattern === 'gableY') return gableYRoofPlanes(rect);
-  if (pattern === 'hip') return hipRoofPlanes(rect);
-  return [];
-}
-
-function matchingRoofPlanEdges(edgesA, edgesB, tolerance = 1) {
-  const matches = [];
-  for (const edgeA of edgesA) {
-    for (const edgeB of edgesB) {
-      if (sameSegment(edgeA.start, edgeA.end, edgeB.start, edgeB.end, tolerance)) {
-        matches.push({ edgeA, edgeB });
-      }
-    }
-  }
-  return matches;
-}
-
-function polygonHasSelfIntersections(points, tolerance = 1) {
-  for (let i = 0; i < points.length; i++) {
-    const a1 = points[i];
-    const a2 = points[(i + 1) % points.length];
-    for (let j = i + 1; j < points.length; j++) {
-      if (Math.abs(i - j) <= 1) continue;
-      if (i === 0 && j === points.length - 1) continue;
-      const b1 = points[j];
-      const b2 = points[(j + 1) % points.length];
-      if (segmentsIntersect(a1, a2, b1, b2, tolerance)) return true;
-    }
-  }
-  return false;
-}
-
-function segmentsIntersect(a1, a2, b1, b2, tolerance = 1) {
-  const d1 = segmentDirection(a1, a2, b1);
-  const d2 = segmentDirection(a1, a2, b2);
-  const d3 = segmentDirection(b1, b2, a1);
-  const d4 = segmentDirection(b1, b2, a2);
-  if (((d1 > tolerance && d2 < -tolerance) || (d1 < -tolerance && d2 > tolerance)) &&
-    ((d3 > tolerance && d4 < -tolerance) || (d3 < -tolerance && d4 > tolerance))) {
-    return true;
-  }
-  return pointToSegmentDist(b1.x, b1.y, a1.x, a1.y, a2.x, a2.y) <= tolerance ||
-    pointToSegmentDist(b2.x, b2.y, a1.x, a1.y, a2.x, a2.y) <= tolerance ||
-    pointToSegmentDist(a1.x, a1.y, b1.x, b1.y, b2.x, b2.y) <= tolerance ||
-    pointToSegmentDist(a2.x, a2.y, b1.x, b1.y, b2.x, b2.y) <= tolerance;
-}
-
-function segmentDirection(a, b, point) {
-  return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
-}
-
-function isPlanPointInOrOnRoofSurface(point, surface, tolerance = 1) {
-  const points = roofPlanPoints(surface);
-  if (points.length < 3) return false;
-  if (isInteriorPlanPoint(point, points, tolerance)) return true;
-  return points.some((start, index) => {
-    const end = points[(index + 1) % points.length];
-    return pointToSegmentDist(point.x, point.y, start.x, start.y, end.x, end.y) <= tolerance;
-  });
-}
-
-function axisAlignedRectangleFromPoints(points) {
-  if (!Array.isArray(points) || points.length !== 4) return null;
-  const xs = [...new Set(points.map(point => roundedKey(point.x)))].map(Number).sort((a, b) => a - b);
-  const ys = [...new Set(points.map(point => roundedKey(point.y)))].map(Number).sort((a, b) => a - b);
-  if (xs.length !== 2 || ys.length !== 2) return null;
-  const [minX, maxX] = xs;
-  const [minY, maxY] = ys;
-  if (maxX - minX <= 0.001 || maxY - minY <= 0.001) return null;
-  const corners = new Set([
-    `${roundedKey(minX)},${roundedKey(minY)}`,
-    `${roundedKey(maxX)},${roundedKey(minY)}`,
-    `${roundedKey(maxX)},${roundedKey(maxY)}`,
-    `${roundedKey(minX)},${roundedKey(maxY)}`,
-  ]);
-  const isRectangle = points.every(point => corners.has(`${roundedKey(point.x)},${roundedKey(point.y)}`));
-  return isRectangle ? { minX, maxX, minY, maxY } : null;
-}
-
-function gableXRoofPlanes(rect) {
-  const midX = (rect.minX + rect.maxX) / 2;
-  return [
-    {
-      roofDirection: 'xPlus',
-      points: [
-        { x: rect.minX, y: rect.minY },
-        { x: midX, y: rect.minY },
-        { x: midX, y: rect.maxY },
-        { x: rect.minX, y: rect.maxY },
-      ],
-    },
-    {
-      roofDirection: 'xMinus',
-      points: [
-        { x: midX, y: rect.minY },
-        { x: rect.maxX, y: rect.minY },
-        { x: rect.maxX, y: rect.maxY },
-        { x: midX, y: rect.maxY },
-      ],
-    },
-  ];
-}
-
-function gableYRoofPlanes(rect) {
-  const midY = (rect.minY + rect.maxY) / 2;
-  return [
-    {
-      roofDirection: 'yPlus',
-      points: [
-        { x: rect.minX, y: rect.minY },
-        { x: rect.maxX, y: rect.minY },
-        { x: rect.maxX, y: midY },
-        { x: rect.minX, y: midY },
-      ],
-    },
-    {
-      roofDirection: 'yMinus',
-      points: [
-        { x: rect.minX, y: midY },
-        { x: rect.maxX, y: midY },
-        { x: rect.maxX, y: rect.maxY },
-        { x: rect.minX, y: rect.maxY },
-      ],
-    },
-  ];
-}
-
-function hipRoofPlanes(rect) {
-  const width = rect.maxX - rect.minX;
-  const height = rect.maxY - rect.minY;
-  const midX = (rect.minX + rect.maxX) / 2;
-  const midY = (rect.minY + rect.maxY) / 2;
-
-  if (width >= height) {
-    const inset = height / 2;
-    const ridgeStart = { x: Math.min(midX, rect.minX + inset), y: midY };
-    const ridgeEnd = { x: Math.max(midX, rect.maxX - inset), y: midY };
-    return [
-      {
-        roofDirection: 'yPlus',
-        points: [
-          { x: rect.minX, y: rect.minY },
-          { x: rect.maxX, y: rect.minY },
-          ridgeEnd,
-          ridgeStart,
-        ],
-      },
-      {
-        roofDirection: 'xMinus',
-        points: [
-          { x: rect.maxX, y: rect.minY },
-          { x: rect.maxX, y: rect.maxY },
-          ridgeEnd,
-        ],
-      },
-      {
-        roofDirection: 'yMinus',
-        points: [
-          { x: rect.maxX, y: rect.maxY },
-          { x: rect.minX, y: rect.maxY },
-          ridgeStart,
-          ridgeEnd,
-        ],
-      },
-      {
-        roofDirection: 'xPlus',
-        points: [
-          { x: rect.minX, y: rect.maxY },
-          { x: rect.minX, y: rect.minY },
-          ridgeStart,
-        ],
-      },
-    ];
-  }
-
-  const inset = width / 2;
-  const ridgeStart = { x: midX, y: Math.min(midY, rect.minY + inset) };
-  const ridgeEnd = { x: midX, y: Math.max(midY, rect.maxY - inset) };
-  return [
-    {
-      roofDirection: 'xPlus',
-      points: [
-        { x: rect.minX, y: rect.minY },
-        ridgeStart,
-        ridgeEnd,
-        { x: rect.minX, y: rect.maxY },
-      ],
-    },
-    {
-      roofDirection: 'yPlus',
-      points: [
-        { x: rect.minX, y: rect.minY },
-        { x: rect.maxX, y: rect.minY },
-        ridgeStart,
-      ],
-    },
-    {
-      roofDirection: 'xMinus',
-      points: [
-        { x: rect.maxX, y: rect.minY },
-        { x: rect.maxX, y: rect.maxY },
-        ridgeEnd,
-        ridgeStart,
-      ],
-    },
-    {
-      roofDirection: 'yMinus',
-      points: [
-        { x: rect.maxX, y: rect.maxY },
-        { x: rect.minX, y: rect.maxY },
-        ridgeEnd,
-      ],
-    },
-  ];
-}
-
-function roundedKey(value) {
-  return String(Number(sanitizeNumber(value, 0).toFixed(6)));
-}
-
-function maxIdNum(items) {
-  let max = 0;
-  for (const item of items) {
-    const n = parseTrailingIdNumber(item.id);
-    if (n > max) max = n;
-  }
-  return max;
-}
-
-function maxIdNumPrefix(items, prefix) {
-  let max = 0;
-  for (const item of items) {
-    const id = String(item.id ?? '');
-    if (id.startsWith(prefix)) {
-      const n = parseInt(id.slice(prefix.length), 10);
-      if (n > max) max = n;
-    }
-  }
-  return max;
-}
-
-function parseTrailingIdNumber(id) {
-  if (typeof id === 'number' && Number.isFinite(id)) return Math.max(0, Math.floor(id));
-  const text = String(id ?? '');
-  const match = text.match(/(\d+)$/);
-  return match ? parseInt(match[1], 10) : 0;
-}
-
-// Compute outward-offset polygon with properly connected corners.
-// Uses winding order (signed area) to determine consistent outward normals,
-// which works correctly for both convex and concave polygons.
-export function offsetPolygonOutward(points, offset) {
-  const n = points.length;
-  if (n < 2) return points.map(p => ({ x: p.x, y: p.y }));
-
-  // Signed area in world coordinates (Y-up): positive = CCW, negative = CW
-  let signedArea2 = 0;
-  for (let i = 0; i < n; i++) {
-    const p1 = points[i], p2 = points[(i + 1) % n];
-    signedArea2 += p1.x * p2.y - p2.x * p1.y;
-  }
-
-  // Outward normal per edge based on winding
-  const normals = [];
-  for (let i = 0; i < n; i++) {
-    const p1 = points[i], p2 = points[(i + 1) % n];
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 0.001) { normals.push({ x: 0, y: 0 }); continue; }
-    // CCW (signedArea2 > 0): outward = (dy, -dx)
-    // CW  (signedArea2 < 0): outward = (-dy, dx)
-    const nx = signedArea2 >= 0 ? dy / len : -dy / len;
-    const ny = signedArea2 >= 0 ? -dx / len : dx / len;
-    normals.push({ x: nx, y: ny });
-  }
-
-  // Intersect adjacent offset edges to get clean corners
-  const result = [];
-  for (let i = 0; i < n; i++) {
-    const prev = (i - 1 + n) % n;
-    const pA = { x: points[prev].x + normals[prev].x * offset, y: points[prev].y + normals[prev].y * offset };
-    const dA = { x: points[i].x - points[prev].x, y: points[i].y - points[prev].y };
-    const pB = { x: points[i].x + normals[i].x * offset, y: points[i].y + normals[i].y * offset };
-    const dB = { x: points[(i + 1) % n].x - points[i].x, y: points[(i + 1) % n].y - points[i].y };
-
-    const cross = dA.x * dB.y - dA.y * dB.x;
-    if (Math.abs(cross) < 1e-9) {
-      result.push(pB);
-    } else {
-      const t = ((pB.x - pA.x) * dB.y - (pB.y - pA.y) * dB.x) / cross;
-      result.push({ x: pA.x + t * dA.x, y: pA.y + t * dA.y });
-    }
-  }
-  return result;
-}
-
 function hitExteriorWallEdges(px, py, points, offset, tolerance) {
   const oPts = offsetPolygonOutward(points, offset);
   for (let i = 0; i < oPts.length; i++) {
@@ -3152,18 +1499,4 @@ function hitExteriorWallEdges(px, py, points, offset, tolerance) {
     if (pointToSegmentDist(px, py, a.x, a.y, b.x, b.y) < tolerance) return true;
   }
   return false;
-}
-
-function pointInPolygon(px, py, points) {
-  let inside = false;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const xi = points[i].x;
-    const yi = points[i].y;
-    const xj = points[j].x;
-    const yj = points[j].y;
-    const intersect = ((yi > py) !== (yj > py)) &&
-      (px < ((xj - xi) * (py - yi)) / ((yj - yi) || 1e-9) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }

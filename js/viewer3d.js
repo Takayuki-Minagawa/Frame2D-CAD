@@ -3,14 +3,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { resolveMemberColor, resolveSurfaceColor } from './element-style.js';
-import { finiteNumber } from './geometry-utils.js';
+import { finiteNumber, offsetPolygonOutward } from './geometry-utils.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
 import {
   isGableWallSurfaceType,
   isSlopedSurfaceType,
   isWallSurfaceType,
   normalizeBeam3DSectionMode,
-  offsetPolygonOutward,
 } from './state.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
 

@@ -19,6 +19,7 @@ export default [
         alert: "readonly",
         confirm: "readonly",
         console: "readonly",
+        structuredClone: "readonly",
       },
     },
     rules: {

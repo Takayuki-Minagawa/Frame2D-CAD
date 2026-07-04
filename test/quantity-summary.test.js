@@ -633,13 +633,14 @@ test('roof joint generation classifies concave notch shared edges from owning in
 });
 
 test('roof joint classification samples inward from the shared roof edge', async () => {
-  const stateSource = await readFile(new URL('../js/state.js', import.meta.url), 'utf8');
+  // Roof auto-generation logic was extracted from state.js into roof-generation.js
+  const roofGenSource = await readFile(new URL('../js/roof-generation.js', import.meta.url), 'utf8');
 
-  assert.match(stateSource, /_roofInteriorSamplePoint\(surface,\s*start,\s*end\)/);
-  assert.match(stateSource, /edgeInwardNormal\(edge\.start,\s*edge\.end,\s*points\)/);
-  assert.match(stateSource, /isInteriorPlanPoint\(sample,\s*points,\s*0\.001\)/);
-  assert.match(stateSource, /uniquePositiveNumbers\(\[/);
-  assert.doesNotMatch(stateSource, /_roofInteriorZDelta\(surface,\s*edgePoint,\s*edgeZ\)/);
+  assert.match(roofGenSource, /roofInteriorSamplePoint\(surface,\s*start,\s*end\)/);
+  assert.match(roofGenSource, /edgeInwardNormal\(edge\.start,\s*edge\.end,\s*points\)/);
+  assert.match(roofGenSource, /isInteriorPlanPoint\(sample,\s*points,\s*0\.001\)/);
+  assert.match(roofGenSource, /uniquePositiveNumbers\(\[/);
+  assert.doesNotMatch(roofGenSource, /roofInteriorZDelta\(surface,\s*edgePoint,\s*edgeZ\)/);
 });
 
 test('roof edge generation skips shared roof group edges', () => {

@@ -2,8 +2,9 @@
 
 import { drawGrid } from './grid.js';
 import { resolveMemberColor, resolveSurfaceColor } from './element-style.js';
+import { offsetPolygonOutward } from './geometry-utils.js';
 import { roofSlopeArrow } from './roof-geometry.js';
-import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 export class Canvas2D {
   constructor(canvasEl, state) {

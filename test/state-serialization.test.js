@@ -3,10 +3,6 @@ import assert from 'node:assert/strict';
 
 import { AppState, normalizeGridSize, GRID_SIZE_MIN, GRID_SIZE_MAX, GRID_SIZE_DEFAULT } from '../js/state.js';
 
-function hasOwn(obj, key) {
-  return Object.prototype.hasOwnProperty.call(obj, key);
-}
-
 test('loadJSON accepts supported schema versions and rejects future versions', () => {
   const source = new AppState();
   const currentData = source.toJSON();
@@ -24,7 +20,7 @@ test('loadJSON accepts supported schema versions and rejects future versions', (
   );
 });
 
-test('toJSON writes numeric node IDs and omits runtime IDs for members, surfaces, and loads', () => {
+test('toJSON writes numeric node IDs and persists element IDs for members, surfaces, loads, and supports', () => {
   const state = new AppState();
 
   const n1 = state.addNode(0, 0);
@@ -37,14 +33,54 @@ test('toJSON writes numeric node IDs and omits runtime IDs for members, surfaces
     { type: 'floor' }
   );
   state.addLoad('pointLoad', { x1: 2500, y1: 2000, fz: -10000 });
+  state.addSupport(0, 0, {});
 
   const data = state.toJSON();
   assert.deepEqual(data.nodes.map(n => n.id), [1, 2, 3]);
   assert.equal(data.members[0].startNodeId, 1);
   assert.equal(data.members[0].endNodeId, 2);
-  assert.equal(hasOwn(data.members[0], 'id'), false);
-  assert.equal(hasOwn(data.surfaces[0], 'id'), false);
-  assert.equal(hasOwn(data.loads[0], 'id'), false);
+  assert.equal(data.members[0].id, 'M1');
+  assert.equal(data.surfaces[0].id, 'S1');
+  assert.equal(data.loads[0].id, 'LD1');
+  assert.equal(data.supports[0].id, 'SUP1');
+});
+
+test('loadJSON reuses saved element IDs and re-numbers only files without IDs', () => {
+  const base = new AppState();
+  const n1 = base.addNode(0, 0);
+  const n2 = base.addNode(5000, 0);
+  base.addMember(n1.id, n2.id, { type: 'beam' });
+  base.addMember(n1.id, n2.id, { type: 'beam' });
+  base.addSurfaceRect(0, 0, 5000, 4000, { type: 'floor' });
+  base.addLoad('pointLoad', { x1: 100, y1: 100, fz: -1 });
+  base.addSupport(0, 0, {});
+
+  const data = base.toJSON();
+  // Simulate a model where the first member was removed before saving
+  data.members = data.members.slice(1);
+
+  const restored = new AppState();
+  restored.loadJSON(data);
+  assert.deepEqual(restored.members.map(m => m.id), ['M2']);
+  assert.equal(restored.surfaces[0].id, 'S1');
+  assert.equal(restored.loads[0].id, 'LD1');
+  assert.equal(restored.supports[0].id, 'SUP1');
+
+  // Counters resume after the highest restored id, so new ids never collide
+  const added = restored.addMember(restored.members[0].startNodeId, restored.members[0].endNodeId, { type: 'beam' });
+  assert.equal(added.id, 'M3');
+
+  // Old files without element ids fall back to sequential re-numbering
+  const legacy = structuredClone(data);
+  for (const collection of [legacy.members, legacy.surfaces, legacy.loads, legacy.supports]) {
+    for (const item of collection) delete item.id;
+  }
+  const legacyRestored = new AppState();
+  legacyRestored.loadJSON(legacy);
+  assert.deepEqual(legacyRestored.members.map(m => m.id), ['M1']);
+  assert.equal(legacyRestored.surfaces[0].id, 'S1');
+  assert.equal(legacyRestored.loads[0].id, 'LD1');
+  assert.equal(legacyRestored.supports[0].id, 'SUP1');
 });
 
 test('loadJSON accepts numeric node IDs and keeps future saved IDs numeric', () => {

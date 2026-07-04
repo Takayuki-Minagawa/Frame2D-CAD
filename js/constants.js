@@ -11,6 +11,12 @@ export const DEFAULT_STORY_HEIGHT_MM = 2800;
 export const DEFAULT_RAFTER_SPACING_MM = 910;
 export const DEFAULT_EAVE_DEPTH_MM = 600;
 export const DEFAULT_ROOF_GROUP_ID = 'RG1';
+// Default roof slope as rise/run ratio (0.3 = 3寸勾配相当, unitless)
+export const DEFAULT_ROOF_SLOPE_RATIO = 0.3;
+// Waist wall (腰壁): default top offset above the bottom level
+export const WAIST_WALL_TOP_OFFSET_MM = 1200;
+// Hanging wall (垂れ壁): default depth measured down from the story top
+export const HANGING_WALL_DEPTH_MM = 600;
 
 // Display
 export const WALL_DISPLAY_OFFSET_MM = 120;
