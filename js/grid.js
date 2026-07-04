@@ -1,11 +1,30 @@
 // grid.js - Grid drawing and snap calculation
 
-// Read CSS custom property value
-function cssVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
+import { cssVar } from './dom-utils.js';
+
+// Origin legend layout (bottom-left corner), in screen px
+const LEGEND_MARGIN = 20;
+const LEGEND_SIZE = 60;
+const LEGEND_AXIS_LENGTH = 40;
+const LEGEND_ARROWHEAD_BACK = 5;
+const LEGEND_ARROWHEAD_HALF_WIDTH = 4;
+const LEGEND_ORIGIN_DOT_RADIUS = 4;
+const LEGEND_LABEL_OFFSET = 50;
+const LEGEND_LABEL_NUDGE = 5;
+
+// Origin marker (at the world origin), in screen px
+const ORIGIN_DOT_RADIUS = 4;
+const ORIGIN_VISIBLE_MARGIN = 20;
 
 export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
+  ctx.save();
+  drawGridLines(ctx, camera, gridSize, canvasW, canvasH);
+  drawAxes(ctx, camera, canvasW, canvasH);
+  drawOriginLegend(ctx, canvasH);
+  ctx.restore();
+}
+
+function drawGridLines(ctx, camera, gridSize, canvasW, canvasH) {
   const { offsetX, offsetY, scale } = camera;
 
   // Calculate visible world bounds
@@ -20,7 +39,6 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   const startY = Math.floor(worldMinY / gridSize) * gridSize;
   const endY = Math.ceil(worldMaxY / gridSize) * gridSize;
 
-  ctx.save();
   ctx.strokeStyle = cssVar('--grid-line');
   ctx.lineWidth = 1;
 
@@ -41,43 +59,47 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
     ctx.lineTo(canvasW, sy);
     ctx.stroke();
   }
+}
 
-  // Draw axes
+function drawAxes(ctx, camera, canvasW, canvasH) {
+  const { offsetX, offsetY } = camera;
+
+  // X axis
   ctx.strokeStyle = cssVar('--grid-axis-x');
   ctx.lineWidth = 1.5;
-  const axisYScreen = offsetY;
   ctx.beginPath();
-  ctx.moveTo(0, axisYScreen);
-  ctx.lineTo(canvasW, axisYScreen);
+  ctx.moveTo(0, offsetY);
+  ctx.lineTo(canvasW, offsetY);
   ctx.stroke();
 
+  // Y axis
   ctx.strokeStyle = cssVar('--grid-axis-y');
-  const axisXScreen = offsetX;
   ctx.beginPath();
-  ctx.moveTo(axisXScreen, 0);
-  ctx.lineTo(axisXScreen, canvasH);
+  ctx.moveTo(offsetX, 0);
+  ctx.lineTo(offsetX, canvasH);
   ctx.stroke();
 
-  // Draw origin marker (circle at origin)
+  // Origin marker (circle at origin)
   const originX = offsetX;
   const originY = offsetY;
-  if (originX >= -20 && originX <= canvasW + 20 && originY >= -20 && originY <= canvasH + 20) {
+  if (originX >= -ORIGIN_VISIBLE_MARGIN && originX <= canvasW + ORIGIN_VISIBLE_MARGIN &&
+      originY >= -ORIGIN_VISIBLE_MARGIN && originY <= canvasH + ORIGIN_VISIBLE_MARGIN) {
     ctx.fillStyle = cssVar('--grid-axis-x');
     ctx.beginPath();
-    ctx.arc(originX, originY, 4, 0, Math.PI * 2);
+    ctx.arc(originX, originY, ORIGIN_DOT_RADIUS, 0, Math.PI * 2);
     ctx.fill();
   }
+}
 
-  // Draw origin reference and axis labels in bottom-left corner
-  const margin = 20;
-  const originRefSize = 60;
-  const originRefX = margin + originRefSize / 2;
-  const originRefY = canvasH - margin - originRefSize / 2;
+// Origin reference and axis labels in the bottom-left corner
+function drawOriginLegend(ctx, canvasH) {
+  const originRefX = LEGEND_MARGIN + LEGEND_SIZE / 2;
+  const originRefY = canvasH - LEGEND_MARGIN - LEGEND_SIZE / 2;
 
   // Origin point
   ctx.fillStyle = cssVar('--grid-axis-x');
   ctx.beginPath();
-  ctx.arc(originRefX, originRefY, 4, 0, Math.PI * 2);
+  ctx.arc(originRefX, originRefY, LEGEND_ORIGIN_DOT_RADIUS, 0, Math.PI * 2);
   ctx.fill();
 
   // X axis arrow (to the right)
@@ -85,13 +107,13 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(originRefX, originRefY);
-  ctx.lineTo(originRefX + 40, originRefY);
+  ctx.lineTo(originRefX + LEGEND_AXIS_LENGTH, originRefY);
   ctx.stroke();
   // Arrowhead
   ctx.beginPath();
-  ctx.moveTo(originRefX + 40, originRefY);
-  ctx.lineTo(originRefX + 35, originRefY - 4);
-  ctx.lineTo(originRefX + 35, originRefY + 4);
+  ctx.moveTo(originRefX + LEGEND_AXIS_LENGTH, originRefY);
+  ctx.lineTo(originRefX + LEGEND_AXIS_LENGTH - LEGEND_ARROWHEAD_BACK, originRefY - LEGEND_ARROWHEAD_HALF_WIDTH);
+  ctx.lineTo(originRefX + LEGEND_AXIS_LENGTH - LEGEND_ARROWHEAD_BACK, originRefY + LEGEND_ARROWHEAD_HALF_WIDTH);
   ctx.closePath();
   ctx.fillStyle = cssVar('--grid-axis-x');
   ctx.fill();
@@ -101,13 +123,13 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(originRefX, originRefY);
-  ctx.lineTo(originRefX, originRefY - 40);
+  ctx.lineTo(originRefX, originRefY - LEGEND_AXIS_LENGTH);
   ctx.stroke();
   // Arrowhead
   ctx.beginPath();
-  ctx.moveTo(originRefX, originRefY - 40);
-  ctx.lineTo(originRefX - 4, originRefY - 35);
-  ctx.lineTo(originRefX + 4, originRefY - 35);
+  ctx.moveTo(originRefX, originRefY - LEGEND_AXIS_LENGTH);
+  ctx.lineTo(originRefX - LEGEND_ARROWHEAD_HALF_WIDTH, originRefY - LEGEND_AXIS_LENGTH + LEGEND_ARROWHEAD_BACK);
+  ctx.lineTo(originRefX + LEGEND_ARROWHEAD_HALF_WIDTH, originRefY - LEGEND_AXIS_LENGTH + LEGEND_ARROWHEAD_BACK);
   ctx.closePath();
   ctx.fillStyle = cssVar('--grid-axis-y');
   ctx.fill();
@@ -115,12 +137,10 @@ export function drawGrid(ctx, camera, gridSize, canvasW, canvasH) {
   // Labels (offset to avoid overlap with members)
   ctx.font = 'bold 14px sans-serif';
   ctx.fillStyle = cssVar('--grid-axis-x');
-  ctx.fillText('X', originRefX + 50, originRefY + 5);
+  ctx.fillText('X', originRefX + LEGEND_LABEL_OFFSET, originRefY + LEGEND_LABEL_NUDGE);
 
   ctx.fillStyle = cssVar('--grid-axis-y');
-  ctx.fillText('Y', originRefX - 5, originRefY - 50);
-
-  ctx.restore();
+  ctx.fillText('Y', originRefX - LEGEND_LABEL_NUDGE, originRefY - LEGEND_LABEL_OFFSET);
 }
 
 export function snapToGrid(x, y, gridSize) {
@@ -141,7 +161,6 @@ export function applySnap(worldX, worldY, state, camera) {
 
   const tolerance = 10 / camera.scale; // ~10 screen pixels in world mm
 
-  // Priority: existing node > grid
   const nodeSnap = snapToNode(worldX, worldY, state, tolerance);
   if (nodeSnap) return nodeSnap;
 

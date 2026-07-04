@@ -1,12 +1,17 @@
 // tools.js - Select / Member / Surface tools
 
+import {
+  PICK_TOLERANCE_PX,
+  POLYLINE_CLOSE_TOLERANCE_PX,
+  WIDE_PICK_TOLERANCE_PX,
+} from './constants.js';
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
 import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 export class ToolManager {
   constructor(canvas2d, state, history, onUpdate) {
-    this.c = canvas2d;
+    this.canvas2d = canvas2d;
     this.state = state;
     this.history = history;
     this.onUpdate = onUpdate;
@@ -31,7 +36,7 @@ export class ToolManager {
   }
 
   _setupEvents() {
-    const el = this.c.canvas;
+    const el = this.canvas2d.canvas;
 
     el.addEventListener('mousedown', e => this._onMouseDown(e));
     el.addEventListener('mousemove', e => this._onMouseMove(e));
@@ -44,13 +49,13 @@ export class ToolManager {
   }
 
   _getScreenPos(e) {
-    const rect = this.c.canvas.getBoundingClientRect();
+    const rect = this.canvas2d.canvas.getBoundingClientRect();
     return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
   }
 
   _getWorldPos(e) {
     const { sx, sy } = this._getScreenPos(e);
-    return this.c.screenToWorld(sx, sy);
+    return this.canvas2d.screenToWorld(sx, sy);
   }
 
   _getSnappedPos(e) {
@@ -58,7 +63,25 @@ export class ToolManager {
     if (e.shiftKey && this._memberStart) {
       return this._constrainAngle(this._memberStart, world);
     }
-    return applySnap(world.x, world.y, this.state, this.c.camera);
+    return applySnap(world.x, world.y, this.state, this.canvas2d.camera);
+  }
+
+  // Pick tolerance in world units (mm), derived from a screen-px tolerance.
+  _pickTolerance() {
+    const basePx = this.state.settings.widePick ? WIDE_PICK_TOLERANCE_PX : PICK_TOLERANCE_PX;
+    return basePx / this.canvas2d.camera.scale;
+  }
+
+  // Aborts the current draw interaction: alerts the user, drops all pending
+  // draft points, and clears the canvas preview (same reset as Escape).
+  _cancelDraft(messageKey) {
+    alert(t(messageKey));
+    this._memberStart = null;
+    this._surfaceStart = null;
+    this._surfacePolyline = [];
+    this._loadStart = null;
+    this.canvas2d.preview = null;
+    this.onUpdate();
   }
 
   _constrainAngle(origin, pos) {
@@ -120,7 +143,7 @@ export class ToolManager {
 
     // Pan
     if (this._isPanning && this._panStart) {
-      this.c.pan(sx - this._panStart.x, sy - this._panStart.y);
+      this.canvas2d.pan(sx - this._panStart.x, sy - this._panStart.y);
       this._panStart = { x: sx, y: sy };
       this.onUpdate();
       return;
@@ -157,7 +180,7 @@ export class ToolManager {
   _onWheel(e) {
     e.preventDefault();
     const { sx, sy } = this._getScreenPos(e);
-    this.c.zoom(e.deltaY, sx, sy);
+    this.canvas2d.zoom(e.deltaY, sx, sy);
     this.onUpdate();
   }
 
@@ -176,7 +199,7 @@ export class ToolManager {
         this._surfaceStart = null;
         this._surfacePolyline = [];
         this._loadStart = null;
-        this.c.preview = null;
+        this.canvas2d.preview = null;
         this.onUpdate();
       } else {
         this.state.clearSelection();
@@ -242,67 +265,40 @@ export class ToolManager {
 
   _selectDown(e) {
     const world = this._getWorldPos(e);
-    const basePx = this.state.settings.widePick ? 20 : 8;
-    const tolerance = basePx / this.c.camera.scale;
+    const tolerance = this._pickTolerance();
 
-    // Support hit first (small target, check before others) — skip if hidden
-    const support = this._findSelectableSupportAt(world.x, world.y, tolerance);
-    if (support) {
-      this.state.selectedSupportId = support.id;
-      this.state.selectedLoadId = null;
-      this.state.selectedSurfaceId = null;
-      this.state.selectedMemberId = null;
+    // Click-only hits, in priority order: support (small target) > load >
+    // surface. The first hit wins and becomes the exclusive selection.
+    const hitTests = [
+      { kind: 'support', find: () => this._findSelectableSupportAt(world.x, world.y, tolerance) },
+      { kind: 'load', find: () => this._findSelectableLoadAt(world.x, world.y) },
+      { kind: 'surface', find: () => this._findSelectableSurfaceAt(world.x, world.y) },
+    ];
+    for (const { kind, find } of hitTests) {
+      const hit = find();
+      if (!hit) continue;
+      this.state.select(kind, hit.id);
       this._dragTarget = null;
       this.onUpdate();
       return;
     }
 
-    // Load hit
-    const load = this._findSelectableLoadAt(world.x, world.y);
-    if (load) {
-      this.state.selectedLoadId = load.id;
-      this.state.selectedSurfaceId = null;
-      this.state.selectedMemberId = null;
-      this.state.selectedSupportId = null;
-      this._dragTarget = null;
-      this.onUpdate();
-      return;
-    }
-
-    // Surface hit
-    const surface = this._findSelectableSurfaceAt(world.x, world.y);
-    if (surface) {
-      this.state.selectedSurfaceId = surface.id;
-      this.state.selectedMemberId = null;
-      this.state.selectedLoadId = null;
-      this.state.selectedSupportId = null;
-      this._dragTarget = null;
-      this.onUpdate();
-      return;
-    }
-
-    // Check node hit first (for dragging endpoints)
+    // Node hit: select the member and start dragging its endpoint
     const nodeHit = this._findSelectableMemberNodeAt(world.x, world.y, tolerance);
     if (nodeHit) {
       const { member, node } = nodeHit;
-        this.state.selectedMemberId = member.id;
-        this.state.selectedSurfaceId = null;
-        this.state.selectedLoadId = null;
-        this.state.selectedSupportId = null;
-        this._dragTarget = { type: 'node', id: node.id };
-        this._isDragging = false;
-        this._dragStartPos = { x: world.x, y: world.y };
-        this.onUpdate();
-        return;
+      this.state.select('member', member.id);
+      this._dragTarget = { type: 'node', id: node.id };
+      this._isDragging = false;
+      this._dragStartPos = { x: world.x, y: world.y };
+      this.onUpdate();
+      return;
     }
 
-    // Check member hit
+    // Member hit: select and start dragging the whole member
     const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
     if (member) {
-      this.state.selectedMemberId = member.id;
-      this.state.selectedSurfaceId = null;
-      this.state.selectedLoadId = null;
-      this.state.selectedSupportId = null;
+      this.state.select('member', member.id);
       const n1 = this.state.getNode(member.startNodeId);
       const n2 = this.state.getNode(member.endNodeId);
       this._dragTarget = {
@@ -366,14 +362,14 @@ export class ToolManager {
     const dx = world.x - this._dragStartPos.x;
     const dy = world.y - this._dragStartPos.y;
 
-    if (!this._isDragging && Math.hypot(dx, dy) * this.c.camera.scale > 3) {
+    if (!this._isDragging && Math.hypot(dx, dy) * this.canvas2d.camera.scale > 3) {
       this._isDragging = true;
       this.history.save();
     }
 
     if (!this._isDragging) return;
 
-    const snapped = applySnap(world.x, world.y, this.state, this.c.camera);
+    const snapped = applySnap(world.x, world.y, this.state, this.canvas2d.camera);
 
     if (this._dragTarget.type === 'node') {
       this.state.updateNode(this._dragTarget.id, { x: snapped.x, y: snapped.y });
@@ -434,10 +430,7 @@ export class ToolManager {
     if (this.state.memberDraftType === 'vbrace') {
       topLevelId = this._getAutoTopLevelId();
       if (!topLevelId) {
-        alert(t('noLevelAbove'));
-        this._memberStart = null;
-        this.c.preview = null;
-        this.onUpdate();
+        this._cancelDraft('noLevelAbove');
         return;
       }
     }
@@ -458,10 +451,12 @@ export class ToolManager {
       sectionName: this.state.getDraftSectionName('member', memberType),
     });
 
+    // NOTE: draw tools intentionally clear only the previously drawn element
+    // kinds (not load/support selection), unlike state.select().
     this.state.selectedMemberId = member.id;
     this.state.selectedSurfaceId = null;
     this._memberStart = null;
-    this.c.preview = null;
+    this.canvas2d.preview = null;
     this.onUpdate();
   }
 
@@ -494,7 +489,7 @@ export class ToolManager {
     if (this.state.memberDraftType === 'column') return;
 
     const snapped = this._getSnappedPos(e);
-    this.c.preview = {
+    this.canvas2d.preview = {
       startX: this._memberStart.x,
       startY: this._memberStart.y,
       endX: snapped.x,
@@ -531,6 +526,14 @@ export class ToolManager {
     return this.state.getNextLevelId(this.state.activeLayerId);
   }
 
+  // Resolves the top level for a new surface of the given type. Returns null
+  // for wall types when there is no level above the active one.
+  _resolveSurfaceTopLevelId(type) {
+    if (isWallSurfaceType(type)) return this._getAutoTopLevelId();
+    if (isSlopedSurfaceType(type)) return this.state.activeLayerId || 'L0';
+    return this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+  }
+
   _getWallHeightOptions(topLevelId) {
     const type = this.state.surfaceDraftType;
     if (!isWallSurfaceType(type)) return {};
@@ -561,8 +564,6 @@ export class ToolManager {
     const snapped = this._getSnappedPos(e);
     const mode = this._getEffectiveSurfaceMode();
     const type = this.state.surfaceDraftType;
-    const isWallType = isWallSurfaceType(type);
-    const isSlopedType = isSlopedSurfaceType(type);
 
     if (mode === 'polyline') {
       this._surfaceStart = null;
@@ -587,20 +588,10 @@ export class ToolManager {
       if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
     }
 
-    let topLevelId;
-    if (isWallType) {
-      topLevelId = this._getAutoTopLevelId();
-      if (!topLevelId) {
-        alert(t('noLevelAbove'));
-        this._surfaceStart = null;
-        this.c.preview = null;
-        this.onUpdate();
-        return;
-      }
-    } else if (isSlopedType) {
-      topLevelId = this.state.activeLayerId || 'L0';
-    } else {
-      topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+    const topLevelId = this._resolveSurfaceTopLevelId(type);
+    if (!topLevelId) {
+      this._cancelDraft('noLevelAbove');
+      return;
     }
 
     this.history.save();
@@ -632,7 +623,7 @@ export class ToolManager {
     this.state.selectedMemberId = null;
 
     this._surfaceStart = null;
-    this.c.preview = null;
+    this.canvas2d.preview = null;
     this.onUpdate();
   }
 
@@ -647,7 +638,7 @@ export class ToolManager {
     if (!this._surfaceStart) return;
 
     const snapped = this._getSnappedPos(e);
-    this.c.preview = {
+    this.canvas2d.preview = {
       startX: this._surfaceStart.x,
       startY: this._surfaceStart.y,
       endX: snapped.x,
@@ -679,7 +670,7 @@ export class ToolManager {
     }
 
     const first = this._surfacePolyline[0];
-    const closeTol = 8 / this.c.camera.scale;
+    const closeTol = POLYLINE_CLOSE_TOLERANCE_PX / this.canvas2d.camera.scale;
     if (this._surfacePolyline.length >= 3 &&
         Math.hypot(snapped.x - first.x, snapped.y - first.y) <= closeTol) {
       this._finishSurfacePolyline();
@@ -696,7 +687,7 @@ export class ToolManager {
     if (this._surfacePolyline.length === 0) return;
     const snapped = this._getSnappedPos(e);
     const points = [...this._surfacePolyline, { x: snapped.x, y: snapped.y }];
-    this.c.preview = {
+    this.canvas2d.preview = {
       mode: 'polyline',
       points,
       closeHint: this._surfacePolyline.length >= 3,
@@ -709,23 +700,11 @@ export class ToolManager {
     if (this._surfacePolyline.length < 3) return;
     const type = this.state.surfaceDraftType;
     const isWallType = isWallSurfaceType(type);
-    const isSlopedType = isSlopedSurfaceType(type);
 
-    let topLevelId;
-    if (isWallType) {
-      topLevelId = this._getAutoTopLevelId();
-      if (!topLevelId) {
-        alert(t('noLevelAbove'));
-        this._surfacePolyline = [];
-        this._surfaceStart = null;
-        this.c.preview = null;
-        this.onUpdate();
-        return;
-      }
-    } else if (isSlopedType) {
-      topLevelId = this.state.activeLayerId || 'L0';
-    } else {
-      topLevelId = this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+    const topLevelId = this._resolveSurfaceTopLevelId(type);
+    if (!topLevelId) {
+      this._cancelDraft('noLevelAbove');
+      return;
     }
 
     this.history.save();
@@ -745,7 +724,7 @@ export class ToolManager {
     }
     this._surfacePolyline = [];
     this._surfaceStart = null;
-    this.c.preview = null;
+    this.canvas2d.preview = null;
     this.onUpdate();
   }
 
@@ -764,7 +743,7 @@ export class ToolManager {
       this.state.selectedLoadId = load.id;
       this.state.selectedMemberId = null;
       this.state.selectedSurfaceId = null;
-      this.c.preview = null;
+      this.canvas2d.preview = null;
       this.onUpdate();
       return;
     }
@@ -793,7 +772,7 @@ export class ToolManager {
     this.state.selectedMemberId = null;
     this.state.selectedSurfaceId = null;
     this._loadStart = null;
-    this.c.preview = null;
+    this.canvas2d.preview = null;
     this.onUpdate();
   }
 
@@ -802,7 +781,7 @@ export class ToolManager {
     if (this.state.loadDraftType === 'pointLoad') return;
 
     const snapped = this._getSnappedPos(e);
-    this.c.preview = {
+    this.canvas2d.preview = {
       startX: this._loadStart.x,
       startY: this._loadStart.y,
       endX: snapped.x,
@@ -817,16 +796,12 @@ export class ToolManager {
 
   _supportDown(e) {
     const snapped = this._getSnappedPos(e);
-    const basePx = this.state.settings.widePick ? 20 : 8;
-    const tolerance = basePx / this.c.camera.scale;
+    const tolerance = this._pickTolerance();
 
     // Check if clicking on an existing support
     const existing = this._findSelectableSupportAt(snapped.x, snapped.y, tolerance);
     if (existing) {
-      this.state.selectedSupportId = existing.id;
-      this.state.selectedMemberId = null;
-      this.state.selectedSurfaceId = null;
-      this.state.selectedLoadId = null;
+      this.state.select('support', existing.id);
       this.onUpdate();
       return;
     }
@@ -836,10 +811,7 @@ export class ToolManager {
     const support = this.state.addSupport(snapped.x, snapped.y, {
       levelId: this.state.activeLayerId || 'L0',
     });
-    this.state.selectedSupportId = support.id;
-    this.state.selectedMemberId = null;
-    this.state.selectedSurfaceId = null;
-    this.state.selectedLoadId = null;
+    this.state.select('support', support.id);
     this.onUpdate();
   }
 

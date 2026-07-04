@@ -25,3 +25,5 @@ export const WALL_DISPLAY_OFFSET_MM = 120;
 export const HIT_TOLERANCE_MM = 300;
 export const PICK_TOLERANCE_PX = 8;
 export const WIDE_PICK_TOLERANCE_PX = 20;
+// Screen distance within which a polyline click closes the loop
+export const POLYLINE_CLOSE_TOLERANCE_PX = 8;
