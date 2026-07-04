@@ -15,6 +15,16 @@ import {
   roofSlopeArrow,
 } from '../js/roof-geometry.js';
 
+function fakeState(levels) {
+  return {
+    levels,
+    getLevelZ(levelId) {
+      const level = levels.find(l => l.id === levelId);
+      return Number.isFinite(Number(level?.z)) ? Number(level.z) : 0;
+    },
+  };
+}
+
 function rectSurface(overrides = {}) {
   return {
     shape: 'rect',
@@ -98,7 +108,7 @@ test('roofHeightAtPoint clamps negative slope and out-of-bounds points to 0', ()
 });
 
 test('roofPoint3D and roofVertices3D add level z and roofBaseOffset', () => {
-  const state = { levels: [{ id: 'L1', z: 3000 }] };
+  const state = fakeState([{ id: 'L1', z: 3000 }]);
   const surface = rectSurface({ levelId: 'L1', roofBaseOffset: 100 });
 
   assert.deepEqual(roofVertices3D(state, surface), [
@@ -111,11 +121,11 @@ test('roofPoint3D and roofVertices3D add level z and roofBaseOffset', () => {
 
   // Unknown level falls back to z = 0
   const orphan = rectSurface({ levelId: 'missing', roofBaseOffset: 0 });
-  assert.deepEqual(roofPoint3D({ levels: [] }, orphan, { x: 0, y: 0 }), { x: 0, y: 0, z: 0 });
+  assert.deepEqual(roofPoint3D(fakeState([]), orphan, { x: 0, y: 0 }), { x: 0, y: 0, z: 0 });
 });
 
 test('roofVertices3D returns [] when the surface has no usable plan', () => {
-  assert.deepEqual(roofVertices3D({ levels: [] }, { shape: 'polygon', points: [] }), []);
+  assert.deepEqual(roofVertices3D(fakeState([]), { shape: 'polygon', points: [] }), []);
 });
 
 test('roofSlopeMemberSegments places members perpendicular to the slope at spacing pitch', () => {
@@ -160,7 +170,7 @@ test('roofPlanAreaM2 and roofActualAreaM2 convert mm2 to m2 and apply slope fact
 });
 
 test('roofProjectionAreasM2 projects the 3D outline onto the wind planes', () => {
-  const state = { levels: [{ id: 'L1', z: 3000 }] };
+  const state = fakeState([{ id: 'L1', z: 3000 }]);
   const surface = rectSurface({ levelId: 'L1', roofBaseOffset: 100 });
 
   // xPlus shed roof: y-z projection is 3000mm x 2000mm; x-z outline is degenerate.

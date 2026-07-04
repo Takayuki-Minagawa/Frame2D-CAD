@@ -1,7 +1,8 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t } from './i18n.js';
-import { resolveMemberColor, roofRoleLabelKey } from './member-style.js';
+import { escapeHtml } from './dom-utils.js';
+import { resolveMemberColor, roofRoleLabelKey } from './element-style.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, normalizeGridSize } from './state.js';
 import {
   computeMemberLengthM,
@@ -1538,15 +1539,6 @@ export class UI {
     this.refreshQuantitySummary({ force: true });
     this.updatePropertyPanel();
   }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 function formatNumber(value) {

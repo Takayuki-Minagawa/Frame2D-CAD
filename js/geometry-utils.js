@@ -2,6 +2,16 @@
 
 export const GEOMETRY_EPS = 1e-6;
 
+export function finiteNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function positiveNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export function pointToSegmentDistance(point, start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -11,12 +21,13 @@ export function pointToSegmentDistance(point, start, end) {
   return Math.hypot(point.x - (start.x + dx * t), point.y - (start.y + dy * t));
 }
 
-export function signedArea2(points) {
+export function signedArea2(points, aKey = 'x', bKey = 'y') {
   let area2 = 0;
   for (let i = 0; i < points.length; i++) {
     const a = points[i];
     const b = points[(i + 1) % points.length];
-    area2 += a.x * b.y - b.x * a.y;
+    area2 += finiteNumber(a[aKey], 0) * finiteNumber(b[bKey], 0) -
+      finiteNumber(b[aKey], 0) * finiteNumber(a[bKey], 0);
   }
   return area2;
 }

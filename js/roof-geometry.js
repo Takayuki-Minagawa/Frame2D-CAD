@@ -1,10 +1,15 @@
 // roof-geometry.js - shared roof plane geometry helpers
 
-import { pointInPolygonInterior } from './geometry-utils.js';
+import { DEFAULT_RAFTER_SPACING_MM, MM2_TO_M2 } from './constants.js';
+import {
+  GEOMETRY_EPS as EPS,
+  finiteNumber,
+  pointInPolygonInterior,
+  positiveNumber,
+  signedArea2,
+} from './geometry-utils.js';
 
-const MM2_TO_M2 = 1 / 1000000;
 const ROOF_DIRECTIONS = new Set(['xPlus', 'xMinus', 'yPlus', 'yMinus']);
-const EPS = 1e-6;
 
 export function normalizeRoofDirection(value) {
   return ROOF_DIRECTIONS.has(value) ? value : 'xPlus';
@@ -63,7 +68,7 @@ export function roofVertices3D(state, surface) {
 
 export function roofPoint3D(state, surface, point, bounds = null) {
   const b = bounds || roofPlanBounds(roofPlanPoints(surface));
-  const baseZ = getLevelZ(state, surface.levelId) + finiteNumber(surface.roofBaseOffset, 0);
+  const baseZ = state.getLevelZ(surface.levelId) + finiteNumber(surface.roofBaseOffset, 0);
   return {
     x: finiteNumber(point.x, 0),
     y: finiteNumber(point.y, 0),
@@ -75,7 +80,7 @@ export function roofSlopeMemberSegments(surface, options = {}) {
   const points = roofPlanPoints(surface);
   if (points.length < 3) return [];
 
-  const spacing = positiveNumber(options.spacing, 910);
+  const spacing = positiveNumber(options.spacing, DEFAULT_RAFTER_SPACING_MM);
   const minLength = Math.max(0, finiteNumber(options.minLength, 1));
   const includeBoundary = !!options.includeBoundary;
   const slope = roofSlopeVector(surface.roofDirection);
@@ -193,28 +198,3 @@ function dot2(point, vector) {
   return finiteNumber(point.x, 0) * vector.x + finiteNumber(point.y, 0) * vector.y;
 }
 
-function getLevelZ(state, levelId) {
-  const level = (state.levels || []).find(l => l.id === levelId);
-  return finiteNumber(level?.z, 0);
-}
-
-function signedArea2(points, aKey, bKey) {
-  let area2 = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p1 = points[i];
-    const p2 = points[(i + 1) % points.length];
-    area2 += finiteNumber(p1[aKey], 0) * finiteNumber(p2[bKey], 0) -
-      finiteNumber(p2[aKey], 0) * finiteNumber(p1[bKey], 0);
-  }
-  return area2;
-}
-
-function finiteNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function positiveNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}

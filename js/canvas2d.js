@@ -1,10 +1,9 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
-import { resolveMemberColor } from './member-style.js';
+import { resolveMemberColor, resolveSurfaceColor } from './element-style.js';
 import { roofSlopeArrow } from './roof-geometry.js';
 import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
-import { resolveSurfaceColor } from './surface-color.js';
 
 export class Canvas2D {
   constructor(canvasEl, state) {

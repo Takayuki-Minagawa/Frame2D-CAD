@@ -14,6 +14,7 @@ import {
   importUserDefs,
 } from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
+import { escapeHtml } from './dom-utils.js';
 
 // --- Initialize ---
 
@@ -890,15 +891,6 @@ function addUserDefinition() {
   if (userDefListModal?.classList.contains('visible')) {
     renderUserDefGroupList();
   }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 function applyTheme(theme) {

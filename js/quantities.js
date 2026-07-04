@@ -1,13 +1,13 @@
 // quantities.js - projected wind areas and seismic weight summaries
 
-import { ROOF_MEMBER_ROLE_ORDER } from './member-style.js';
+import { MM2_TO_M2 } from './constants.js';
+import { ROOF_MEMBER_ROLE_ORDER } from './element-style.js';
+import { finiteNumber, signedArea2 } from './geometry-utils.js';
 import { roofActualAreaM2, roofProjectionAreasM2 } from './roof-geometry.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
-const MM2_TO_M2 = 1 / 1000000;
-
 export function resolveSurfaceVerticalRange(state, surface) {
-  const baseZ = getLevelZ(state, surface.levelId);
+  const baseZ = state.getLevelZ(surface.levelId);
   const storyHeight = getStoryHeight(state, surface.levelId, surface.topLevelId);
   const bottomOffset = finiteNumber(surface.bottomOffset, 0);
   const topOffset = finiteNumber(surface.topOffset, storyHeight);
@@ -115,12 +115,12 @@ export function computeRoofMemberSummary(state) {
 }
 
 export function computeMemberLengthM(state, member) {
-  const startNode = getNode(state, member.startNodeId);
-  const endNode = getNode(state, member.endNodeId);
+  const startNode = state.getNode(member.startNodeId);
+  const endNode = state.getNode(member.endNodeId);
   if (!startNode || !endNode) return 0;
   const dx = finiteNumber(endNode.x, 0) - finiteNumber(startNode.x, 0);
   const dy = finiteNumber(endNode.y, 0) - finiteNumber(startNode.y, 0);
-  const levelZ = getLevelZ(state, member.levelId);
+  const levelZ = state.getLevelZ(member.levelId);
   const startZ = member.geometryMode === 'explicit3d' && Number.isFinite(Number(member.startZ))
     ? Number(member.startZ)
     : levelZ;
@@ -238,7 +238,7 @@ function gableWallAreaM2(state, surface) {
 }
 
 function gableWallAverageHeightMm(state, surface) {
-  const baseZ = getLevelZ(state, surface.levelId);
+  const baseZ = state.getLevelZ(surface.levelId);
   const bottom = baseZ + finiteNumber(surface.bottomOffset, 0);
   const topStart = baseZ + finiteNumber(surface.gableStartTopOffset, surface.topOffset);
   const topEnd = baseZ + finiteNumber(surface.gableEndTopOffset, surface.topOffset);
@@ -249,7 +249,7 @@ function gableWallAverageHeightMm(state, surface) {
 
 export function horizontalSurfaceAreaM2(surface) {
   if (surface.shape === 'polygon' && Array.isArray(surface.points) && surface.points.length >= 3) {
-    return Math.abs(signedPolygonArea2(surface.points)) * 0.5 * MM2_TO_M2;
+    return Math.abs(signedArea2(surface.points)) * 0.5 * MM2_TO_M2;
   }
   if (surface.shape === 'rect') {
     return Math.abs((surface.x2 - surface.x1) * (surface.y2 - surface.y1)) * MM2_TO_M2;
@@ -298,38 +298,11 @@ function surfacePlanSegments(surface) {
   return [];
 }
 
-function getLevelZ(state, levelId) {
-  const level = (state.levels || []).find(l => l.id === levelId);
-  return finiteNumber(level?.z, 0);
-}
-
-function getNode(state, nodeId) {
-  return (state.nodes || []).find(node => node.id === nodeId) || null;
-}
-
 function roofRoleSortIndex(roofRole) {
   const index = ROOF_MEMBER_ROLE_ORDER.indexOf(roofRole);
   return index >= 0 ? index : ROOF_MEMBER_ROLE_ORDER.length;
 }
 
 function getStoryHeight(state, levelId, topLevelId) {
-  const base = getLevelZ(state, levelId);
-  const top = getLevelZ(state, topLevelId);
-  return Math.max(0, top - base);
-}
-
-function signedPolygonArea2(points) {
-  let area2 = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p1 = points[i];
-    const p2 = points[(i + 1) % points.length];
-    area2 += finiteNumber(p1.x, 0) * finiteNumber(p2.y, 0) -
-      finiteNumber(p2.x, 0) * finiteNumber(p1.y, 0);
-  }
-  return area2;
-}
-
-function finiteNumber(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+  return Math.max(0, state.getLevelZ(topLevelId) - state.getLevelZ(levelId));
 }

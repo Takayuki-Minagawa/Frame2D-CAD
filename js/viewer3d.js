@@ -2,7 +2,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { resolveMemberColor } from './member-style.js';
+import { resolveMemberColor, resolveSurfaceColor } from './element-style.js';
+import { finiteNumber } from './geometry-utils.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
 import {
   isGableWallSurfaceType,
@@ -11,7 +12,6 @@ import {
   normalizeBeam3DSectionMode,
   offsetPolygonOutward,
 } from './state.js';
-import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
 
 export class Viewer3D {
@@ -915,13 +915,3 @@ export class Viewer3D {
   }
 }
 
-function finiteNumber(value, fallback = 0) {
-  if (value === null || value === undefined || value === '') {
-    const fallbackNumber = Number(fallback);
-    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
-  }
-  const n = Number(value);
-  if (Number.isFinite(n)) return n;
-  const fallbackNumber = Number(fallback);
-  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
-}

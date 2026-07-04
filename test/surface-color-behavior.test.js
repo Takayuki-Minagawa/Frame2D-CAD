@@ -7,7 +7,7 @@ import {
   defaultSurfaceColorForType,
   isHexColor,
   resolveSurfaceColor,
-} from '../js/surface-color.js';
+} from '../js/element-style.js';
 
 test('surface color helpers resolve explicit and fallback colors', () => {
   assert.equal(isHexColor('#112233'), true);
@@ -48,11 +48,11 @@ test('2D/3D renderers both use shared surface color resolver (smoke)', async () 
 
   assert.match(
     canvas2dSource,
-    /import\s+\{\s*resolveSurfaceColor\s*\}\s+from\s+'\.\/surface-color\.js';/
+    /import\s+\{[^}]*resolveSurfaceColor[^}]*\}\s+from\s+'\.\/element-style\.js';/
   );
   assert.match(
     viewer3dSource,
-    /import\s+\{\s*resolveSurfaceColor\s*\}\s+from\s+'\.\/surface-color\.js';/
+    /import\s+\{[^}]*resolveSurfaceColor[^}]*\}\s+from\s+'\.\/element-style\.js';/
   );
   assert.match(canvas2dSource, /resolveSurfaceColor\(/);
   assert.match(viewer3dSource, /resolveSurfaceColor\(/);
