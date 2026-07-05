@@ -25,6 +25,7 @@
   --viewer-bg: #1e1e2e;
   --viewer-grid1: #444466;
   --viewer-grid2: #333355;
+  --hover-bg: rgba(137, 180, 250, 0.1);
 }
 
 [data-theme="light"] {
@@ -47,6 +48,7 @@
   --viewer-bg: #e8e8f0;
   --viewer-grid1: #9999aa;
   --viewer-grid2: #bbbbcc;
+  --hover-bg: rgba(37, 99, 235, 0.08);
 }
 
 html, body {
@@ -108,17 +110,21 @@ body.toolbar-collapsed #toolbar > * {
   margin: 4px 0;
 }
 
-#btn-export, #btn-import-trigger, #btn-settings {
+/* Shared base for full-width toolbar / settings buttons */
+#btn-export, #btn-import-trigger, #btn-settings,
+.settings-help-btn {
   display: block;
   width: 100%;
-  padding: 7px 10px;
   background: transparent;
   color: var(--text);
-  border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
   text-align: left;
   font-size: 13px;
+}
+#btn-export, #btn-import-trigger, #btn-settings {
+  padding: 7px 10px;
+  border: 1px solid transparent;
 }
 
 .toolbar-sticky-top {
@@ -138,12 +144,7 @@ body.toolbar-collapsed #toolbar > * {
 }
 #btn-export:hover, #btn-import-trigger:hover,
 #btn-settings:hover {
-  background: rgba(137, 180, 250, 0.1);
-}
-[data-theme="light"] #btn-export:hover,
-[data-theme="light"] #btn-import-trigger:hover,
-[data-theme="light"] #btn-settings:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--hover-bg);
 }
 
 #app-notice-host {
@@ -593,7 +594,7 @@ body.property-collapsed #property-panel > * {
 }
 .modal-body .user-def-table-btn:hover {
   border-color: var(--accent);
-  background: rgba(137, 180, 250, 0.1);
+  background: var(--hover-bg);
 }
 .modal-body .user-def-table-actions {
   display: flex;
@@ -691,27 +692,22 @@ body.property-collapsed #property-panel > * {
   height: 34px;
   padding: 4px;
 }
+.settings-group-grow {
+  flex: 1;
+}
 .settings-group select:hover {
   border-color: var(--accent);
 }
 .settings-help-btn {
-  display: block;
-  width: 100%;
   padding: 8px 12px;
-  background: transparent;
-  color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: left;
-  font-size: 13px;
 }
 .settings-help-btn:hover {
-  background: rgba(137, 180, 250, 0.1);
+  background: var(--hover-bg);
   border-color: var(--accent);
 }
-[data-theme="light"] .settings-help-btn:hover {
-  background: rgba(37, 99, 235, 0.08);
+.stack-gap {
+  margin-top: 8px;
 }
 
 /* Layer selector layout */
@@ -754,10 +750,7 @@ body.property-collapsed #property-panel > * {
 }
 .layer-manage-btn:hover {
   border-color: var(--accent);
-  background: rgba(137, 180, 250, 0.1);
-}
-[data-theme="light"] .layer-manage-btn:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--hover-bg);
 }
 .modal-layer {
   width: min(480px, 90vw);
@@ -859,8 +852,5 @@ body.property-collapsed #property-panel > * {
 }
 .support-preset-btn:hover {
   border-color: var(--accent);
-  background: rgba(137, 180, 250, 0.1);
-}
-[data-theme="light"] .support-preset-btn:hover {
-  background: rgba(37, 99, 235, 0.08);
+  background: var(--hover-bg);
 }

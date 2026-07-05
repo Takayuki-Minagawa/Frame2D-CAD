@@ -446,7 +446,7 @@ export class ToolManager {
     const memberType = this.state.memberDraftType || 'beam';
     const member = this.state.addMember(startNode.id, endNode.id, {
       type: memberType,
-      levelId: this.state.activeLayerId || 'L0',
+      levelId: this.state.activeLevelId || 'L0',
       topLevelId,
       sectionName: this.state.getDraftSectionName('member', memberType),
     });
@@ -462,7 +462,7 @@ export class ToolManager {
 
   _placeColumn(snapped) {
     const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
-    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLayerId);
+    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLevelId);
     if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) {
       alert(t('noLevelAbove'));
       return;
@@ -475,7 +475,7 @@ export class ToolManager {
 
     const member = this.state.addMember(node.id, node.id, {
       type: 'column',
-      levelId: this.state.activeLayerId,
+      levelId: this.state.activeLevelId,
       topLevelId: topLevel.id,
       sectionName: this.state.getDraftSectionName('member', 'column'),
     });
@@ -504,8 +504,8 @@ export class ToolManager {
     const type = this.state.memberDraftType || 'beam';
     const sectionName = this.state.getDraftSectionName('member', type) || '-';
     const length = Math.round(Math.hypot(end.x - start.x, end.y - start.y));
-    const level = this.state.levels.find(l => l.id === this.state.activeLayerId);
-    const levelLabel = level ? level.name : (this.state.activeLayerId || '-');
+    const level = this.state.levels.find(l => l.id === this.state.activeLevelId);
+    const levelLabel = level ? level.name : (this.state.activeLevelId || '-');
     if (type === 'vbrace') {
       const top = this.state.levels.find(l => l.id === this._getAutoTopLevelId());
       return `${t(type)} ${levelLabel}->${top?.name || '-'} ${sectionName} ${length}mm`;
@@ -523,15 +523,15 @@ export class ToolManager {
   }
 
   _getAutoTopLevelId() {
-    return this.state.getNextLevelId(this.state.activeLayerId);
+    return this.state.getNextLevelId(this.state.activeLevelId);
   }
 
   // Resolves the top level for a new surface of the given type. Returns null
   // for wall types when there is no level above the active one.
   _resolveSurfaceTopLevelId(type) {
     if (isWallSurfaceType(type)) return this._getAutoTopLevelId();
-    if (isSlopedSurfaceType(type)) return this.state.activeLayerId || 'L0';
-    return this.state.surfaceDraftTopLayerId || this.state.activeLayerId || 'L0';
+    if (isSlopedSurfaceType(type)) return this.state.activeLevelId || 'L0';
+    return this.state.surfaceDraftTopLevelId || this.state.activeLevelId || 'L0';
   }
 
   _getWallHeightOptions(topLevelId) {
@@ -539,7 +539,7 @@ export class ToolManager {
     if (!isWallSurfaceType(type)) return {};
     return this.state.getSurfaceHeightOffsets({
       heightMode: this.state.surfaceDraftHeightMode,
-      levelId: this.state.activeLayerId || 'L0',
+      levelId: this.state.activeLevelId || 'L0',
       topLevelId,
       bottomOffset: this.state.surfaceDraftBottomOffset,
       topOffset: this.state.surfaceDraftTopOffset,
@@ -602,7 +602,7 @@ export class ToolManager {
     if (mode === 'line') {
       surface = this.state.addSurfaceLine(start.x, start.y, end.x, end.y, {
         type: type || 'wall',
-        levelId: this.state.activeLayerId || 'L0',
+        levelId: this.state.activeLevelId || 'L0',
         topLevelId,
         sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
         ...heightOptions,
@@ -611,7 +611,7 @@ export class ToolManager {
     } else {
       surface = this.state.addSurfaceRect(start.x, start.y, end.x, end.y, {
         type: type || 'floor',
-        levelId: this.state.activeLayerId || 'L0',
+        levelId: this.state.activeLevelId || 'L0',
         topLevelId,
         loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
         sectionName: this.state.getDraftSectionName('surface', type || 'floor'),
@@ -653,7 +653,7 @@ export class ToolManager {
     if (this._surfacePolyline.length === 0) {
       // exteriorWall: 入力開始時に既存チェック
       if (this.state.surfaceDraftType === 'exteriorWall') {
-        const levelId = this.state.activeLayerId || 'L0';
+        const levelId = this.state.activeLevelId || 'L0';
         const existing = this.state.surfaces.find(
           s => s.type === 'exteriorWall' && s.levelId === levelId
         );
@@ -711,7 +711,7 @@ export class ToolManager {
 
     const surface = this.state.addSurfacePolygon(this._surfacePolyline, {
       type: type || 'wall',
-      levelId: this.state.activeLayerId || 'L0',
+      levelId: this.state.activeLevelId || 'L0',
       topLevelId,
       loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
       sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
@@ -738,7 +738,7 @@ export class ToolManager {
       this.history.save();
       const load = this.state.addLoad('pointLoad', {
         x1: snapped.x, y1: snapped.y,
-        levelId: this.state.activeLayerId || 'L0',
+        levelId: this.state.activeLevelId || 'L0',
       });
       this.state.selectedLoadId = load.id;
       this.state.selectedMemberId = null;
@@ -766,7 +766,7 @@ export class ToolManager {
     this.history.save();
     const load = this.state.addLoad(type, {
       x1: start.x, y1: start.y, x2: end.x, y2: end.y,
-      levelId: this.state.activeLayerId || 'L0',
+      levelId: this.state.activeLevelId || 'L0',
     });
     this.state.selectedLoadId = load.id;
     this.state.selectedMemberId = null;
@@ -809,7 +809,7 @@ export class ToolManager {
     // Place a new support
     this.history.save();
     const support = this.state.addSupport(snapped.x, snapped.y, {
-      levelId: this.state.activeLayerId || 'L0',
+      levelId: this.state.activeLevelId || 'L0',
     });
     this.state.select('support', support.id);
     this.onUpdate();

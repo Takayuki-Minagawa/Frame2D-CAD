@@ -192,7 +192,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
     document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
-    ui.refreshLayerSelectors();
+    ui.refreshLevelSelectors();
     update();
     showNotice(t('cadImported'), 'success');
   } catch (err) {
@@ -212,7 +212,7 @@ const userDefModal = initUserDefModal({
 const layerModal = initLayerModal({
   state,
   onModelChange: update,
-  refreshLayerSelectors: () => ui.refreshLayerSelectors(),
+  refreshLevelSelectors: () => ui.refreshLevelSelectors(),
 });
 
 // --- Settings Modal ---

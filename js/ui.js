@@ -27,7 +27,7 @@ export class UI {
     this._quantitySummaryLastKey = null;
 
     this._setupToolbar();
-    this.refreshLayerSelectors();
+    this.refreshLevelSelectors();
   }
 
   _setupToolbar() {
@@ -83,7 +83,7 @@ export class UI {
 
     document.getElementById('sel-display-preset').addEventListener('change', e => {
       this.state.applyDisplayPreset(e.target.value);
-      this.refreshLayerSelectors();
+      this.refreshLevelSelectors();
       this.callbacks.onPropertyChange?.();
     });
 
@@ -130,10 +130,10 @@ export class UI {
 
     // Active layer
     document.getElementById('sel-active-layer').addEventListener('change', e => {
-      this.state.activeLayerId = e.target.value;
+      this.state.activeLevelId = e.target.value;
       this._syncWallHeightInputs(false);
       this._updateMemberLayerHint();
-      this.callbacks.onLayerChange?.(this.state.activeLayerId);
+      this.callbacks.onLayerChange?.(this.state.activeLevelId);
     });
 
     // Member default type
@@ -168,7 +168,7 @@ export class UI {
       this.state.surfaceDraftLoadDir = e.target.value;
     });
     document.getElementById('sel-top-layer').addEventListener('change', e => {
-      this.state.surfaceDraftTopLayerId = e.target.value;
+      this.state.surfaceDraftTopLevelId = e.target.value;
     });
     document.getElementById('sel-wall-height-mode').addEventListener('change', e => {
       this.state.surfaceDraftHeightMode = e.target.value;
@@ -308,10 +308,10 @@ export class UI {
     modeEl.value = mode;
 
     if (applyPreset || mode !== 'custom') {
-      const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+      const topLevelId = this.state.getNextLevelId(this.state.activeLevelId);
       const offsets = this.state.getSurfaceHeightOffsets({
         heightMode: mode,
-        levelId: this.state.activeLayerId,
+        levelId: this.state.activeLevelId,
         topLevelId,
         bottomOffset: this.state.surfaceDraftBottomOffset,
         topOffset: this.state.surfaceDraftTopOffset,
@@ -338,7 +338,7 @@ export class UI {
     if (groupEl) groupEl.value = this.state.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID;
   }
 
-  refreshLayerSelectors() {
+  refreshLevelSelectors() {
     const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
     const layerHtml = sortedLevels
       .map(l => `<option value="${l.id}">${l.name} (z=${l.z})</option>`)
@@ -348,11 +348,11 @@ export class UI {
     const selTop = document.getElementById('sel-top-layer');
     if (selActive) {
       selActive.innerHTML = layerHtml;
-      selActive.value = this.state.activeLayerId;
+      selActive.value = this.state.activeLevelId;
     }
     if (selTop) {
       selTop.innerHTML = layerHtml;
-      selTop.value = this.state.surfaceDraftTopLayerId;
+      selTop.value = this.state.surfaceDraftTopLevelId;
     }
     const selMemberType = document.getElementById('sel-member-type');
     if (selMemberType) selMemberType.value = this.state.memberDraftType;
@@ -406,11 +406,11 @@ export class UI {
     const target = document.getElementById('sel-copy-target-layer');
     if (source) {
       source.innerHTML = layerHtml;
-      source.value = this.state.activeLayerId;
+      source.value = this.state.activeLevelId;
     }
     if (target) {
       target.innerHTML = layerHtml;
-      target.value = this.state.getNextLevelId(this.state.activeLayerId) || this.state.activeLayerId;
+      target.value = this.state.getNextLevelId(this.state.activeLevelId) || this.state.activeLevelId;
     }
   }
 
@@ -469,10 +469,10 @@ export class UI {
   _updateMemberLayerHint() {
     const hint = document.getElementById('member-layer-hint');
     if (!hint) return;
-    const activeLevel = this.state.levels.find(l => l.id === this.state.activeLayerId);
-    const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+    const activeLevel = this.state.levels.find(l => l.id === this.state.activeLevelId);
+    const topLevelId = this.state.getNextLevelId(this.state.activeLevelId);
     const topLevel = this.state.levels.find(l => l.id === topLevelId);
-    const activeLabel = activeLevel ? `${activeLevel.name} (z=${activeLevel.z})` : (this.state.activeLayerId || '-');
+    const activeLabel = activeLevel ? `${activeLevel.name} (z=${activeLevel.z})` : (this.state.activeLevelId || '-');
     const topLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : '-';
 
     if (this.state.memberDraftType === 'column') {
@@ -1554,7 +1554,7 @@ export class UI {
       const key = el.dataset.i18n;
       el.textContent = t(key);
     });
-    this.refreshLayerSelectors();
+    this.refreshLevelSelectors();
     this._updateToolUI();
     this.updateStatusBar();
     this.refreshQuantitySummary({ force: true });

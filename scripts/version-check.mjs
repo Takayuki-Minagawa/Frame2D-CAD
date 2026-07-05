@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import {
   displayVersionFromPackageVersion,
+  extractIndexAssetVersions,
   extractIndexDisplayVersion,
   extractReadmeDisplayVersion,
   readPackageVersion,
@@ -16,6 +17,7 @@ const lockSource = await readFile(new URL('../package-lock.json', import.meta.ur
 const lock = JSON.parse(lockSource);
 
 const indexVersions = extractIndexDisplayVersion(indexSource);
+const indexAssetVersions = extractIndexAssetVersions(indexSource);
 const readmeVersion = extractReadmeDisplayVersion(readmeSource);
 
 const issues = [];
@@ -25,6 +27,12 @@ if (indexVersions.title !== displayVersion) {
 }
 if (indexVersions.status !== displayVersion) {
   issues.push(`index.html status version mismatch: expected ${displayVersion}, actual ${indexVersions.status || 'not found'}`);
+}
+if (indexAssetVersions.style !== packageVersion) {
+  issues.push(`index.html style.css cache-bust version mismatch: expected ${packageVersion}, actual ${indexAssetVersions.style || 'not found'}`);
+}
+if (indexAssetVersions.app !== packageVersion) {
+  issues.push(`index.html js/app.js cache-bust version mismatch: expected ${packageVersion}, actual ${indexAssetVersions.app || 'not found'}`);
 }
 if (readmeVersion !== displayVersion) {
   issues.push(`README.md heading version mismatch: expected ${displayVersion}, actual ${readmeVersion || 'not found'}`);

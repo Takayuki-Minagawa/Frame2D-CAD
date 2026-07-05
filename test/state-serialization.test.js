@@ -119,7 +119,7 @@ test('display mode settings default, serialize, and normalize on load', () => {
   assert.deepEqual(state.getPlanLayerStyle('L0'), { visible: true, alpha: 1, halftone: false, selectable: true });
   assert.deepEqual(state.getPlanLayerStyle('L1'), { visible: true, alpha: 1, halftone: false, selectable: true });
 
-  state.activeLayerId = 'L1';
+  state.activeLevelId = 'L1';
   state.settings.planLayerDisplayMode = 'halftone';
   state.settings.planLayerSelectionLock = true;
   state.settings.view3dLayerDisplayMode = 'current';
@@ -221,7 +221,7 @@ test('hit tests accept predicates so locked or hidden elements do not block visi
   const lower = state.addMember(lowerA.id, lowerB.id, { type: 'beam', levelId: 'L0' });
   const upper = state.addMember(upperA.id, upperB.id, { type: 'beam', levelId: 'L1' });
 
-  state.activeLayerId = 'L1';
+  state.activeLevelId = 'L1';
   state.settings.planLayerDisplayMode = 'current';
 
   assert.equal(state.findMemberAt(2000, 0, 300).id, lower.id);
@@ -233,7 +233,7 @@ test('hit tests accept predicates so locked or hidden elements do not block visi
 
 test('display presets and filters drive member visibility and selection', () => {
   const state = new AppState();
-  state.activeLayerId = 'L1';
+  state.activeLevelId = 'L1';
   const n1 = state.addNode(0, 0);
   const n2 = state.addNode(4000, 0);
   const beam = state.addMember(n1.id, n2.id, { type: 'beam', levelId: 'L0' });

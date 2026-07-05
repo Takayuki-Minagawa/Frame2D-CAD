@@ -16,7 +16,7 @@ const readmePath = new URL('../README.md', import.meta.url);
 const indexSource = await readFile(indexPath, 'utf8');
 const readmeSource = await readFile(readmePath, 'utf8');
 
-const nextIndex = updateIndexHtml(indexSource, displayVersion);
+const nextIndex = updateIndexHtml(indexSource, displayVersion, packageVersion);
 const nextReadme = updateReadme(readmeSource, displayVersion);
 
 if (nextIndex !== indexSource) {

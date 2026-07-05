@@ -94,7 +94,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   function refreshUserDefFormVisibility() {
     const isSection = userDefKindSelect?.value !== 'spring';
     if (userDefSectionGroup) userDefSectionGroup.style.display = isSection ? '' : 'none';
-    if (userDefSpringGroup) userDefSpringGroup.style.display = isSection ? 'none' : '';
+    if (userDefSpringGroup) userDefSpringGroup.hidden = isSection;
     const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
     if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
     if (userDefEndPresetGroup) userDefEndPresetGroup.style.display = isMemberSection ? 'flex' : 'none';
@@ -159,7 +159,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
 
   function syncEndSpringVisibility(conditionEl, springEl) {
     if (!conditionEl || !springEl) return;
-    springEl.style.display = conditionEl.value === 'spring' ? '' : 'none';
+    springEl.hidden = conditionEl.value !== 'spring';
   }
 
   function readEndPreset(conditionEl, springEl) {

@@ -117,8 +117,8 @@ export class AppState {
     this.revision = 0;
 
     // Runtime state (not serialized)
-    this.activeLayerId = 'L0';
-    this.surfaceDraftTopLayerId = 'L1';
+    this.activeLevelId = 'L0';
+    this.surfaceDraftTopLevelId = 'L1';
     this.resetRuntimeState();
 
     // Counters for ID generation
@@ -136,7 +136,7 @@ export class AppState {
   }
 
   // Resets selection, tool, and draft state to the initial defaults.
-  // activeLayerId / surfaceDraftTopLayerId are intentionally excluded: they
+  // activeLevelId / surfaceDraftTopLevelId are intentionally excluded: they
   // are derived from the level list by the constructor and loadJSON.
   resetRuntimeState() {
     this.selectedNodeId = null;
@@ -262,14 +262,14 @@ export class AppState {
     return Number.isFinite(Number(level?.z)) ? Number(level.z) : 0;
   }
 
-  getNextLevelId(levelId = this.activeLayerId) {
+  getNextLevelId(levelId = this.activeLevelId) {
     const sortedLevels = [...this.levels].sort((a, b) => a.z - b.z);
     const activeIdx = sortedLevels.findIndex(l => l.id === levelId);
     if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) return null;
     return sortedLevels[activeIdx + 1].id;
   }
 
-  getStoryHeight(levelId = this.activeLayerId, topLevelId = null) {
+  getStoryHeight(levelId = this.activeLevelId, topLevelId = null) {
     const resolvedTopLevelId = topLevelId || this.getNextLevelId(levelId);
     if (!resolvedTopLevelId) return 0;
     return Math.max(0, this.getLevelZ(resolvedTopLevelId) - this.getLevelZ(levelId));
@@ -281,8 +281,8 @@ export class AppState {
         ? (this.settings?.view3dLayerDisplayMode || this.settings?.planLayerDisplayMode)
         : this.settings?.planLayerDisplayMode
     );
-    const targetLevelId = levelId || this.activeLayerId || 'L0';
-    const isActive = targetLevelId === this.activeLayerId;
+    const targetLevelId = levelId || this.activeLevelId || 'L0';
+    const isActive = targetLevelId === this.activeLevelId;
     const lockOtherLayers = options.view !== '3d' && !!this.settings?.planLayerSelectionLock;
     if (mode === 'current' && !isActive) {
       return { visible: false, alpha: 0, halftone: false, selectable: false };
@@ -349,8 +349,8 @@ export class AppState {
 
   getSurfaceHeightOffsets(options = {}) {
     const heightMode = normalizeSurfaceHeightMode(options.heightMode);
-    const levelId = options.levelId || this.activeLayerId || 'L0';
-    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLayerId || levelId;
+    const levelId = options.levelId || this.activeLevelId || 'L0';
+    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLevelId || levelId;
     const storyHeight = this.getStoryHeight(levelId, topLevelId);
 
     if (heightMode === 'waist') {
@@ -819,7 +819,7 @@ export class AppState {
       endNodeId,
       sectionName,
       section: { b: DEFAULT_SECTION_B_MM, h: DEFAULT_SECTION_H_MM },
-      levelId: options.levelId || this.activeLayerId || 'L0',
+      levelId: options.levelId || this.activeLevelId || 'L0',
       material: 'steel',
       color: options.color || '#666666',
       topLevelId: options.topLevelId || null,
@@ -1013,11 +1013,11 @@ export class AppState {
 
   addSurfaceRect(x1, y1, x2, y2, options = {}) {
     const type = options.type || 'floor';
-    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const levelId = options.levelId || this.activeLevelId || 'L0';
     // NOTE: rect/polygon surfaces prefer the draft top layer over the next
     // level, while line surfaces prefer the next level first (see
     // addSurfaceLine). The asymmetry is historical and intentionally kept.
-    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
+    const topLevelId = options.topLevelId || this.surfaceDraftTopLevelId || this.getNextLevelId(levelId) || levelId;
     return this._createSurface({
       type,
       levelId,
@@ -1035,10 +1035,10 @@ export class AppState {
 
   addSurfaceLine(x1, y1, x2, y2, options = {}) {
     const type = options.type || 'wall';
-    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const levelId = options.levelId || this.activeLevelId || 'L0';
     // NOTE: topLevelId fallback order differs from addSurfaceRect/Polygon:
     // line surfaces prefer the next level before the draft top layer.
-    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLayerId || levelId;
+    const topLevelId = options.topLevelId || this.getNextLevelId(levelId) || this.surfaceDraftTopLevelId || levelId;
     return this._createSurface({
       type,
       levelId,
@@ -1056,9 +1056,9 @@ export class AppState {
     const xs = points.map(p => p.x);
     const ys = points.map(p => p.y);
     const type = options.type || 'wall';
-    const levelId = options.levelId || this.activeLayerId || 'L0';
+    const levelId = options.levelId || this.activeLevelId || 'L0';
     // NOTE: same fallback order as addSurfaceRect (differs from addSurfaceLine).
-    const topLevelId = options.topLevelId || this.surfaceDraftTopLayerId || this.getNextLevelId(levelId) || levelId;
+    const topLevelId = options.topLevelId || this.surfaceDraftTopLevelId || this.getNextLevelId(levelId) || levelId;
     return this._createSurface({
       type,
       levelId,
@@ -1227,11 +1227,11 @@ export class AppState {
     const { members, surfaces, loads } = this.getLevelUsage(id);
     if (members.length > 0 || surfaces.length > 0 || loads.length > 0) return false;
     this.levels = this.levels.filter(l => l.id !== id);
-    if (this.activeLayerId === id) {
-      this.activeLayerId = this.levels[0].id;
+    if (this.activeLevelId === id) {
+      this.activeLevelId = this.levels[0].id;
     }
-    if (this.surfaceDraftTopLayerId === id) {
-      this.surfaceDraftTopLayerId = this.levels[this.levels.length - 1].id;
+    if (this.surfaceDraftTopLevelId === id) {
+      this.surfaceDraftTopLevelId = this.levels[this.levels.length - 1].id;
     }
     this._touch();
     return true;
@@ -1257,7 +1257,7 @@ export class AppState {
     const base = {
       id,
       type,
-      levelId: props.levelId || this.activeLayerId || 'L0',
+      levelId: props.levelId || this.activeLevelId || 'L0',
     };
     if (type === 'areaLoad') {
       Object.assign(base, {
@@ -1335,7 +1335,7 @@ export class AppState {
       id,
       x,
       y,
-      levelId: options.levelId || this.activeLayerId || 'L0',
+      levelId: options.levelId || this.activeLevelId || 'L0',
       dx: options.dx !== undefined ? !!options.dx : true,
       dy: options.dy !== undefined ? !!options.dy : true,
       dz: options.dz !== undefined ? !!options.dz : true,

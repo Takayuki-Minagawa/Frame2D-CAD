@@ -151,8 +151,8 @@ export function loadModelJSON(state, data) {
   state.levels = Array.isArray(data.levels) && data.levels.length > 0
     ? data.levels.map(l => ({ ...l }))
     : createDefaultLevels();
-  state.activeLayerId = state.levels[0]?.id || 'L0';
-  state.surfaceDraftTopLayerId = state.levels[1]?.id || state.activeLayerId;
+  state.activeLevelId = state.levels[0]?.id || 'L0';
+  state.surfaceDraftTopLevelId = state.levels[1]?.id || state.activeLevelId;
   state.nodes = (data.nodes || []).map(n => ({ ...n }));
   // Preserve current custom user definitions across CAD load
   const prevCustomSections = state.sectionCatalog.filter(s => !s.isDefault);
@@ -183,7 +183,7 @@ export function loadModelJSON(state, data) {
     id: s.id || `SUP${idx + 1}`,
     x: s.x || 0,
     y: s.y || 0,
-    levelId: s.levelId || state.activeLayerId || 'L0',
+    levelId: s.levelId || state.activeLevelId || 'L0',
     dx: !!s.dx,
     dy: !!s.dy,
     dz: !!s.dz,
@@ -213,7 +213,7 @@ function normalizeLoadedMember(state, raw) {
       b: sanitizePositiveNumber(raw.section?.b, DEFAULT_SECTION_B_MM),
       h: sanitizePositiveNumber(raw.section?.h, DEFAULT_SECTION_H_MM),
     },
-    levelId: raw.levelId || state.activeLayerId || 'L0',
+    levelId: raw.levelId || state.activeLevelId || 'L0',
     material: sanitizeText(raw.material) || 'steel',
     color: raw.color || '#666666',
     topLevelId: raw.topLevelId || null,
@@ -249,8 +249,8 @@ function normalizeLoadedMember(state, raw) {
 
 function normalizeLoadedSurface(state, raw) {
   const type = raw.type || 'floor';
-  const levelId = raw.levelId || state.activeLayerId || 'L0';
-  const topLevelId = raw.topLevelId || state.surfaceDraftTopLayerId || state.getNextLevelId(levelId) || levelId;
+  const levelId = raw.levelId || state.activeLevelId || 'L0';
+  const topLevelId = raw.topLevelId || state.surfaceDraftTopLevelId || state.getNextLevelId(levelId) || levelId;
   const surface = {
     ...raw,
     type,

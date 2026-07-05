@@ -237,7 +237,7 @@ export function addRoofPlanesFromSurface(state, sourceSurfaceId, options = {}) {
   const planes = roofGenerationPlanes(points, pattern, direction);
   if (!planes.length) return [];
 
-  const levelId = options.levelId || source.topLevelId || source.levelId || state.activeLayerId || 'L0';
+  const levelId = options.levelId || source.topLevelId || source.levelId || state.activeLevelId || 'L0';
   const roofGroupId = sanitizeRoofGroupId(options.roofGroupId, state.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID);
   const common = {
     type: 'roof',

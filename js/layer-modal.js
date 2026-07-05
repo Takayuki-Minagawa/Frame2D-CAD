@@ -7,7 +7,7 @@ import { t } from './i18n.js';
 import { markInputInvalid, clearInputInvalid } from './dom-utils.js';
 import { showNotice } from './notice.js';
 
-export function initLayerModal({ state, onModelChange, refreshLayerSelectors }) {
+export function initLayerModal({ state, onModelChange, refreshLevelSelectors }) {
   const layerModal = document.getElementById('layer-modal');
   const layerListEl = document.getElementById('layer-list');
   const layerFormErrorEl = document.getElementById('layer-form-error');
@@ -64,7 +64,7 @@ export function initLayerModal({ state, onModelChange, refreshLayerSelectors }) 
       nameInput.addEventListener('change', () => {
         clearInputInvalid(nameInput);
         state.updateLevel(level.id, { name: nameInput.value });
-        refreshLayerSelectors();
+        refreshLevelSelectors();
         clearLayerFormError();
         onModelChange();
       });
@@ -83,7 +83,7 @@ export function initLayerModal({ state, onModelChange, refreshLayerSelectors }) 
           return;
         }
         state.updateLevel(level.id, { z: newZ });
-        refreshLayerSelectors();
+        refreshLevelSelectors();
         clearLayerFormError();
         renderLayerList();
         onModelChange();
@@ -108,7 +108,7 @@ export function initLayerModal({ state, onModelChange, refreshLayerSelectors }) 
           return;
         }
         state.removeLevel(level.id);
-        refreshLayerSelectors();
+        refreshLevelSelectors();
         clearLayerFormError();
         renderLayerList();
         onModelChange();
@@ -150,7 +150,7 @@ export function initLayerModal({ state, onModelChange, refreshLayerSelectors }) 
     }
     const name = `${state.levels.length + 1}F`;
     state.addLevel(name, nextZ);
-    refreshLayerSelectors();
+    refreshLevelSelectors();
     renderLayerList();
     onModelChange();
   });

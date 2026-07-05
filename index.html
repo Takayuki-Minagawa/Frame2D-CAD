@@ -8,7 +8,7 @@
   <meta http-equiv="Expires" content="0">
   <title>Element Modeler - Ver.1.0.4</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="style.css?v=20260210-1">
+  <link rel="stylesheet" href="style.css?v=1.0.4">
 </head>
 <body>
   <!-- Left Toolbar -->
@@ -330,8 +330,7 @@
         </div>
         <hr>
         <button id="btn-open-user-def" class="settings-help-btn">&#9881; <span data-i18n="userDefManage">ユーザー定義</span></button>
-        <div style="height:8px;"></div>
-        <button id="btn-open-help" class="settings-help-btn">&#10067; <span data-i18n="help">ヘルプ</span></button>
+        <button id="btn-open-help" class="settings-help-btn stack-gap">&#10067; <span data-i18n="help">ヘルプ</span></button>
       </div>
     </div>
   </div>
@@ -373,33 +372,33 @@
             <input id="user-def-color" type="color" value="#666666">
           </div>
           <div id="user-def-size-group" class="prop-row">
-            <div class="settings-group" style="flex:1;">
+            <div class="settings-group settings-group-grow">
               <label data-i18n="userDefWidthB">幅 b (mm)</label>
               <input id="user-def-b" type="number" min="1" step="1" value="100">
             </div>
-            <div class="settings-group" style="flex:1;">
+            <div class="settings-group settings-group-grow">
               <label data-i18n="userDefHeightH">高さ h (mm)</label>
               <input id="user-def-h" type="number" min="1" step="1" value="100">
             </div>
           </div>
           <div id="user-def-end-preset-group" class="prop-row">
-            <div class="settings-group" style="flex:1;">
+            <div class="settings-group settings-group-grow">
               <label data-i18n="userDefDefaultEndI">I端プリセット</label>
               <select id="user-def-endi-condition">
                 <option value="pin" data-i18n="endPin">ピン</option>
                 <option value="rigid" data-i18n="endRigid">剛</option>
                 <option value="spring" data-i18n="endSpring">バネ</option>
               </select>
-              <select id="user-def-endi-spring" style="display:none;"></select>
+              <select id="user-def-endi-spring" hidden></select>
             </div>
-            <div class="settings-group" style="flex:1;">
+            <div class="settings-group settings-group-grow">
               <label data-i18n="userDefDefaultEndJ">J端プリセット</label>
               <select id="user-def-endj-condition">
                 <option value="pin" data-i18n="endPin">ピン</option>
                 <option value="rigid" data-i18n="endRigid">剛</option>
                 <option value="spring" data-i18n="endSpring">バネ</option>
               </select>
-              <select id="user-def-endj-spring" style="display:none;"></select>
+              <select id="user-def-endj-spring" hidden></select>
             </div>
           </div>
           <div class="settings-group">
@@ -408,7 +407,7 @@
           </div>
         </div>
 
-        <div id="user-def-spring-group" style="display:none;">
+        <div id="user-def-spring-group" hidden>
           <div class="settings-group">
             <label data-i18n="userDefName">名称</label>
             <input id="user-def-symbol" type="text" placeholder="SP1">
@@ -422,12 +421,10 @@
         <p id="user-def-form-error" class="form-error" hidden></p>
 
         <button id="btn-user-def-list" class="settings-help-btn">&#128065; <span data-i18n="userDefListOpen">同グループ一覧</span></button>
-        <div style="height:8px;"></div>
-        <button id="btn-user-def-add" class="settings-help-btn">&#10133; <span data-i18n="userDefAdd">追加</span></button>
+        <button id="btn-user-def-add" class="settings-help-btn stack-gap">&#10133; <span data-i18n="userDefAdd">追加</span></button>
         <hr>
         <button id="btn-user-def-export" class="settings-help-btn">&#128190; <span data-i18n="userDefExport">エクスポート</span></button>
-        <div style="height:8px;"></div>
-        <button id="btn-user-def-import-trigger" class="settings-help-btn">&#128194; <span data-i18n="userDefImport">インポート</span></button>
+        <button id="btn-user-def-import-trigger" class="settings-help-btn stack-gap">&#128194; <span data-i18n="userDefImport">インポート</span></button>
         <input type="file" id="file-user-def-import" accept=".json" hidden>
       </div>
     </div>
@@ -467,6 +464,6 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=20260210-1"></script>
+  <script type="module" src="js/app.js?v=1.0.4"></script>
 </body>
 </html>
