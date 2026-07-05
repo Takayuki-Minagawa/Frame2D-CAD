@@ -197,4 +197,3 @@ function addUniqueHit(hits, hit) {
 function dot2(point, vector) {
   return finiteNumber(point.x, 0) * vector.x + finiteNumber(point.y, 0) * vector.y;
 }
-
