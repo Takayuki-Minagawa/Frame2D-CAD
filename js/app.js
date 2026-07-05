@@ -1,4 +1,10 @@
-// app.js - Application entry point
+// app.js - Application entry point.
+// Creates the core objects (state, history, 2D canvas, tools, UI), wires the
+// feature modules together and keeps only cross-cutting concerns here:
+// 2D/3D view switching, theme and language application, settings/help modals,
+// model import/export buttons and the global Escape key handling.
+// Feature UI lives in dedicated modules: notice.js (toasts), side-panels.js
+// (panel resize/collapse), user-def-modal.js and layer-modal.js.
 
 import { AppState } from './state.js';
 import { History } from './history.js';
@@ -10,10 +16,14 @@ import {
   importJSON,
   exportQuantityDetailCSV,
   exportQuantitySummaryCSV,
-  exportUserDefs,
-  importUserDefs,
 } from './io.js';
 import { initLang, setLang, getLang, t } from './i18n.js';
+import { getHelpContent } from './help-content.js';
+import { invalidateCssVarCache } from './dom-utils.js';
+import { showNotice } from './notice.js';
+import { initSidePanels } from './side-panels.js';
+import { initUserDefModal } from './user-def-modal.js';
+import { initLayerModal } from './layer-modal.js';
 
 // --- Initialize ---
 
@@ -93,11 +103,12 @@ const ui = new UI(state, {
     }
     update();
     showNotice(
-      t('copyLevelDone')
-        .replace('{members}', counts.members)
-        .replace('{surfaces}', counts.surfaces)
-        .replace('{loads}', counts.loads)
-        .replace('{supports}', counts.supports),
+      t('copyLevelDone', {
+        members: counts.members,
+        surfaces: counts.surfaces,
+        loads: counts.loads,
+        supports: counts.supports,
+      }),
       'success'
     );
   },
@@ -105,7 +116,7 @@ const ui = new UI(state, {
     const issues = state.validateModel();
     showNotice(
       issues.length
-        ? t('modelCheckDone').replace('{count}', issues.length)
+        ? t('modelCheckDone', { count: issues.length })
         : t('modelCheckNoIssues'),
       issues.length ? 'error' : 'success'
     );
@@ -118,136 +129,13 @@ new ToolManager(canvas2d, state, history, update);
 
 // --- Side Panels ---
 
-const sidePanelConfig = {
-  toolbar: {
-    widthVar: '--toolbar-w',
-    storageWidth: 'lineframe-toolbar-width',
-    storageCollapsed: 'lineframe-toolbar-collapsed',
-    min: 112,
-    maxRatio: 0.36,
-    defaultWidth: 160,
-    button: document.getElementById('btn-toggle-toolbar'),
-    resizer: document.getElementById('toolbar-resizer'),
-    className: 'toolbar-collapsed',
-    collapsedText: '›',
-    expandedText: '‹',
-    showLabel: 'Show toolbar',
-    hideLabel: 'Hide toolbar',
-    showTitle: 'ツールパネルを表示',
-    hideTitle: 'ツールパネルを隠す',
-  },
-  property: {
-    widthVar: '--panel-w',
-    storageWidth: 'lineframe-property-panel-width',
-    storageCollapsed: 'lineframe-property-panel-collapsed',
-    min: 156,
-    maxRatio: 0.42,
-    defaultWidth: 220,
-    button: document.getElementById('btn-toggle-property'),
-    resizer: document.getElementById('property-resizer'),
-    className: 'property-collapsed',
-    collapsedText: '‹',
-    expandedText: '›',
-    showLabel: 'Show properties',
-    hideLabel: 'Hide properties',
-    showTitle: 'プロパティパネルを表示',
-    hideTitle: 'プロパティパネルを隠す',
-  },
-};
-let layoutRefreshQueued = false;
-
-function clampPanelWidth(side, width) {
-  const cfg = sidePanelConfig[side];
-  const max = Math.max(cfg.min, Math.floor(window.innerWidth * cfg.maxRatio));
-  return Math.max(cfg.min, Math.min(max, Math.round(width)));
-}
-
-function getStoredPanelWidth(cfg) {
-  const stored = Number(localStorage.getItem(cfg.storageWidth));
-  return Number.isFinite(stored) && stored > 0 ? stored : cfg.defaultWidth;
-}
-
-function applyPanelWidth(side, width, persist = true) {
-  const cfg = sidePanelConfig[side];
-  const nextWidth = clampPanelWidth(side, width);
-  document.documentElement.style.setProperty(cfg.widthVar, `${nextWidth}px`);
-  if (persist) localStorage.setItem(cfg.storageWidth, String(nextWidth));
-  requestLayoutRefresh();
-  return nextWidth;
-}
-
-function isPanelCollapsed(side) {
-  return document.body.classList.contains(sidePanelConfig[side].className);
-}
-
-function updatePanelToggle(side) {
-  const cfg = sidePanelConfig[side];
-  if (!cfg.button) return;
-  const collapsed = isPanelCollapsed(side);
-  cfg.button.textContent = collapsed ? cfg.collapsedText : cfg.expandedText;
-  cfg.button.setAttribute('aria-label', collapsed ? cfg.showLabel : cfg.hideLabel);
-  cfg.button.title = collapsed ? cfg.showTitle : cfg.hideTitle;
-}
-
-function setPanelCollapsed(side, collapsed) {
-  const cfg = sidePanelConfig[side];
-  document.body.classList.toggle(cfg.className, collapsed);
-  localStorage.setItem(cfg.storageCollapsed, collapsed ? '1' : '0');
-  updatePanelToggle(side);
-  requestLayoutRefresh();
-}
-
-function requestLayoutRefresh() {
-  if (layoutRefreshQueued) return;
-  layoutRefreshQueued = true;
-  requestAnimationFrame(() => {
-    layoutRefreshQueued = false;
+initSidePanels({
+  onLayoutRefresh() {
     canvas2d.resize();
     if (viewer3d) viewer3d.resize();
     update();
-  });
-}
-
-function initSidePanels() {
-  for (const side of Object.keys(sidePanelConfig)) {
-    const cfg = sidePanelConfig[side];
-    applyPanelWidth(side, getStoredPanelWidth(cfg), false);
-    setPanelCollapsed(side, localStorage.getItem(cfg.storageCollapsed) === '1');
-
-    cfg.button?.addEventListener('click', () => {
-      setPanelCollapsed(side, !isPanelCollapsed(side));
-    });
-
-    cfg.resizer?.addEventListener('pointerdown', (event) => {
-      if (event.target.closest('button') || isPanelCollapsed(side)) return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = clampPanelWidth(side, getStoredPanelWidth(cfg));
-      let currentWidth = startWidth;
-      cfg.resizer.classList.add('active');
-      document.body.classList.add('resizing-panels');
-
-      const onPointerMove = (moveEvent) => {
-        const delta = moveEvent.clientX - startX;
-        const nextWidth = side === 'toolbar' ? startWidth + delta : startWidth - delta;
-        currentWidth = applyPanelWidth(side, nextWidth, false);
-      };
-      const finishResize = () => {
-        localStorage.setItem(cfg.storageWidth, String(currentWidth));
-        cfg.resizer.classList.remove('active');
-        document.body.classList.remove('resizing-panels');
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', finishResize);
-        window.removeEventListener('pointercancel', finishResize);
-      };
-      window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', finishResize, { once: true });
-      window.addEventListener('pointercancel', finishResize, { once: true });
-    });
-  }
-}
-
-initSidePanels();
+  },
+});
 
 // --- View Tab Switching ---
 
@@ -304,7 +192,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
     document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
     document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
     document.getElementById('sel-grid').value = String(state.settings.gridSize);
-    ui.refreshLayerSelectors();
+    ui.refreshLevelSelectors();
     update();
     showNotice(t('cadImported'), 'success');
   } catch (err) {
@@ -313,34 +201,25 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
+// --- Feature Modals (user definitions / layers) ---
+
+const userDefModal = initUserDefModal({
+  state,
+  onModelChange: update,
+  refreshDraftSectionSelectors: () => ui.refreshDraftSectionSelectors(),
+});
+
+const layerModal = initLayerModal({
+  state,
+  onModelChange: update,
+  refreshLevelSelectors: () => ui.refreshLevelSelectors(),
+});
+
 // --- Settings Modal ---
 
 const settingsModal = document.getElementById('settings-modal');
 const settingsThemeSelect = document.getElementById('settings-theme');
 const settingsLangSelect = document.getElementById('settings-lang');
-const userDefModal = document.getElementById('user-def-modal');
-const userDefKindSelect = document.getElementById('user-def-kind');
-const userDefTargetSelect = document.getElementById('user-def-target');
-const userDefTypeSelect = document.getElementById('user-def-type');
-const userDefSectionGroup = document.getElementById('user-def-section-group');
-const userDefSpringGroup = document.getElementById('user-def-spring-group');
-const userDefSizeGroup = document.getElementById('user-def-size-group');
-const userDefNameInput = document.getElementById('user-def-name');
-const userDefColorInput = document.getElementById('user-def-color');
-const userDefBInput = document.getElementById('user-def-b');
-const userDefHInput = document.getElementById('user-def-h');
-const userDefEndPresetGroup = document.getElementById('user-def-end-preset-group');
-const userDefEndIConditionSelect = document.getElementById('user-def-endi-condition');
-const userDefEndJConditionSelect = document.getElementById('user-def-endj-condition');
-const userDefEndISpringSelect = document.getElementById('user-def-endi-spring');
-const userDefEndJSpringSelect = document.getElementById('user-def-endj-spring');
-const userDefSectionMemoInput = document.getElementById('user-def-section-memo');
-const userDefSymbolInput = document.getElementById('user-def-symbol');
-const userDefMemoInput = document.getElementById('user-def-memo');
-const userDefListModal = document.getElementById('user-def-list-modal');
-const userDefListBody = document.getElementById('user-def-list-body');
-const userDefFormErrorEl = document.getElementById('user-def-form-error');
-let noticeTimerId = null;
 
 function applyI18nTo(root) {
   if (!root) return;
@@ -349,561 +228,10 @@ function applyI18nTo(root) {
   });
 }
 
-function ensureNoticeHost() {
-  let host = document.getElementById('app-notice-host');
-  if (host) return host;
-  host = document.createElement('div');
-  host.id = 'app-notice-host';
-  document.body.appendChild(host);
-  return host;
-}
-
-function showNotice(message, kind = 'error', durationMs = 4200) {
-  const text = String(message || '').trim();
-  if (!text) return;
-  const host = ensureNoticeHost();
-  host.innerHTML = '';
-
-  const notice = document.createElement('div');
-  notice.className = `app-notice app-notice-${kind}`;
-  notice.textContent = text;
-  host.appendChild(notice);
-
-  if (noticeTimerId) {
-    window.clearTimeout(noticeTimerId);
-    noticeTimerId = null;
-  }
-  noticeTimerId = window.setTimeout(() => {
-    notice.remove();
-    noticeTimerId = null;
-  }, durationMs);
-}
-
-function clearInputError(input) {
-  if (!input) return;
-  input.classList.remove('input-error');
-}
-
-function markInputError(input) {
-  if (!input) return;
-  input.classList.add('input-error');
-  input.focus();
-}
-
-function clearUserDefFormError() {
-  if (!userDefFormErrorEl) return;
-  userDefFormErrorEl.hidden = true;
-  userDefFormErrorEl.textContent = '';
-  clearInputError(userDefNameInput);
-  clearInputError(userDefBInput);
-  clearInputError(userDefHInput);
-  clearInputError(userDefSymbolInput);
-}
-
-function showUserDefFormError(message, input) {
-  if (!userDefFormErrorEl) {
-    showNotice(message, 'error');
-    return;
-  }
-  clearUserDefFormError();
-  userDefFormErrorEl.textContent = message;
-  userDefFormErrorEl.hidden = false;
-  markInputError(input);
-}
-
-function refreshUserDefTypeOptions() {
-  if (!userDefTargetSelect || !userDefTypeSelect) return;
-  const isMember = userDefTargetSelect.value === 'member';
-  const options = isMember
-    ? [
-        { value: 'beam', label: t('beam') },
-        { value: 'column', label: t('column') },
-        { value: 'hbrace', label: t('hbrace') },
-        { value: 'vbrace', label: t('vbrace') },
-      ]
-    : [
-        { value: 'floor', label: t('floor') },
-        { value: 'exteriorWall', label: t('exteriorWall') },
-        { value: 'wall', label: t('wall') },
-        { value: 'roof', label: t('roof') },
-        { value: 'eave', label: t('eave') },
-        { value: 'gableWall', label: t('gableWall') },
-      ];
-  userDefTypeSelect.innerHTML = options
-    .map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`)
-    .join('');
-  applyUserDefDefaultSectionValues();
-}
-
-function refreshUserDefFormVisibility() {
-  const isSection = userDefKindSelect?.value !== 'spring';
-  if (userDefSectionGroup) userDefSectionGroup.style.display = isSection ? '' : 'none';
-  if (userDefSpringGroup) userDefSpringGroup.style.display = isSection ? 'none' : '';
-  const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
-  if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
-  if (userDefEndPresetGroup) userDefEndPresetGroup.style.display = isMemberSection ? 'flex' : 'none';
-  refreshUserDefEndSpringVisibility();
-}
-
-function getUserDefGroupDefaultSection(target, type) {
-  return state.getDefaultSection(target, type) || state.listSections(target, type)[0] || null;
-}
-
-function applyUserDefDefaultSectionValues() {
-  if (!userDefColorInput || !userDefTargetSelect || !userDefTypeSelect) return;
-  const target = userDefTargetSelect.value || 'member';
-  const type = userDefTypeSelect.value || '';
-  const section = getUserDefGroupDefaultSection(target, type);
-  if (section?.color) {
-    userDefColorInput.value = section.color;
-  } else if (target === 'surface') {
-    userDefColorInput.value = type === 'floor' ? '#67a9cf' : (
-      type === 'roof' ? '#8b6f47' : (type === 'eave' ? '#4f9a8a' : (type === 'gableWall' ? '#bf6f5e' : '#b57a6b'))
-    );
-  } else {
-    userDefColorInput.value = '#666666';
-  }
-  if (target === 'member') {
-    if (userDefBInput) userDefBInput.value = String(section?.b || 200);
-    if (userDefHInput) userDefHInput.value = String(section?.h || 400);
-    setUserDefEndPresetInputs(section?.defaultEndI, section?.defaultEndJ);
-  }
-}
-
-function setUserDefEndPresetInputs(defaultEndI = null, defaultEndJ = null) {
-  setEndPresetInput(userDefEndIConditionSelect, userDefEndISpringSelect, defaultEndI);
-  setEndPresetInput(userDefEndJConditionSelect, userDefEndJSpringSelect, defaultEndJ);
-  refreshUserDefEndSpringVisibility();
-}
-
-function setEndPresetInput(conditionEl, springEl, endInfo = null) {
-  if (!conditionEl) return;
-  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
-  conditionEl.value = condition;
-  refreshSpringSelectOptions(springEl, endInfo?.springSymbol || '');
-}
-
-function refreshSpringSelectOptions(selectEl, selectedSymbol = '') {
-  if (!selectEl) return;
-  const springs = state.listSprings();
-  const fallbackSymbol = springs[0]?.symbol || '';
-  const selected = selectedSymbol || selectEl.value || fallbackSymbol;
-  selectEl.innerHTML = springs.map(s =>
-    `<option value="${escapeHtml(s.symbol)}" ${s.symbol === selected ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
-  ).join('');
-  if (selected && springs.some(s => s.symbol === selected)) selectEl.value = selected;
-}
-
-function refreshUserDefEndSpringVisibility() {
-  refreshSpringSelectOptions(userDefEndISpringSelect);
-  refreshSpringSelectOptions(userDefEndJSpringSelect);
-  syncEndSpringVisibility(userDefEndIConditionSelect, userDefEndISpringSelect);
-  syncEndSpringVisibility(userDefEndJConditionSelect, userDefEndJSpringSelect);
-}
-
-function syncEndSpringVisibility(conditionEl, springEl) {
-  if (!conditionEl || !springEl) return;
-  springEl.style.display = conditionEl.value === 'spring' ? '' : 'none';
-}
-
-function readEndPreset(conditionEl, springEl) {
-  const condition = conditionEl?.value || 'pin';
-  return {
-    condition,
-    springSymbol: condition === 'spring' ? (springEl?.value || null) : null,
-  };
-}
-
-function endConditionLabel(condition) {
-  if (condition === 'rigid') return t('endRigid');
-  if (condition === 'spring') return t('endSpring');
-  return t('endPin');
-}
-
-function formatEndPreset(endInfo) {
-  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
-  if (condition === 'spring') {
-    return `${t('endSpring')} ${endInfo?.springSymbol || '-'}`;
-  }
-  return endConditionLabel(condition);
-}
-
-function renderEndConditionOptions(selectedCondition = 'pin') {
-  return ['pin', 'rigid', 'spring'].map(condition =>
-    `<option value="${condition}" ${condition === selectedCondition ? 'selected' : ''}>${escapeHtml(endConditionLabel(condition))}</option>`
-  ).join('');
-}
-
-function renderSpringOptions(springs, selectedSymbol = '') {
-  const selected = selectedSymbol || springs[0]?.symbol || '';
-  return springs.map(s =>
-    `<option value="${escapeHtml(s.symbol)}" ${s.symbol === selected ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
-  ).join('');
-}
-
-function renderEndPresetCell(endInfo, fieldPrefix, editable, springs) {
-  const condition = ['pin', 'rigid', 'spring'].includes(endInfo?.condition) ? endInfo.condition : 'pin';
-  const springSymbol = endInfo?.springSymbol || springs[0]?.symbol || '';
-  if (!editable) {
-    return escapeHtml(formatEndPreset({ condition, springSymbol }));
-  }
-  return `
-    <select class="user-def-table-input" data-field="${fieldPrefix}Condition">
-      ${renderEndConditionOptions(condition)}
-    </select>
-    <select class="user-def-table-input" data-field="${fieldPrefix}Spring" style="${condition === 'spring' ? '' : 'display:none;'}">
-      ${renderSpringOptions(springs, springSymbol)}
-    </select>
-  `;
-}
-
-function readRowEndPreset(row, fieldPrefix) {
-  return readEndPreset(
-    row.querySelector(`[data-field="${fieldPrefix}Condition"]`),
-    row.querySelector(`[data-field="${fieldPrefix}Spring"]`)
-  );
-}
-
-function resetUserDefForm() {
-  clearUserDefFormError();
-  if (userDefKindSelect) userDefKindSelect.value = 'section';
-  if (userDefTargetSelect) userDefTargetSelect.value = 'member';
-  if (userDefNameInput) userDefNameInput.value = '';
-  if (userDefColorInput) userDefColorInput.value = '#666666';
-  if (userDefBInput) userDefBInput.value = '200';
-  if (userDefHInput) userDefHInput.value = '400';
-  if (userDefSectionMemoInput) userDefSectionMemoInput.value = '';
-  if (userDefSymbolInput) userDefSymbolInput.value = '';
-  if (userDefMemoInput) userDefMemoInput.value = '';
-  refreshUserDefTypeOptions();
-  refreshUserDefFormVisibility();
-}
-
-function showUserDefModal() {
-  clearUserDefFormError();
-  applyI18nTo(userDefModal);
-  refreshUserDefTypeOptions();
-  refreshUserDefFormVisibility();
-  userDefModal.classList.add('visible');
-}
-
-function hideUserDefModal() {
-  clearUserDefFormError();
-  userDefModal.classList.remove('visible');
-}
-
-function currentUserDefGroupLabel() {
-  const kind = userDefKindSelect?.value || 'section';
-  if (kind === 'spring') return t('userDefSpring');
-  const target = userDefTargetSelect?.value || 'member';
-  const type = userDefTypeSelect?.value || '';
-  return `${target === 'member' ? t('userDefTargetMember') : t('userDefTargetSurface')} / ${t(type)}`;
-}
-
-function renderUserDefGroupList() {
-  if (!userDefListBody) return;
-  const kind = userDefKindSelect?.value || 'section';
-
-  if (kind === 'spring') {
-    const springs = state.listSprings();
-    if (springs.length === 0) {
-      userDefListBody.innerHTML = `<p>${t('userDefListNoItems')}</p>`;
-      return;
-    }
-    userDefListBody.innerHTML = `
-      <p><b>${t('userDefListGroup')}:</b> ${escapeHtml(currentUserDefGroupLabel())}</p>
-      <table>
-        <thead>
-          <tr>
-            <th>${t('userDefListColName')}</th>
-            <th>${t('userDefListColMemo')}</th>
-            <th>${t('userDefListColDefault')}</th>
-            <th>${t('userDefListColAction')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${springs.map(s => `
-            <tr>
-              <td>${escapeHtml(s.symbol)}</td>
-              <td>
-                ${s.isDefault
-    ? escapeHtml(s.memo || '')
-    : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}
-              </td>
-              <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-	            <td>
-	                ${s.isDefault
-	    ? '-'
-	    : `<div class="user-def-table-actions">
-	                 <button type="button" class="user-def-table-btn" data-action="save-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefUpdate')}</button>
-	                 <button type="button" class="user-def-table-btn" data-action="remove-spring" data-symbol="${escapeHtml(s.symbol)}">${t('userDefDelete')}</button>
-	               </div>`}
-	              </td>
-	            </tr>
-	          `).join('')}
-        </tbody>
-      </table>
-    `;
-    attachUserDefListHandlers();
-    return;
-  }
-
-  const target = userDefTargetSelect?.value || 'member';
-  const type = userDefTypeSelect?.value || '';
-  const sections = state.listSections(target, type);
-  if (sections.length === 0) {
-    userDefListBody.innerHTML = `<p>${t('userDefListNoItems')}</p>`;
-    return;
-  }
-
-  const hasSize = target === 'member';
-  const springDefs = state.listSprings();
-  userDefListBody.innerHTML = `
-    <p><b>${t('userDefListGroup')}:</b> ${escapeHtml(currentUserDefGroupLabel())}</p>
-    <table>
-      <thead>
-        <tr>
-          <th>${t('userDefListColName')}</th>
-          ${hasSize ? `<th>${t('userDefListColB')}</th><th>${t('userDefListColH')}</th>` : ''}
-          ${hasSize ? `<th>${t('userDefListColEndI')}</th><th>${t('userDefListColEndJ')}</th>` : ''}
-          <th>${t('userDefListColColor')}</th>
-          <th>${t('userDefListColMemo')}</th>
-          <th>${t('userDefListColDefault')}</th>
-          <th>${t('userDefListColAction')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${sections.map(s => `
-          <tr>
-            <td>${escapeHtml(s.name)}</td>
-            ${hasSize ? `<td>${s.isDefault
-    ? `${s.b ?? '-'}`
-    : `<input type="number" class="user-def-table-input" data-field="b" min="1" step="1" value="${Number.isFinite(s.b) ? s.b : 1}">`}</td>
-            <td>${s.isDefault
-    ? `${s.h ?? '-'}`
-    : `<input type="number" class="user-def-table-input" data-field="h" min="1" step="1" value="${Number.isFinite(s.h) ? s.h : 1}">`}</td>
-            <td>${renderEndPresetCell(s.defaultEndI, 'defaultEndI', !s.isDefault, springDefs)}</td>
-            <td>${renderEndPresetCell(s.defaultEndJ, 'defaultEndJ', !s.isDefault, springDefs)}</td>` : ''}
-            <td>${s.isDefault
-    ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(s.color || '#666666')};"></span>${escapeHtml(s.color || '')}`
-    : `<input type="color" class="user-def-table-input" data-field="color" value="${escapeHtml(s.color || '#666666')}">`}</td>
-            <td>${s.isDefault
-    ? escapeHtml(s.memo || '')
-    : `<input type="text" class="user-def-table-input" data-field="memo" value="${escapeHtml(s.memo || '')}">`}</td>
-            <td>${s.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag')}</td>
-	            <td>
-	              ${s.isDefault
-	    ? '-'
-	    : `<div class="user-def-table-actions">
-	                 <button type="button" class="user-def-table-btn" data-action="save-section" data-name="${escapeHtml(s.name)}">${t('userDefUpdate')}</button>
-	                 <button type="button" class="user-def-table-btn" data-action="remove-section" data-name="${escapeHtml(s.name)}">${t('userDefDelete')}</button>
-	               </div>`}
-	            </td>
-	          </tr>
-	        `).join('')}
-      </tbody>
-    </table>
-  `;
-  attachUserDefListHandlers();
-}
-
-function attachUserDefListHandlers() {
-  if (!userDefListBody) return;
-
-  userDefListBody.querySelectorAll('[data-field$="Condition"]').forEach(conditionEl => {
-    const springField = conditionEl.dataset.field.replace('Condition', 'Spring');
-    const springEl = conditionEl.closest('td')?.querySelector(`[data-field="${springField}"]`);
-    conditionEl.addEventListener('change', () => syncEndSpringVisibility(conditionEl, springEl));
-  });
-
-  userDefListBody.querySelectorAll('[data-action="save-section"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = userDefTargetSelect?.value || 'member';
-      const type = userDefTypeSelect?.value || '';
-      const name = btn.dataset.name || '';
-      const row = btn.closest('tr');
-      if (!row) return;
-
-      const patch = {};
-      const colorEl = row.querySelector('[data-field="color"]');
-      if (colorEl) patch.color = colorEl.value;
-      const memoEl = row.querySelector('[data-field="memo"]');
-      if (memoEl) patch.memo = memoEl.value;
-
-      if (target === 'member') {
-        const bInput = row.querySelector('[data-field="b"]');
-        const hInput = row.querySelector('[data-field="h"]');
-        clearInputError(bInput);
-        clearInputError(hInput);
-        const b = parseFloat(bInput?.value || '');
-        const h = parseFloat(hInput?.value || '');
-        if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
-          markInputError(bInput);
-          markInputError(hInput);
-          showNotice(t('userDefInvalidSize'), 'error');
-          return;
-        }
-        patch.b = b;
-        patch.h = h;
-        patch.defaultEndI = readRowEndPreset(row, 'defaultEndI');
-        patch.defaultEndJ = readRowEndPreset(row, 'defaultEndJ');
-      }
-
-      const updated = state.updateSection(target, type, name, patch);
-      if (!updated) {
-        showNotice(t('userDefUpdateFailed'), 'error');
-        return;
-      }
-      showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
-      update();
-      renderUserDefGroupList();
-    });
-  });
-
-  userDefListBody.querySelectorAll('[data-action="save-spring"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const symbol = btn.dataset.symbol || '';
-      const row = btn.closest('tr');
-      if (!row) return;
-      const memo = row.querySelector('[data-field="memo"]')?.value || '';
-      const updated = state.updateSpring(symbol, { memo });
-      if (!updated) {
-        showNotice(t('userDefUpdateFailed'), 'error');
-        return;
-      }
-      showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
-      update();
-      renderUserDefGroupList();
-    });
-  });
-
-  userDefListBody.querySelectorAll('[data-action="remove-section"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = userDefTargetSelect?.value || 'member';
-      const type = userDefTypeSelect?.value || '';
-      const name = btn.dataset.name || '';
-      if (!name) return;
-      const confirmed = window.confirm(
-        t('userDefDeleteConfirm').replace('{name}', name)
-      );
-      if (!confirmed) return;
-      const removed = state.removeSection(target, type, name);
-      if (!removed) {
-        showNotice(t('userDefDeleteFailed'), 'error');
-        return;
-      }
-      showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
-      update();
-      ui.refreshDraftSectionSelectors();
-      renderUserDefGroupList();
-    });
-  });
-
-  userDefListBody.querySelectorAll('[data-action="remove-spring"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const symbol = btn.dataset.symbol || '';
-      if (!symbol) return;
-      const confirmed = window.confirm(
-        t('userDefDeleteConfirm').replace('{name}', symbol)
-      );
-      if (!confirmed) return;
-      const removed = state.removeSpring(symbol);
-      if (!removed) {
-        showNotice(t('userDefDeleteFailed'), 'error');
-        return;
-      }
-      showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
-      update();
-      ui.refreshDraftSectionSelectors();
-      renderUserDefGroupList();
-    });
-  });
-}
-
-function showUserDefListModal() {
-  applyI18nTo(userDefListModal);
-  renderUserDefGroupList();
-  userDefListModal.classList.add('visible');
-}
-
-function hideUserDefListModal() {
-  userDefListModal.classList.remove('visible');
-}
-
-function addUserDefinition() {
-  clearUserDefFormError();
-  const kind = userDefKindSelect?.value || 'section';
-  let added = null;
-
-  if (kind === 'section') {
-    const target = userDefTargetSelect?.value || 'member';
-    const type = userDefTypeSelect?.value || '';
-    const name = userDefNameInput?.value?.trim() || '';
-    if (name.startsWith('_')) {
-      showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefNameInput);
-      return;
-    }
-    const color = userDefColorInput?.value || '';
-    const sectionMemo = userDefSectionMemoInput?.value?.trim() || '';
-    if (target === 'member') {
-      const b = parseFloat(userDefBInput?.value || '');
-      const h = parseFloat(userDefHInput?.value || '');
-      if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
-        showUserDefFormError(t('userDefInvalidSize'), userDefBInput);
-        markInputError(userDefHInput);
-        return;
-      }
-      added = state.addSection({
-        target,
-        type,
-        name,
-        b,
-        h,
-        color,
-        memo: sectionMemo,
-        defaultEndI: readEndPreset(userDefEndIConditionSelect, userDefEndISpringSelect),
-        defaultEndJ: readEndPreset(userDefEndJConditionSelect, userDefEndJSpringSelect),
-      });
-    } else {
-      added = state.addSection({ target, type, name, color, memo: sectionMemo });
-    }
-  } else {
-    const symbol = userDefSymbolInput?.value?.trim() || '';
-    if (symbol.startsWith('_')) {
-      showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefSymbolInput);
-      return;
-    }
-    const memo = userDefMemoInput?.value?.trim() || '';
-    added = state.addSpring({ symbol, memo });
-  }
-
-  if (!added) {
-    const keyInput = kind === 'section' ? userDefNameInput : userDefSymbolInput;
-    showUserDefFormError(t('userDefAddFailed'), keyInput);
-    return;
-  }
-  clearUserDefFormError();
-  showNotice(t('userDefAdded'), 'success');
-  update();
-  ui.refreshDraftSectionSelectors();
-  resetUserDefForm();
-  if (userDefListModal?.classList.contains('visible')) {
-    renderUserDefGroupList();
-  }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem('lineframe-theme', theme);
+  invalidateCssVarCache();
   if (viewer3d) viewer3d.applyTheme();
   if (settingsThemeSelect) settingsThemeSelect.value = theme;
 }
@@ -913,15 +241,8 @@ function applyLang(lang) {
   ui.applyLanguage();
   if (settingsLangSelect) settingsLangSelect.value = lang;
   applyI18nTo(settingsModal);
-  applyI18nTo(userDefModal);
-  applyI18nTo(userDefListModal);
-  refreshUserDefTypeOptions();
-  refreshUserDefFormVisibility();
-  clearUserDefFormError();
-  clearLayerFormError();
-  if (userDefListModal?.classList.contains('visible')) {
-    renderUserDefGroupList();
-  }
+  userDefModal.applyLanguage();
+  layerModal.clearFormError();
 }
 
 function showSettingsModal() {
@@ -952,79 +273,8 @@ settingsModal.addEventListener('click', (e) => {
 
 document.getElementById('btn-open-user-def').addEventListener('click', () => {
   hideSettingsModal();
-  showUserDefModal();
+  userDefModal.show();
 });
-
-document.getElementById('btn-user-def-close').addEventListener('click', hideUserDefModal);
-document.getElementById('btn-user-def-add').addEventListener('click', addUserDefinition);
-document.getElementById('btn-user-def-list').addEventListener('click', showUserDefListModal);
-document.getElementById('btn-user-def-list-close').addEventListener('click', hideUserDefListModal);
-
-// User definition export/import
-document.getElementById('btn-user-def-export').addEventListener('click', () => {
-  const exported = exportUserDefs(state);
-  if (exported) {
-    showNotice(t('userDefExported'), 'success');
-  } else {
-    showNotice(t('userDefExportEmpty'), 'error');
-  }
-});
-
-document.getElementById('btn-user-def-import-trigger').addEventListener('click', () => {
-  document.getElementById('file-user-def-import').click();
-});
-
-document.getElementById('file-user-def-import').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  try {
-    const { added, skipped } = await importUserDefs(file, state);
-    if (added > 0) {
-      const msg = skipped > 0
-        ? t('userDefImportedWithSkip').replace('{n}', added).replace('{s}', skipped)
-        : t('userDefImported').replace('{n}', added);
-      showNotice(msg, 'success');
-      refreshUserDefEndSpringVisibility();
-      update();
-      ui.refreshDraftSectionSelectors();
-      if (userDefListModal?.classList.contains('visible')) {
-        renderUserDefGroupList();
-      }
-    } else if (skipped > 0) {
-      showNotice(t('userDefImportAllSkipped').replace('{s}', skipped), 'error');
-    } else {
-      showNotice(t('userDefImportNone'), 'error');
-    }
-  } catch (err) {
-    showNotice(t('userDefImportFailed') + err.message, 'error', 6500);
-  }
-  e.target.value = '';
-});
-
-if (userDefKindSelect) userDefKindSelect.addEventListener('change', () => {
-  clearUserDefFormError();
-  refreshUserDefFormVisibility();
-  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
-});
-if (userDefTargetSelect) userDefTargetSelect.addEventListener('change', () => {
-  clearUserDefFormError();
-  refreshUserDefTypeOptions();
-  refreshUserDefFormVisibility();
-  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
-});
-if (userDefTypeSelect) userDefTypeSelect.addEventListener('change', () => {
-  clearUserDefFormError();
-  applyUserDefDefaultSectionValues();
-  if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
-});
-if (userDefEndIConditionSelect) userDefEndIConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
-if (userDefEndJConditionSelect) userDefEndJConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
-
-// User definition modals intentionally do NOT close on overlay (backdrop) click.
-// These forms hold in-progress input (section/spring definitions, inline table
-// edits), so closing must require an explicit button to avoid losing input.
-
-resetUserDefForm();
 
 // Apply initial theme and language
 const savedTheme = localStorage.getItem('lineframe-theme') || 'dark';
@@ -1037,7 +287,7 @@ const helpModal = document.getElementById('help-modal');
 const helpBody = document.getElementById('help-body');
 
 function showHelpModal() {
-  helpBody.innerHTML = t('helpContent');
+  helpBody.innerHTML = getHelpContent(getLang());
   const titleEl = helpModal.querySelector('[data-i18n="helpTitle"]');
   if (titleEl) titleEl.textContent = t('helpTitle');
   const closeEl = helpModal.querySelector('[data-i18n="helpClose"]');
@@ -1060,158 +310,7 @@ helpModal.addEventListener('click', (e) => {
   if (e.target === helpModal) hideHelpModal();
 });
 
-// --- Layer Management Modal ---
-
-const layerModal = document.getElementById('layer-modal');
-const layerListEl = document.getElementById('layer-list');
-const layerFormErrorEl = document.getElementById('layer-form-error');
-
-function clearLayerFormError() {
-  if (!layerFormErrorEl) return;
-  layerFormErrorEl.hidden = true;
-  layerFormErrorEl.textContent = '';
-  if (layerListEl) {
-    layerListEl.querySelectorAll('.input-error').forEach(el => {
-      el.classList.remove('input-error');
-    });
-  }
-}
-
-function showLayerFormError(message, input = null) {
-  if (!layerFormErrorEl) {
-    showNotice(message, 'error');
-    return;
-  }
-  clearLayerFormError();
-  layerFormErrorEl.textContent = message;
-  layerFormErrorEl.hidden = false;
-  markInputError(input);
-}
-
-function renderLayerList() {
-  layerListEl.innerHTML = '';
-
-  // Header row
-  const header = document.createElement('div');
-  header.className = 'layer-header-row';
-  header.innerHTML = `
-    <span style="min-width:28px">ID</span>
-    <span style="flex:1" data-i18n="layerName">${t('layerName')}</span>
-    <span style="width:90px" data-i18n="layerZ">${t('layerZ')}</span>
-    <span style="width:26px"></span>
-  `;
-  layerListEl.appendChild(header);
-
-  const sortedLevels = [...state.levels].sort((a, b) => a.z - b.z);
-  for (const level of sortedLevels) {
-    const row = document.createElement('div');
-    row.className = 'layer-row';
-    row.dataset.levelId = level.id;
-
-    const idLabel = document.createElement('span');
-    idLabel.className = 'layer-row-label';
-    idLabel.textContent = level.id;
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.value = level.name;
-    nameInput.addEventListener('change', () => {
-      clearInputError(nameInput);
-      state.updateLevel(level.id, { name: nameInput.value });
-      ui.refreshLayerSelectors();
-      clearLayerFormError();
-      update();
-    });
-
-    const zInput = document.createElement('input');
-    zInput.type = 'number';
-    zInput.value = level.z;
-    zInput.step = '100';
-    zInput.addEventListener('change', () => {
-      clearInputError(zInput);
-      const newZ = parseFloat(zInput.value) || 0;
-      const duplicate = state.levels.some(l => l.id !== level.id && l.z === newZ);
-      if (duplicate) {
-        showLayerFormError(t('layerDuplicateZ'), zInput);
-        zInput.value = level.z;
-        return;
-      }
-      state.updateLevel(level.id, { z: newZ });
-      ui.refreshLayerSelectors();
-      clearLayerFormError();
-      renderLayerList();
-      update();
-    });
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'layer-delete-btn';
-    delBtn.textContent = '\u00D7';
-    delBtn.title = t('layerDelete');
-    delBtn.addEventListener('click', () => {
-      if (state.levels.length <= 1) {
-        showNotice(t('layerCannotDeleteLast'), 'error');
-        return;
-      }
-      const usage = state.getLevelUsage(level.id);
-      const total = usage.members.length + usage.surfaces.length;
-      if (total > 0) {
-        showNotice(
-          t('layerInUse').replace('{m}', usage.members.length).replace('{s}', usage.surfaces.length),
-          'error'
-        );
-        return;
-      }
-      state.removeLevel(level.id);
-      ui.refreshLayerSelectors();
-      clearLayerFormError();
-      renderLayerList();
-      update();
-    });
-
-    row.appendChild(idLabel);
-    row.appendChild(nameInput);
-    row.appendChild(zInput);
-    row.appendChild(delBtn);
-    layerListEl.appendChild(row);
-  }
-}
-
-function showLayerModal() {
-  clearLayerFormError();
-  renderLayerList();
-  layerModal.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
-  layerModal.classList.add('visible');
-}
-
-function hideLayerModal() {
-  clearLayerFormError();
-  layerModal.classList.remove('visible');
-}
-
-document.getElementById('btn-layer-manage').addEventListener('click', showLayerModal);
-document.getElementById('btn-layer-close').addEventListener('click', hideLayerModal);
-
-document.getElementById('btn-layer-add').addEventListener('click', () => {
-  clearLayerFormError();
-  let nextZ = state.levels.length > 0
-    ? Math.max(...state.levels.map(l => l.z)) + 2800
-    : 0;
-  // Ensure no duplicate z
-  while (state.levels.some(l => l.z === nextZ)) {
-    nextZ += 100;
-  }
-  const name = `${state.levels.length + 1}F`;
-  state.addLevel(name, nextZ);
-  ui.refreshLayerSelectors();
-  renderLayerList();
-  update();
-});
-
-layerModal.addEventListener('click', (e) => {
-  if (e.target === layerModal) hideLayerModal();
-});
+// --- Global keyboard handling ---
 
 // Close modals on Escape.
 // User definition modals are intentionally excluded: they hold in-progress
@@ -1220,14 +319,13 @@ layerModal.addEventListener('click', (e) => {
 // is swallowed so it never falls through and closes another modal underneath.
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (userDefListModal.classList.contains('visible')
-      || userDefModal.classList.contains('visible')) {
+    if (userDefModal.isOpen()) {
       e.stopPropagation();
     } else if (helpModal.classList.contains('visible')) {
       hideHelpModal();
       e.stopPropagation();
-    } else if (layerModal.classList.contains('visible')) {
-      hideLayerModal();
+    } else if (layerModal.isOpen()) {
+      layerModal.hide();
       e.stopPropagation();
     } else if (settingsModal.classList.contains('visible')) {
       hideSettingsModal();

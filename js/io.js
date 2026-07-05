@@ -8,19 +8,29 @@ import {
   computeSurfaceWindProjectionM2,
 } from './quantities.js';
 
-export function exportJSON(state) {
-  const data = state.toJSON();
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
-
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${data.meta.name || 'lineframe'}_${timestamp()}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+function downloadJson(filename, data) {
+  const json = JSON.stringify(data, null, 2);
+  downloadBlob(filename, new Blob([json], { type: 'application/json' }));
+}
+
+function downloadCsv(filename, csv) {
+  downloadBlob(filename, new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }));
+}
+
+export function exportJSON(state) {
+  const data = state.toJSON();
+  downloadJson(`${data.meta.name || 'lineframe'}_${timestamp()}.json`, data);
 }
 
 export function buildQuantitySummaryCSV(state) {
@@ -72,18 +82,8 @@ export function buildQuantitySummaryCSV(state) {
 }
 
 export function exportQuantitySummaryCSV(state) {
-  const csv = buildQuantitySummaryCSV(state);
-  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
   const name = state.meta?.name || 'lineframe';
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}_quantities_${timestamp()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsv(`${name}_quantities_${timestamp()}.csv`, buildQuantitySummaryCSV(state));
 }
 
 export function buildQuantityDetailCSV(state) {
@@ -150,18 +150,8 @@ export function buildQuantityDetailCSV(state) {
 }
 
 export function exportQuantityDetailCSV(state) {
-  const csv = buildQuantityDetailCSV(state);
-  const blob = new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
   const name = state.meta?.name || 'lineframe';
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}_quantity_details_${timestamp()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsv(`${name}_quantity_details_${timestamp()}.csv`, buildQuantityDetailCSV(state));
 }
 
 export function importJSON(file, state, history) {
@@ -188,17 +178,7 @@ export function exportUserDefs(state) {
   if (sections.length === 0 && springs.length === 0) return false;
 
   const data = { userDefinitions: true, sections, springs };
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `user_definitions_${timestamp()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadJson(`user_definitions_${timestamp()}.json`, data);
   return true;
 }
 

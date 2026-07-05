@@ -6,7 +6,7 @@ import {
   resolveMemberColor,
   roofRoleColor,
   roofRoleLabelKey,
-} from '../js/member-style.js';
+} from '../js/element-style.js';
 
 test('roof member roles resolve to role colors and labels', () => {
   assert.equal(roofRoleColor('roofEdge'), '#4d8cc8');
@@ -32,9 +32,9 @@ test('2D/3D/member panel renderers use member color resolver', async () => {
   const viewer3dSource = await readFile(new URL('../js/viewer3d.js', import.meta.url), 'utf8');
   const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
 
-  assert.match(canvas2dSource, /import\s+\{\s*resolveMemberColor\s*\}\s+from\s+'\.\/member-style\.js';/);
-  assert.match(viewer3dSource, /import\s+\{\s*resolveMemberColor\s*\}\s+from\s+'\.\/member-style\.js';/);
-  assert.match(uiSource, /import\s+\{\s*resolveMemberColor,\s*roofRoleLabelKey\s*\}\s+from\s+'\.\/member-style\.js';/);
+  assert.match(canvas2dSource, /import\s+\{[^}]*resolveMemberColor[^}]*\}\s+from\s+'\.\/element-style\.js';/);
+  assert.match(viewer3dSource, /import\s+\{[^}]*resolveMemberColor[^}]*\}\s+from\s+'\.\/element-style\.js';/);
+  assert.match(uiSource, /import\s+\{[^}]*resolveMemberColor[^}]*roofRoleLabelKey[^}]*\}\s+from\s+'\.\/element-style\.js';/);
   assert.match(canvas2dSource, /resolveMemberColor\(m\)/);
   assert.match(viewer3dSource, /resolveMemberColor\(m\)/);
   assert.match(uiSource, /resolveMemberColor\(member\)/);

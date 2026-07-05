@@ -6,6 +6,7 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const css = await readFile(new URL('../style.css', import.meta.url), 'utf8');
   const appSource = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  const sidePanelsSource = await readFile(new URL('../js/side-panels.js', import.meta.url), 'utf8');
 
   for (const id of [
     'toolbar-resizer',
@@ -35,12 +36,12 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   assert.match(css, /grid-template-columns:\s*var\(--toolbar-w\)\s+var\(--side-resizer-w\)\s+1fr\s+var\(--side-resizer-w\)\s+var\(--panel-w\)/);
   assert.match(css, /body\.toolbar-collapsed/);
   assert.match(css, /body\.property-collapsed/);
-  assert.match(appSource, /lineframe-toolbar-width/);
-  assert.match(appSource, /lineframe-property-panel-width/);
-  assert.match(appSource, /pointermove/);
-  assert.match(appSource, /pointercancel/);
-  assert.match(appSource, /layoutRefreshQueued/);
-  assert.match(appSource, /applyPanelWidth\(side,\s*nextWidth,\s*false\)/);
+  assert.match(sidePanelsSource, /lineframe-toolbar-width/);
+  assert.match(sidePanelsSource, /lineframe-property-panel-width/);
+  assert.match(sidePanelsSource, /pointermove/);
+  assert.match(sidePanelsSource, /pointercancel/);
+  assert.match(sidePanelsSource, /layoutRefreshQueued/);
+  assert.match(sidePanelsSource, /applyPanelWidth\(side,\s*nextWidth,\s*false\)/);
   assert.match(appSource, /canvas2d\.resize\(\)/);
 });
 
@@ -66,7 +67,10 @@ test('3D viewer uses 3D layer display and element filters', async () => {
   assert.match(viewerSource, /isSurfaceVisible\(s,\s*'3d'\)/);
   assert.match(viewerSource, /isMemberVisible\(m,\s*'3d'\)/);
   assert.match(viewerSource, /getPlanLayerStyle\(m\.levelId,\s*\{\s*view:\s*'3d'\s*\}\)/);
-  assert.match(viewerSource, /opacity:\s*0\.35 \* opacityMultiplier/);
+  // Wall surface opacity (0.35) is applied through a named constant and scaled
+  // by the per-layer alpha (opacityMultiplier).
+  assert.match(viewerSource, /wall:\s*0\.35/);
+  assert.match(viewerSource, /SURFACE_OPACITY\.wall \* opacityMultiplier/);
   assert.match(viewerSource, /_addBeamHSection3D/);
   assert.match(viewerSource, /beam3dSectionMode/);
 });

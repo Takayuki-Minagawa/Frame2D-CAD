@@ -2,17 +2,54 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { resolveMemberColor } from './member-style.js';
+import {
+  resolveMemberColor,
+  resolveSurfaceColor,
+  resolveLoadColor,
+  SUPPORT_COLOR,
+} from './element-style.js';
+import { finiteNumber, offsetPolygonOutward } from './geometry-utils.js';
+import { MM_TO_M, DEFAULT_SECTION_B_MM, DEFAULT_SECTION_H_MM } from './constants.js';
+import { isFixedSupport, braceDiagonals, resolveWallDisplayOffset } from './view-semantics.js';
 import { roofPlanPoints, roofVertices3D } from './roof-geometry.js';
 import {
   isGableWallSurfaceType,
   isSlopedSurfaceType,
   isWallSurfaceType,
   normalizeBeam3DSectionMode,
-  offsetPolygonOutward,
 } from './state.js';
-import { resolveSurfaceColor } from './surface-color.js';
 import { resolveSurfaceVerticalRange } from './quantities.js';
+
+// --- Display constants -----------------------------------------------------
+// Surface fill opacities (each multiplied by the per-layer alpha at draw time).
+const SURFACE_OPACITY = {
+  wall: 0.35,
+  floor: 0.45,
+  gableWall: 0.38,
+  roof: 0.58,
+};
+// Black box-edge / outline opacities. Historically 0.25 on surfaces and 0.3 on
+// members; these deliberately differ, so they are passed per call site.
+const SURFACE_EDGE_OPACITY = 0.25;
+const MEMBER_EDGE_OPACITY = 0.3;
+const GABLE_OUTLINE_OPACITY = 0.28;
+const ROOF_OUTLINE_OPACITY = 0.35;
+const BRACE_FRAME_OPACITY = 0.3;
+const AREA_LOAD_OPACITY = 0.35;
+
+// Display thicknesses / lifts, in scene meters.
+const SLAB_DISPLAY_THICKNESS_M = 0.12;   // rendered floor-slab thickness
+const SLAB_REST_LIFT_M = 0.06;           // lift a shape-slab above its rest Y
+const WALL_DISPLAY_THICKNESS_M = 0.05;   // rendered wall thickness
+const LOAD_PLANE_LIFT_M = 0.05;          // lift loads above their level plane
+const AREA_LOAD_THICKNESS_M = 0.05;
+const NODE_SPHERE_RADIUS_M = 0.06;
+const POINT_LOAD_RADIUS_M = 0.15;
+// Support symbol geometry (meters).
+const SUPPORT_CONE_RADIUS_M = 0.12;
+const SUPPORT_CONE_HEIGHT_M = 0.22;
+const SUPPORT_PLATE_THICKNESS_M = 0.03;
+const SUPPORT_ROLLER_RADIUS_M = 0.055;
 
 export class Viewer3D {
   constructor(containerEl, state) {
@@ -40,6 +77,19 @@ export class Viewer3D {
     this._isAnimating = false;
     this._sceneDirty = true;
     this._pendingInitialCamera = true;
+
+    // Shared material caches keyed by color/opacity so identical surfaces,
+    // members, edges and lines reuse one GPU material instead of allocating a
+    // fresh (or cloned) one per object. Geometries stay per-object and are
+    // disposed by _clearGroup; the cached materials are theme-independent
+    // (fixed colors, black edges) and live until dispose().
+    this._matCache = new Map();
+    this._lineMatCache = new Map();
+
+    // Per-rebuild lookups (see _buildLevelMaps).
+    this._levelZMm = null;
+    this._maxBeamHMByLevel = null;
+    this._nodeLevelId = null;
   }
 
   init() {
@@ -90,6 +140,89 @@ export class Viewer3D {
 
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.container);
+  }
+
+  // Coordinate-system rule (single source of truth):
+  // A 2D plan point (x, y in mm) at height z (mm) maps to the 3D scene as
+  //   scene.x =  x   (mm -> m)
+  //   scene.y =  z   (height, mm -> m)
+  //   scene.z = -y   (plan Y runs into the scene's -Z, mm -> m)
+  _toScene(x, y, z = 0) {
+    return new THREE.Vector3(x * MM_TO_M, z * MM_TO_M, -y * MM_TO_M);
+  }
+
+  // Scene point directly above a plan node at a given scene-Y (meters).
+  _sceneAt(node, sceneY) {
+    const v = this._toScene(node.x, node.y, 0);
+    v.y = sceneY;
+    return v;
+  }
+
+  // --- Material cache ------------------------------------------------------
+  _standardMaterial({ color, opacity = 1, transparent, wireframe = false, side = THREE.FrontSide }) {
+    const isTransparent = transparent === undefined ? opacity < 1 : transparent;
+    const key = `${color}|${opacity.toFixed(4)}|${isTransparent ? 1 : 0}|${wireframe ? 1 : 0}|${side}`;
+    let mat = this._matCache.get(key);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color),
+        transparent: isTransparent,
+        opacity,
+        wireframe,
+        side,
+      });
+      this._matCache.set(key, mat);
+    }
+    return mat;
+  }
+
+  _lineMaterial({ color, opacity = 1, transparent, linewidth = 1 }) {
+    const isTransparent = transparent === undefined ? opacity < 1 : transparent;
+    const key = `${color}|${opacity.toFixed(4)}|${isTransparent ? 1 : 0}|${linewidth}`;
+    let mat = this._lineMatCache.get(key);
+    if (!mat) {
+      mat = new THREE.LineBasicMaterial({
+        color: new THREE.Color(color),
+        transparent: isTransparent,
+        opacity,
+        linewidth,
+      });
+      this._lineMatCache.set(key, mat);
+    }
+    return mat;
+  }
+
+  _disposeMaterialCache() {
+    for (const mat of this._matCache.values()) mat.dispose();
+    for (const mat of this._lineMatCache.values()) mat.dispose();
+    this._matCache.clear();
+    this._lineMatCache.clear();
+  }
+
+  // Adds a Box mesh plus (optionally) its black edge outline to a group,
+  // reusing cached materials. `rotation` (Euler) or `quaternion` orients it.
+  _addBoxWithEdges(group, {
+    size, position, rotation, quaternion,
+    color, opacity = 1, transparent, wireframe = false, side = THREE.FrontSide,
+    edgeOpacity = null,
+  }) {
+    const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+    const material = this._standardMaterial({ color, opacity, transparent, wireframe, side });
+    const mesh = new THREE.Mesh(geometry, material);
+    if (position) mesh.position.copy(position);
+    if (quaternion) mesh.quaternion.copy(quaternion);
+    else if (rotation) mesh.rotation.copy(rotation);
+    group.add(mesh);
+
+    if (!wireframe && edgeOpacity !== null) {
+      const edges = new THREE.EdgesGeometry(geometry);
+      const lineMat = this._lineMaterial({ color: 0x000000, opacity: edgeOpacity });
+      const seg = new THREE.LineSegments(edges, lineMat);
+      seg.position.copy(mesh.position);
+      seg.quaternion.copy(mesh.quaternion);
+      group.add(seg);
+    }
+    return mesh;
   }
 
   _setFallbackObliqueView() {
@@ -210,12 +343,44 @@ export class Viewer3D {
   }
 
   _clearGroup(group) {
+    // Dispose per-object geometries only. Materials are shared/cached and are
+    // released together by _disposeMaterialCache().
     while (group.children.length) {
       const child = group.children[0];
       child.geometry?.dispose();
-      child.material?.dispose();
       group.remove(child);
     }
+  }
+
+  // Builds the per-rebuild lookups so the surface/member/node/load/support
+  // passes can resolve level elevations and floor rest heights in O(1) instead
+  // of scanning levels/members repeatedly.
+  _buildLevelMaps() {
+    const levelZ = new Map();
+    for (const l of this.state.levels || []) levelZ.set(l.id, Number(l.z) || 0);
+    this._levelZMm = levelZ;
+
+    // levelId -> max visible beam depth (meters); node -> levelId of the first
+    // member (in array order) that touches it.
+    const maxBeamH = new Map();
+    const nodeLevelId = new Map();
+    for (const m of this.state.members || []) {
+      if (!nodeLevelId.has(m.startNodeId)) nodeLevelId.set(m.startNodeId, m.levelId);
+      if (!nodeLevelId.has(m.endNodeId)) nodeLevelId.set(m.endNodeId, m.levelId);
+      if (m.type !== 'beam') continue;
+      if (!this.state.isMemberVisible(m, '3d')) continue;
+      const h = (m.section?.h || DEFAULT_SECTION_H_MM) * MM_TO_M;
+      const cur = maxBeamH.get(m.levelId);
+      if (cur === undefined || h > cur) maxBeamH.set(m.levelId, h);
+    }
+    this._maxBeamHMByLevel = maxBeamH;
+    this._nodeLevelId = nodeLevelId;
+  }
+
+  // Level elevation in scene meters (falls back to state.getLevelZ()).
+  _levelZm(levelId) {
+    const z = this._levelZMm?.get(levelId);
+    return (z === undefined ? this.state.getLevelZ(levelId) : z) * MM_TO_M;
   }
 
   rebuildScene() {
@@ -228,7 +393,24 @@ export class Viewer3D {
     this._clearGroup(this.loadGroup);
     this._clearGroup(this.supportGroup);
 
-    // Surfaces
+    this._buildLevelMaps();
+
+    this._buildSurfaces();
+    const visibleMemberNodeIds = this._buildMembers();
+    this._buildNodes(visibleMemberNodeIds);
+    this._buildLoads();
+    this._buildSupports();
+
+    const bounds = this._computeContentBounds();
+    this._positionOriginAxes(bounds);
+
+    if (this._pendingInitialCamera) {
+      this._autoFrameObliqueView(bounds);
+      this._pendingInitialCamera = false;
+    }
+  }
+
+  _buildSurfaces() {
     for (const s of this.state.surfaces || []) {
       if (!this.state.isSurfaceVisible(s, '3d')) continue;
       const layerAlpha = this.state.getPlanLayerStyle(s.levelId, { view: '3d' }).alpha;
@@ -260,45 +442,109 @@ export class Viewer3D {
         continue;
       }
 
-      const xSize = Math.max(0.01, Math.abs(s.x2 - s.x1) / 1000);
-      const zSize = Math.max(0.01, Math.abs(s.y2 - s.y1) / 1000);
-      const cx = (s.x1 + s.x2) / 2000;
-      const cz = -((s.y1 + s.y2) / 2000);
+      this._addSurfaceBox3D(s, base, top, layerAlpha);
+    }
+  }
 
-      let yCenter;
-      let ySize;
-      const matColor = resolveSurfaceColor(s);
+  // Axis-aligned surface rectangle (non-polygon, non-line). Walls stand up over
+  // their vertical range; floors read as a slab resting on the framing.
+  _addSurfaceBox3D(s, base, top, opacityMultiplier = 1) {
+    const xSize = Math.max(0.01, Math.abs(s.x2 - s.x1) * MM_TO_M);
+    const zSize = Math.max(0.01, Math.abs(s.y2 - s.y1) * MM_TO_M);
+    const isWallType = isWallSurfaceType(s.type);
 
-      const isWallType = isWallSurfaceType(s.type);
-      if (isWallType) {
-        ySize = Math.max(0.1, Math.abs(top - base) / 1000);
-        yCenter = (Math.min(base, top) / 1000) + ySize / 2;
-      } else {
-        // Floors sit on top of the beams at their level so they read as a slab
-        // resting on the framing rather than slicing through it.
-        ySize = 0.12;
-        const beamTopY = this._floorRestY(s, base);
-        yCenter = beamTopY + ySize / 2;
-      }
-
-      const geometry = new THREE.BoxGeometry(xSize, ySize, zSize);
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(matColor),
-        transparent: true,
-        opacity: (isWallType ? 0.35 : 0.45) * layerAlpha,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(cx, yCenter, cz);
-      this.surfaceGroup.add(mesh);
-
-      const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * layerAlpha });
-      const lineSegments = new THREE.LineSegments(edges, lineMat);
-      lineSegments.position.copy(mesh.position);
-      this.surfaceGroup.add(lineSegments);
+    let ySize;
+    let yCenterM;
+    if (isWallType) {
+      ySize = Math.max(0.1, Math.abs(top - base) * MM_TO_M);
+      yCenterM = Math.min(base, top) * MM_TO_M + ySize / 2;
+    } else {
+      // Floors sit on top of the beams at their level so they read as a slab
+      // resting on the framing rather than slicing through it.
+      ySize = SLAB_DISPLAY_THICKNESS_M;
+      yCenterM = this._floorRestY(s, base) + ySize / 2;
     }
 
-    // Members
+    const center = this._toScene((s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2, 0);
+    center.y = yCenterM;
+
+    this._addBoxWithEdges(this.surfaceGroup, {
+      size: { x: xSize, y: ySize, z: zSize },
+      position: center,
+      color: resolveSurfaceColor(s),
+      opacity: (isWallType ? SURFACE_OPACITY.wall : SURFACE_OPACITY.floor) * opacityMultiplier,
+      edgeOpacity: SURFACE_EDGE_OPACITY * opacityMultiplier,
+    });
+  }
+
+  requestRebuild() {
+    this._sceneDirty = true;
+  }
+
+  // Draws one wall segment as an oriented box + edges between two plan points.
+  _addWallSegmentBox3D(a, b, yBaseM, heightM, color, opacityMultiplier = 1) {
+    const start = this._toScene(a.x, a.y, 0);
+    const end = this._toScene(b.x, b.y, 0);
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    if (length < 0.001) return;
+
+    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    mid.y = yBaseM + heightM / 2;
+    const rotation = new THREE.Euler(0, -Math.atan2(direction.z, direction.x), 0);
+
+    this._addBoxWithEdges(this.surfaceGroup, {
+      size: { x: length, y: heightM, z: WALL_DISPLAY_THICKNESS_M },
+      position: mid,
+      rotation,
+      color,
+      opacity: SURFACE_OPACITY.wall * opacityMultiplier,
+      edgeOpacity: SURFACE_EDGE_OPACITY * opacityMultiplier,
+    });
+  }
+
+  _addWallLine3D(surface, base, top, opacityMultiplier = 1) {
+    const heightM = Math.max(0.1, Math.abs(top - base) * MM_TO_M);
+    const yBaseM = Math.min(base, top) * MM_TO_M;
+    this._addWallSegmentBox3D(
+      { x: surface.x1, y: surface.y1 },
+      { x: surface.x2, y: surface.y2 },
+      yBaseM, heightM, resolveSurfaceColor(surface), opacityMultiplier
+    );
+  }
+
+  _addGableWallLine3D(surface, opacityMultiplier = 1) {
+    const baseZ = this.state.getLevelZ(surface.levelId);
+    const topFallback = finiteNumber(surface.topOffset, 0);
+    const bottomZmm = baseZ + finiteNumber(surface.bottomOffset, 0);
+    const startTopZmm = baseZ + finiteNumber(surface.gableStartTopOffset, topFallback);
+    const endTopZmm = baseZ + finiteNumber(surface.gableEndTopOffset, topFallback);
+    const bottomY = bottomZmm * MM_TO_M;
+    if (Math.max(startTopZmm, endTopZmm) * MM_TO_M - bottomY < 0.001) return;
+
+    const vertices = [
+      this._toScene(surface.x1, surface.y1, bottomZmm),
+      this._toScene(surface.x2, surface.y2, bottomZmm),
+      this._toScene(surface.x2, surface.y2, endTopZmm),
+      this._toScene(surface.x1, surface.y1, startTopZmm),
+    ];
+    const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
+    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    geometry.computeVertexNormals();
+    const material = this._standardMaterial({
+      color: resolveSurfaceColor(surface),
+      opacity: SURFACE_OPACITY.gableWall * opacityMultiplier,
+      side: THREE.DoubleSide,
+    });
+    this.surfaceGroup.add(new THREE.Mesh(geometry, material));
+
+    const outline = [...vertices, vertices[0]];
+    const outlineGeo = new THREE.BufferGeometry().setFromPoints(outline);
+    const outlineMat = this._lineMaterial({ color: 0x000000, opacity: GABLE_OUTLINE_OPACITY * opacityMultiplier });
+    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
+  }
+
+  _buildMembers() {
     const visibleMemberNodeIds = new Set();
     for (const m of this.state.members) {
       if (!this.state.isMemberVisible(m, '3d')) continue;
@@ -321,17 +567,18 @@ export class Viewer3D {
         continue;
       }
 
-      const level = this.state.levels.find(l => l.id === m.levelId);
-      const y = (level ? level.z : 0) / 1000;
+      const levelYm = this._levelZm(m.levelId);
       const startY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.startZ))
-        ? Number(m.startZ) / 1000
-        : y;
+        ? Number(m.startZ) * MM_TO_M
+        : levelYm;
       const endY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.endZ))
-        ? Number(m.endZ) / 1000
-        : y;
+        ? Number(m.endZ) * MM_TO_M
+        : levelYm;
 
-      const start = new THREE.Vector3(n1.x / 1000, startY, -n1.y / 1000);
-      const end = new THREE.Vector3(n2.x / 1000, endY, -n2.y / 1000);
+      const start = this._toScene(n1.x, n1.y, 0);
+      start.y = startY;
+      const end = this._toScene(n2.x, n2.y, 0);
+      end.y = endY;
 
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
@@ -342,8 +589,8 @@ export class Viewer3D {
         continue;
       }
 
-      const b = (m.section?.b || 200) / 1000;
-      const h = (m.section?.h || 400) / 1000;
+      const b = (m.section?.b || DEFAULT_SECTION_B_MM) * MM_TO_M;
+      const h = (m.section?.h || DEFAULT_SECTION_H_MM) * MM_TO_M;
 
       const color = resolveMemberColor(m);
       if (m.type === 'beam' && this._beam3DSectionMode() !== 'box') {
@@ -353,195 +600,93 @@ export class Viewer3D {
 
       this._addMemberBox3D(start, end, direction, length, b, h, color, layerAlpha);
     }
+    return visibleMemberNodeIds;
+  }
 
-    // Nodes
-    if (this.showNodes) {
-      const sphereGeo = new THREE.SphereGeometry(0.06, 8, 8);
-      const sphereMat = new THREE.MeshStandardMaterial({ color: 0x89b4fa });
+  _buildNodes(visibleMemberNodeIds) {
+    if (!this.showNodes) return;
+    const sphereGeo = new THREE.SphereGeometry(NODE_SPHERE_RADIUS_M, 8, 8);
+    const material = this._standardMaterial({ color: 0x89b4fa, opacity: 1 });
 
-      for (const n of this.state.nodes) {
-        if (!visibleMemberNodeIds.has(n.id)) continue;
-        let y = 0;
-        for (const m of this.state.members) {
-          if (m.startNodeId === n.id || m.endNodeId === n.id) {
-            const level = this.state.levels.find(l => l.id === m.levelId);
-            if (level) y = level.z / 1000;
-            break;
-          }
-        }
-        const sphere = new THREE.Mesh(sphereGeo, sphereMat.clone());
-        sphere.position.set(n.x / 1000, y, -n.y / 1000);
-        this.nodeGroup.add(sphere);
-      }
+    for (const n of this.state.nodes) {
+      if (!visibleMemberNodeIds.has(n.id)) continue;
+      const levelId = this._nodeLevelId?.get(n.id);
+      const y = levelId === undefined ? 0 : this._levelZm(levelId);
+      const sphere = new THREE.Mesh(sphereGeo, material);
+      sphere.position.copy(this._sceneAt(n, y));
+      this.nodeGroup.add(sphere);
     }
+  }
 
-    // Loads
+  _buildLoads() {
     for (const ld of this.state.loads || []) {
       if (!this.state.isLoadVisible(ld, '3d')) continue;
       const layerAlpha = this.state.getPlanLayerStyle(ld.levelId, { view: '3d' }).alpha;
-      const level = this.state.levels.find(l => l.id === ld.levelId);
-      const y = (level ? level.z : 0) / 1000 + 0.05;
+      const y = this._levelZm(ld.levelId) + LOAD_PLANE_LIFT_M;
+      const color = resolveLoadColor(ld);
 
       if (ld.type === 'areaLoad') {
-        const xSize = Math.abs(ld.x2 - ld.x1) / 1000;
-        const zSize = Math.abs(ld.y2 - ld.y1) / 1000;
-        const cx = (ld.x1 + ld.x2) / 2000;
-        const cz = -((ld.y1 + ld.y2) / 2000);
-        const geo = new THREE.BoxGeometry(xSize, 0.05, zSize);
-        const mat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(ld.color || '#e57373'),
-          transparent: true, opacity: 0.35 * layerAlpha,
-        });
+        const xSize = Math.abs(ld.x2 - ld.x1) * MM_TO_M;
+        const zSize = Math.abs(ld.y2 - ld.y1) * MM_TO_M;
+        const center = this._toScene((ld.x1 + ld.x2) / 2, (ld.y1 + ld.y2) / 2, 0);
+        center.y = y;
+        const geo = new THREE.BoxGeometry(xSize, AREA_LOAD_THICKNESS_M, zSize);
+        const mat = this._standardMaterial({ color, opacity: AREA_LOAD_OPACITY * layerAlpha });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(cx, y, cz);
+        mesh.position.copy(center);
         this.loadGroup.add(mesh);
       } else if (ld.type === 'lineLoad') {
-        const pts = [
-          new THREE.Vector3(ld.x1 / 1000, y, -ld.y1 / 1000),
-          new THREE.Vector3(ld.x2 / 1000, y, -ld.y2 / 1000),
-        ];
+        const pts = [this._sceneAt({ x: ld.x1, y: ld.y1 }, y), this._sceneAt({ x: ld.x2, y: ld.y2 }, y)];
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(ld.color || '#ffb74d'), transparent: layerAlpha < 1, opacity: layerAlpha, linewidth: 2 });
+        const mat = this._lineMaterial({ color, opacity: layerAlpha, transparent: layerAlpha < 1, linewidth: 2 });
         this.loadGroup.add(new THREE.Line(geo, mat));
       } else if (ld.type === 'pointLoad') {
-        const geo = new THREE.SphereGeometry(0.15, 8, 8);
-        const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(ld.color || '#ba68c8'), transparent: layerAlpha < 1, opacity: layerAlpha });
+        const geo = new THREE.SphereGeometry(POINT_LOAD_RADIUS_M, 8, 8);
+        const mat = this._standardMaterial({ color, opacity: layerAlpha, transparent: layerAlpha < 1 });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(ld.x1 / 1000, y, -ld.y1 / 1000);
+        mesh.position.copy(this._sceneAt({ x: ld.x1, y: ld.y1 }, y));
         this.loadGroup.add(mesh);
       }
     }
+  }
 
-    // Supports
-    if (this.state.settings.showSupports) {
-      for (const sup of this.state.supports || []) {
-        if (!this.state.isSupportVisible(sup, '3d')) continue;
-        const layerAlpha = this.state.getPlanLayerStyle(sup.levelId, { view: '3d' }).alpha;
-        const level = this.state.levels.find(l => l.id === sup.levelId);
-        const y = (level ? level.z : 0) / 1000;
-        this._addSupport3D(sup, y, layerAlpha);
-      }
+  _buildSupports() {
+    if (!this.state.settings.showSupports) return;
+    for (const sup of this.state.supports || []) {
+      if (!this.state.isSupportVisible(sup, '3d')) continue;
+      const layerAlpha = this.state.getPlanLayerStyle(sup.levelId, { view: '3d' }).alpha;
+      const y = this._levelZm(sup.levelId);
+      this._addSupport3D(sup, y, layerAlpha);
     }
-
-    const bounds = this._computeContentBounds();
-    this._positionOriginAxes(bounds);
-
-    if (this._pendingInitialCamera) {
-      this._autoFrameObliqueView(bounds);
-      this._pendingInitialCamera = false;
-    }
-  }
-
-  requestRebuild() {
-    this._sceneDirty = true;
-  }
-
-  _addWallLine3D(surface, base, top, opacityMultiplier = 1) {
-    const height = Math.max(0.1, Math.abs(top - base) / 1000);
-    const yBase = Math.min(base, top) / 1000;
-
-    const start = new THREE.Vector3(surface.x1 / 1000, 0, -surface.y1 / 1000);
-    const end = new THREE.Vector3(surface.x2 / 1000, 0, -surface.y2 / 1000);
-    const direction = new THREE.Vector3().subVectors(end, start);
-    const length = direction.length();
-    if (length < 0.001) return;
-
-    const thickness = 0.05;
-    const geometry = new THREE.BoxGeometry(length, height, thickness);
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(resolveSurfaceColor(surface)),
-      transparent: true,
-      opacity: 0.35 * opacityMultiplier,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-
-    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-    mid.y = yBase + height / 2;
-    mesh.position.copy(mid);
-
-    const angle = Math.atan2(direction.z, direction.x);
-    mesh.rotation.y = -angle;
-
-    this.surfaceGroup.add(mesh);
-
-    const edges = new THREE.EdgesGeometry(geometry);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * opacityMultiplier });
-    const lineSegments = new THREE.LineSegments(edges, lineMat);
-    lineSegments.position.copy(mesh.position);
-    lineSegments.rotation.copy(mesh.rotation);
-    this.surfaceGroup.add(lineSegments);
-  }
-
-  _addGableWallLine3D(surface, opacityMultiplier = 1) {
-    const baseZ = this.state.getLevelZ(surface.levelId);
-    const topFallback = finiteNumber(surface.topOffset, 0);
-    const bottomY = (baseZ + finiteNumber(surface.bottomOffset, 0)) / 1000;
-    const startTopY = (baseZ + finiteNumber(surface.gableStartTopOffset, topFallback)) / 1000;
-    const endTopY = (baseZ + finiteNumber(surface.gableEndTopOffset, topFallback)) / 1000;
-    if (Math.max(startTopY, endTopY) - bottomY < 0.001) return;
-
-    const vertices = [
-      new THREE.Vector3(surface.x1 / 1000, bottomY, -surface.y1 / 1000),
-      new THREE.Vector3(surface.x2 / 1000, bottomY, -surface.y2 / 1000),
-      new THREE.Vector3(surface.x2 / 1000, endTopY, -surface.y2 / 1000),
-      new THREE.Vector3(surface.x1 / 1000, startTopY, -surface.y1 / 1000),
-    ];
-    const geometry = new THREE.BufferGeometry().setFromPoints(vertices);
-    geometry.setIndex([0, 1, 2, 0, 2, 3]);
-    geometry.computeVertexNormals();
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(resolveSurfaceColor(surface)),
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.38 * opacityMultiplier,
-    });
-    this.surfaceGroup.add(new THREE.Mesh(geometry, material));
-
-    const outline = [...vertices, vertices[0]];
-    const outlineGeo = new THREE.BufferGeometry().setFromPoints(outline);
-    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 * opacityMultiplier });
-    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
   _addColumn3D(member, node, opacityMultiplier = 1) {
-    const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
-    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
-    if (!bottomLevel || !topLevel) return;
+    if (!this._levelZMm?.has(member.levelId) || !this._levelZMm?.has(member.topLevelId)) return;
 
-    const bottomZ = bottomLevel.z / 1000;
-    const topZ = topLevel.z / 1000;
+    const bottomZ = this._levelZm(member.levelId);
+    const topZ = this._levelZm(member.topLevelId);
     const height = Math.abs(topZ - bottomZ);
     if (height < 0.001) return;
 
     if (this._isMemberLineMode()) {
-      const start = new THREE.Vector3(node.x / 1000, bottomZ, -node.y / 1000);
-      const end = new THREE.Vector3(node.x / 1000, topZ, -node.y / 1000);
+      const start = this._sceneAt(node, bottomZ);
+      const end = this._sceneAt(node, topZ);
       this._addMemberLine3D(start, end, resolveMemberColor(member), opacityMultiplier);
       return;
     }
 
-    const b = (member.section?.b || 200) / 1000;
-    const h = (member.section?.h || 200) / 1000;
+    const b = (member.section?.b || DEFAULT_SECTION_B_MM) * MM_TO_M;
+    const h = (member.section?.h || DEFAULT_SECTION_B_MM) * MM_TO_M;
 
-    const geometry = new THREE.BoxGeometry(b, height, h);
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(resolveMemberColor(member)),
-      wireframe: this.showWireframe,
-      transparent: opacityMultiplier < 1,
+    const center = this._sceneAt(node, (bottomZ + topZ) / 2);
+    this._addBoxWithEdges(this.memberGroup, {
+      size: { x: b, y: height, z: h },
+      position: center,
+      color: resolveMemberColor(member),
       opacity: opacityMultiplier,
+      wireframe: this.showWireframe,
+      edgeOpacity: this.showWireframe ? null : MEMBER_EDGE_OPACITY * opacityMultiplier,
     });
-    const mesh = new THREE.Mesh(geometry, material);
-    const midY = (bottomZ + topZ) / 2;
-    mesh.position.set(node.x / 1000, midY, -node.y / 1000);
-    this.memberGroup.add(mesh);
-
-    if (!this.showWireframe) {
-      const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * opacityMultiplier });
-      const lineSegments = new THREE.LineSegments(edges, lineMat);
-      lineSegments.position.copy(mesh.position);
-      this.memberGroup.add(lineSegments);
-    }
   }
 
   _addMemberBox3D(start, end, direction, length, width, height, color, opacityMultiplier = 1) {
@@ -591,26 +736,16 @@ export class Viewer3D {
   }
 
   _addMemberBoxPart3D(length, height, width, center, quaternion, localOffset, color, opacityMultiplier = 1) {
-    const geometry = new THREE.BoxGeometry(length, height, width);
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(color),
-      wireframe: this.showWireframe,
-      transparent: opacityMultiplier < 1,
+    const position = center.clone().add(localOffset.clone().applyQuaternion(quaternion));
+    this._addBoxWithEdges(this.memberGroup, {
+      size: { x: length, y: height, z: width },
+      position,
+      quaternion,
+      color,
       opacity: opacityMultiplier,
+      wireframe: this.showWireframe,
+      edgeOpacity: this.showWireframe ? null : MEMBER_EDGE_OPACITY * opacityMultiplier,
     });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.copy(center).add(localOffset.clone().applyQuaternion(quaternion));
-    mesh.quaternion.copy(quaternion);
-    this.memberGroup.add(mesh);
-
-    if (!this.showWireframe) {
-      const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 * opacityMultiplier });
-      const lineSegments = new THREE.LineSegments(edges, lineMat);
-      lineSegments.position.copy(mesh.position);
-      lineSegments.quaternion.copy(quaternion);
-      this.memberGroup.add(lineSegments);
-    }
   }
 
   _isMemberLineMode() {
@@ -624,59 +759,53 @@ export class Viewer3D {
   _addMemberLine3D(start, end, color, opacityMultiplier = 1) {
     const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
     // Browser WebGL implementations commonly clamp LineBasicMaterial to 1px.
-    const mat = new THREE.LineBasicMaterial({
-      color: new THREE.Color(color || '#666666'),
-      transparent: opacityMultiplier < 1,
+    const mat = this._lineMaterial({
+      color: color || '#666666',
       opacity: opacityMultiplier,
+      transparent: opacityMultiplier < 1,
       linewidth: 2,
     });
     this.memberGroup.add(new THREE.Line(geo, mat));
   }
 
   _addVBrace3D(member, n1, n2, opacityMultiplier = 1) {
-    const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
-    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
-    if (!bottomLevel || !topLevel) return;
+    if (!this._levelZMm?.has(member.levelId) || !this._levelZMm?.has(member.topLevelId)) return;
 
-    const yBottom = bottomLevel.z / 1000;
-    const yTop = topLevel.z / 1000;
-    const color = new THREE.Color(resolveMemberColor(member));
-    const mat = new THREE.LineBasicMaterial({ color, transparent: opacityMultiplier < 1, opacity: opacityMultiplier, linewidth: 2 });
+    const yBottom = this._levelZm(member.levelId);
+    const yTop = this._levelZm(member.topLevelId);
+    const color = resolveMemberColor(member);
+    const mat = this._lineMaterial({ color, opacity: opacityMultiplier, transparent: opacityMultiplier < 1, linewidth: 2 });
 
-    const s1 = new THREE.Vector3(n1.x / 1000, yBottom, -n1.y / 1000);
-    const s2 = new THREE.Vector3(n2.x / 1000, yBottom, -n2.y / 1000);
-    const t1 = new THREE.Vector3(n1.x / 1000, yTop, -n1.y / 1000);
-    const t2 = new THREE.Vector3(n2.x / 1000, yTop, -n2.y / 1000);
+    // Corner order matches braceDiagonals(): [start-bottom, end-bottom, end-top, start-top].
+    const corners = [
+      this._sceneAt(n1, yBottom),
+      this._sceneAt(n2, yBottom),
+      this._sceneAt(n2, yTop),
+      this._sceneAt(n1, yTop),
+    ];
 
-    if (member.bracePattern === 'cross') {
-      // X: both diagonals
-      const geo1 = new THREE.BufferGeometry().setFromPoints([s1, t2]);
-      this.memberGroup.add(new THREE.Line(geo1, mat));
-      const geo2 = new THREE.BufferGeometry().setFromPoints([s2, t1]);
-      this.memberGroup.add(new THREE.Line(geo2, mat));
-    } else {
-      // Single: start-bottom to end-top
-      const geo = new THREE.BufferGeometry().setFromPoints([s1, t2]);
+    for (const [a, b] of braceDiagonals(member.bracePattern)) {
+      const geo = new THREE.BufferGeometry().setFromPoints([corners[a], corners[b]]);
       this.memberGroup.add(new THREE.Line(geo, mat));
     }
 
     // Frame outline (rectangle)
-    const frameGeo = new THREE.BufferGeometry().setFromPoints([s1, s2, t2, t1, s1]);
-    const frameMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.3 * opacityMultiplier });
+    const frameGeo = new THREE.BufferGeometry().setFromPoints([corners[0], corners[1], corners[2], corners[3], corners[0]]);
+    const frameMat = this._lineMaterial({ color, opacity: BRACE_FRAME_OPACITY * opacityMultiplier });
     this.memberGroup.add(new THREE.Line(frameGeo, frameMat));
   }
 
   _addPolygonSurface3D(surface, base, top, opacityMultiplier = 1) {
-    const points = surface.points.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
+    const points = surface.points.map(p => new THREE.Vector2(p.x * MM_TO_M, -p.y * MM_TO_M));
     const shape = new THREE.Shape(points);
     const isWallType = isWallSurfaceType(surface.type);
-    const color = new THREE.Color(resolveSurfaceColor(surface));
+    const color = resolveSurfaceColor(surface);
 
     if (isWallType) {
-      const height = Math.max(0.1, Math.abs(top - base) / 1000);
-      const yBase = Math.min(base, top) / 1000;
+      const height = Math.max(0.1, Math.abs(top - base) * MM_TO_M);
+      const yBase = Math.min(base, top) * MM_TO_M;
       const geometry = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
-      const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.35 * opacityMultiplier });
+      const material = this._standardMaterial({ color, opacity: SURFACE_OPACITY.wall * opacityMultiplier });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.y = yBase;
@@ -685,75 +814,37 @@ export class Viewer3D {
     }
 
     const geometry = new THREE.ShapeGeometry(shape);
-    const material = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.45 * opacityMultiplier, side: THREE.DoubleSide });
+    const material = this._standardMaterial({ color, opacity: SURFACE_OPACITY.floor * opacityMultiplier, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.rotation.x = -Math.PI / 2;
     // Rest the slab on top of the beams at its level (falls back to the surface
     // base elevation when no beams are present).
-    mesh.position.y = this._floorRestY(surface, base) + 0.06;
+    mesh.position.y = this._floorRestY(surface, base) + SLAB_REST_LIFT_M;
     this.surfaceGroup.add(mesh);
   }
 
   // Returns the Y (meters) a floor slab should rest at: the top of the tallest
   // visible beam on the floor's level, or the surface base when none exists.
   _floorRestY(surface, base) {
-    const baseY = base / 1000;
-    const level = this.state.levels.find(l => l.id === surface.levelId);
-    if (!level) return baseY;
-    const levelY = level.z / 1000;
-    let maxBeamH = null;
-    for (const m of this.state.members || []) {
-      if (m.type !== 'beam' || m.levelId !== surface.levelId) continue;
-      if (!this.state.isMemberVisible(m, '3d')) continue;
-      const h = (m.section?.h || 400) / 1000;
-      if (maxBeamH === null || h > maxBeamH) maxBeamH = h;
-    }
-    if (maxBeamH === null) return baseY;
-    return Math.max(baseY, levelY + maxBeamH);
+    const baseY = base * MM_TO_M;
+    if (!this._levelZMm?.has(surface.levelId)) return baseY;
+    const maxBeamH = this._maxBeamHMByLevel?.get(surface.levelId);
+    if (maxBeamH === undefined) return baseY;
+    return Math.max(baseY, this._levelZm(surface.levelId) + maxBeamH);
   }
 
   _addExteriorWallEdges3D(surface, base, top, opacityMultiplier = 1) {
     const points = surface.points;
     if (!points || points.length < 2) return;
 
-    const height = Math.max(0.1, Math.abs(top - base) / 1000);
-    const yBase = Math.min(base, top) / 1000;
-    const thickness = 0.05;
-    const wallOffset = this.state.settings?.wallDisplayOffset || 120;
+    const heightM = Math.max(0.1, Math.abs(top - base) * MM_TO_M);
+    const yBaseM = Math.min(base, top) * MM_TO_M;
+    const wallOffset = resolveWallDisplayOffset(this.state.settings);
     const oPts = offsetPolygonOutward(points, wallOffset);
+    const color = resolveSurfaceColor(surface);
 
     for (let i = 0; i < oPts.length; i++) {
-      const a = oPts[i], b = oPts[(i + 1) % oPts.length];
-
-      const start = new THREE.Vector3(a.x / 1000, 0, -a.y / 1000);
-      const end = new THREE.Vector3(b.x / 1000, 0, -b.y / 1000);
-      const direction = new THREE.Vector3().subVectors(end, start);
-      const edgeLen = direction.length();
-      if (edgeLen < 0.001) continue;
-
-      const geometry = new THREE.BoxGeometry(edgeLen, height, thickness);
-      const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(resolveSurfaceColor(surface)),
-        transparent: true,
-        opacity: 0.35 * opacityMultiplier,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-
-      const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-      mid.y = yBase + height / 2;
-      mesh.position.copy(mid);
-
-      const angle = Math.atan2(direction.z, direction.x);
-      mesh.rotation.y = -angle;
-
-      this.surfaceGroup.add(mesh);
-
-      const edges = new THREE.EdgesGeometry(geometry);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25 * opacityMultiplier });
-      const lineSegments = new THREE.LineSegments(edges, lineMat);
-      lineSegments.position.copy(mesh.position);
-      lineSegments.rotation.copy(mesh.rotation);
-      this.surfaceGroup.add(lineSegments);
+      this._addWallSegmentBox3D(oPts[i], oPts[(i + 1) % oPts.length], yBaseM, heightM, color, opacityMultiplier);
     }
   }
 
@@ -762,16 +853,18 @@ export class Viewer3D {
     const vertices3D = roofVertices3D(this.state, surface);
     if (planPoints.length < 3 || vertices3D.length !== planPoints.length) return;
 
-    const contour = planPoints.map(p => new THREE.Vector2(p.x / 1000, -p.y / 1000));
+    const contour = planPoints.map(p => new THREE.Vector2(p.x * MM_TO_M, -p.y * MM_TO_M));
     // Single-contour triangulation covers simple roof outlines; complex roofs with holes should be split first.
     const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
     if (!triangles.length) return;
 
+    // Roof vertices carry their own height in v.z, matching the _toScene rule
+    // (plan x -> x, height -> y, plan y -> -z).
     const positions = [];
     for (const tri of triangles) {
       for (const idx of tri) {
         const v = vertices3D[idx];
-        positions.push(v.x / 1000, v.z / 1000, -v.y / 1000);
+        positions.push(v.x * MM_TO_M, v.z * MM_TO_M, -v.y * MM_TO_M);
       }
     }
 
@@ -779,56 +872,47 @@ export class Viewer3D {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.computeVertexNormals();
 
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(resolveSurfaceColor(surface)),
+    const material = this._standardMaterial({
+      color: resolveSurfaceColor(surface),
+      opacity: SURFACE_OPACITY.roof * opacityMultiplier,
       side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.58 * opacityMultiplier,
     });
     const mesh = new THREE.Mesh(geometry, material);
     this.surfaceGroup.add(mesh);
 
-    const outlinePoints = vertices3D.map(v => new THREE.Vector3(v.x / 1000, v.z / 1000, -v.y / 1000));
+    const outlinePoints = vertices3D.map(v => this._toScene(v.x, v.y, v.z));
     outlinePoints.push(outlinePoints[0].clone());
     const outlineGeo = new THREE.BufferGeometry().setFromPoints(outlinePoints);
-    const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 * opacityMultiplier });
+    const outlineMat = this._lineMaterial({ color: 0x000000, opacity: ROOF_OUTLINE_OPACITY * opacityMultiplier });
     this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
   }
 
   _addSupport3D(sup, y, opacityMultiplier = 1) {
-    const px = sup.x / 1000;
-    const pz = -sup.y / 1000;
-    const allTrans = sup.dx && sup.dy && sup.dz;
-    const allRot = sup.rx && sup.ry && sup.rz;
-    const isFixed = allTrans && allRot;
-    const color = new THREE.Color(0x4ade80);
+    const scenePt = this._toScene(sup.x, sup.y, 0);
+    const px = scenePt.x;
+    const pz = scenePt.z;
+    const isFixed = isFixedSupport(sup);
 
     // Cone (triangle symbol) — apex at the support point, base below
-    const coneRadius = 0.12;
-    const coneHeight = 0.22;
-    const coneGeo = new THREE.ConeGeometry(coneRadius, coneHeight, 4);
-    const coneMat = new THREE.MeshStandardMaterial({
-      color,
-      transparent: true,
-      opacity: 0.7 * opacityMultiplier,
-    });
+    const coneGeo = new THREE.ConeGeometry(SUPPORT_CONE_RADIUS_M, SUPPORT_CONE_HEIGHT_M, 4);
+    const coneMat = this._standardMaterial({ color: SUPPORT_COLOR, opacity: 0.7 * opacityMultiplier });
     const cone = new THREE.Mesh(coneGeo, coneMat);
-    cone.position.set(px, y - coneHeight / 2, pz);
+    cone.position.set(px, y - SUPPORT_CONE_HEIGHT_M / 2, pz);
     this.supportGroup.add(cone);
 
     if (isFixed) {
       // Fixed support: flat box as ground plate
-      const plateGeo = new THREE.BoxGeometry(coneRadius * 2.3, 0.03, coneRadius * 2.3);
-      const plateMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5 * opacityMultiplier });
+      const plateGeo = new THREE.BoxGeometry(SUPPORT_CONE_RADIUS_M * 2.3, SUPPORT_PLATE_THICKNESS_M, SUPPORT_CONE_RADIUS_M * 2.3);
+      const plateMat = this._standardMaterial({ color: SUPPORT_COLOR, opacity: 0.5 * opacityMultiplier });
       const plate = new THREE.Mesh(plateGeo, plateMat);
-      plate.position.set(px, y - coneHeight - 0.015, pz);
+      plate.position.set(px, y - SUPPORT_CONE_HEIGHT_M - SUPPORT_PLATE_THICKNESS_M / 2, pz);
       this.supportGroup.add(plate);
     } else {
       // Roller / partial: sphere under the cone
-      const sphereGeo = new THREE.SphereGeometry(0.055, 8, 8);
-      const sphereMat = new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.7 * opacityMultiplier });
+      const sphereGeo = new THREE.SphereGeometry(SUPPORT_ROLLER_RADIUS_M, 8, 8);
+      const sphereMat = this._standardMaterial({ color: SUPPORT_COLOR, opacity: 0.7 * opacityMultiplier });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-      sphere.position.set(px, y - coneHeight - 0.055, pz);
+      sphere.position.set(px, y - SUPPORT_CONE_HEIGHT_M - SUPPORT_ROLLER_RADIUS_M, pz);
       this.supportGroup.add(sphere);
     }
   }
@@ -868,6 +952,17 @@ export class Viewer3D {
   toggleNodes() {
     this.showNodes = !this.showNodes;
     this.requestRebuild();
+  }
+
+  dispose() {
+    this._disposeMaterialCache();
+    if (this.surfaceGroup) this._clearGroup(this.surfaceGroup);
+    if (this.memberGroup) this._clearGroup(this.memberGroup);
+    if (this.nodeGroup) this._clearGroup(this.nodeGroup);
+    if (this.loadGroup) this._clearGroup(this.loadGroup);
+    if (this.supportGroup) this._clearGroup(this.supportGroup);
+    this._resizeObserver?.disconnect();
+    this.renderer?.dispose();
   }
 
   applyTheme() {
@@ -913,15 +1008,4 @@ export class Viewer3D {
     }
     this.scene.add(this.gridHelper);
   }
-}
-
-function finiteNumber(value, fallback = 0) {
-  if (value === null || value === undefined || value === '') {
-    const fallbackNumber = Number(fallback);
-    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
-  }
-  const n = Number(value);
-  if (Number.isFinite(n)) return n;
-  const fallbackNumber = Number(fallback);
-  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }

@@ -18,8 +18,8 @@ export function displayVersionFromPackageVersion(packageVersion) {
   return `Ver.${normalized}`;
 }
 
-export function updateIndexHtml(source, displayVersion) {
-  return source
+export function updateIndexHtml(source, displayVersion, assetVersion) {
+  let next = source
     .replace(
       /<title>Element Modeler - Ver\.[^<]+<\/title>/,
       `<title>Element Modeler - ${displayVersion}</title>`
@@ -28,6 +28,18 @@ export function updateIndexHtml(source, displayVersion) {
       /<span id="status-version">Ver\.[^<]+<\/span>/,
       `<span id="status-version">${displayVersion}</span>`
     );
+  if (assetVersion != null) {
+    next = next
+      .replace(
+        /href="style\.css(?:\?v=[^"]*)?"/,
+        `href="style.css?v=${assetVersion}"`
+      )
+      .replace(
+        /src="js\/app\.js(?:\?v=[^"]*)?"/,
+        `src="js/app.js?v=${assetVersion}"`
+      );
+  }
+  return next;
 }
 
 export function updateReadme(source, displayVersion) {
@@ -43,6 +55,15 @@ export function extractIndexDisplayVersion(source) {
   return {
     title: titleMatch?.[1] || null,
     status: statusMatch?.[1] || null,
+  };
+}
+
+export function extractIndexAssetVersions(source) {
+  const styleMatch = source.match(/href="style\.css\?v=([^"]*)"/);
+  const appMatch = source.match(/src="js\/app\.js\?v=([^"]*)"/);
+  return {
+    style: styleMatch?.[1] || null,
+    app: appMatch?.[1] || null,
   };
 }
 

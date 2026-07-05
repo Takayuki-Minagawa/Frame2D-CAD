@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 test('major app flows use notice/inline errors instead of alert dialogs', async () => {
-  const appSource = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(appSource, /alert\(/);
-  assert.match(appSource, /showNotice\(/);
-  assert.match(appSource, /showUserDefFormError\(/);
-  assert.match(appSource, /showLayerFormError\(/);
+  const sources = {};
+  for (const name of ['app.js', 'notice.js', 'side-panels.js', 'user-def-modal.js', 'layer-modal.js']) {
+    sources[name] = await readFile(new URL(`../js/${name}`, import.meta.url), 'utf8');
+  }
+  for (const source of Object.values(sources)) {
+    assert.doesNotMatch(source, /alert\(/);
+  }
+  assert.match(sources['app.js'], /showNotice\(/);
+  assert.match(sources['notice.js'], /export function showNotice\(/);
+  assert.match(sources['user-def-modal.js'], /showUserDefFormError\(/);
+  assert.match(sources['layer-modal.js'], /showLayerFormError\(/);
 });
 
 test('user-def and layer modals include inline error placeholders', async () => {

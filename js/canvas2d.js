@@ -1,10 +1,31 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
-import { resolveMemberColor } from './member-style.js';
+import { cssVar } from './dom-utils.js';
+import {
+  resolveMemberColor,
+  resolveSurfaceColor,
+  resolveLoadColor,
+  SUPPORT_COLOR,
+} from './element-style.js';
+import { offsetPolygonOutward } from './geometry-utils.js';
+import { isFixedSupport, braceDiagonals, resolveWallDisplayOffset } from './view-semantics.js';
 import { roofSlopeArrow } from './roof-geometry.js';
-import { isSlopedSurfaceType, isWallSurfaceType, offsetPolygonOutward } from './state.js';
-import { resolveSurfaceColor } from './surface-color.js';
+import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
+
+// Arrowhead geometry presets (screen px). size = leg length from the tip,
+// spread = half opening angle. The load arrows keep the previous hard-coded
+// triangles: "back" px behind the tip and "halfWidth" px to each side.
+const ROOF_SLOPE_ARROW_HEAD = { size: 7, spread: Math.PI / 6 };
+const FLOOR_LOAD_ARROW_HEAD = { size: 7, spread: Math.PI / 7 };
+const DOWN_ARROW_HEAD = { size: Math.hypot(6, 4), spread: Math.atan2(4, 6) }; // 6 back, 4 half-width
+const LINE_LOAD_ARROW_HEAD = { size: Math.hypot(4, 3), spread: Math.atan2(3, 4) }; // 4 back, 3 half-width
+
+// V-brace triangle height (screen px) for the 2D panel outline.
+const VBRACE_TRIANGLE_HEIGHT_PX = 14;
+// Support symbol size (screen px) and base-offset factor.
+const SUPPORT_SYMBOL_SIZE_PX = 12;
+const SUPPORT_BASE_FACTOR = 1.4;
 
 export class Canvas2D {
   constructor(canvasEl, state) {
@@ -80,30 +101,32 @@ export class Canvas2D {
     this.camera.offsetY += dy;
   }
 
-  _cssVar(name) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  }
-
   draw() {
     const ctx = this.ctx;
     const w = this.logicalWidth;
     const h = this.logicalHeight;
 
-    ctx.fillStyle = this._cssVar('--canvas-bg');
+    ctx.fillStyle = cssVar('--canvas-bg');
     ctx.fillRect(0, 0, w, h);
 
-    const nodeColor = this._cssVar('--node-color');
-    const selectedColor = this._cssVar('--node-selected');
-    const previewColor = this._cssVar('--preview-color');
-    const memberDefault = this._cssVar('--member-default');
+    const nodeColor = cssVar('--node-color');
+    const selectedColor = cssVar('--node-selected');
+    const previewColor = cssVar('--preview-color');
+    const memberDefault = cssVar('--member-default');
 
     drawGrid(ctx, this.camera, this.state.settings.gridSize, w, h);
 
     this._drawSurfaces(ctx, selectedColor);
     this._drawLoads(ctx, selectedColor);
     this._drawSupports(ctx, selectedColor);
+    const visibleNodeAlpha = this._drawMembers(ctx, selectedColor, memberDefault);
+    this._drawNodes(ctx, visibleNodeAlpha, nodeColor, selectedColor);
+    this._drawPreview(ctx, previewColor);
+  }
 
-    // Members
+  // Draws all visible members and returns a Map of nodeId -> strongest alpha
+  // of the members touching that node (used to fade nodes with their layer).
+  _drawMembers(ctx, selectedColor, memberDefault) {
     const visibleNodeAlpha = new Map();
     for (const m of this.state.members) {
       if (!this.state.isMemberVisible(m, '2d')) continue;
@@ -121,37 +144,35 @@ export class Canvas2D {
       ctx.globalAlpha *= alpha;
       if (m.type === 'column') {
         this._drawColumn(ctx, m, n1, isSelected, selectedColor, memberDefault);
-        if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
-        ctx.restore();
-        continue;
-      }
-
-      if (m.type === 'vbrace') {
+      } else if (m.type === 'vbrace') {
         this._drawVBrace(ctx, m, n1, n2, isSelected, selectedColor, memberDefault);
-        if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
-        ctx.restore();
-        continue;
+      } else {
+        this._drawMemberLine(ctx, m, n1, n2, isSelected, selectedColor);
       }
-
-      const s1 = this.worldToScreen(n1.x, n1.y);
-      const s2 = this.worldToScreen(n2.x, n2.y);
-
-      ctx.save();
-      ctx.strokeStyle = isSelected ? selectedColor : resolveMemberColor(m);
-      ctx.lineWidth = isSelected ? 3 : 2;
-      if (m.type === 'brace' || m.type === 'hbrace') {
-        ctx.setLineDash([7, 4]);
-      }
-      ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.stroke();
-      ctx.restore();
       if (this.state.settings.showMemberEndSymbols) this._drawMemberEndSymbols(ctx, m, n1, n2, selectedColor);
       ctx.restore();
     }
+    return visibleNodeAlpha;
+  }
 
-    // Nodes
+  _drawMemberLine(ctx, m, n1, n2, isSelected, selectedColor) {
+    const s1 = this.worldToScreen(n1.x, n1.y);
+    const s2 = this.worldToScreen(n2.x, n2.y);
+
+    ctx.save();
+    ctx.strokeStyle = isSelected ? selectedColor : resolveMemberColor(m);
+    ctx.lineWidth = isSelected ? 3 : 2;
+    if (m.type === 'brace' || m.type === 'hbrace') {
+      ctx.setLineDash([7, 4]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawNodes(ctx, visibleNodeAlpha, nodeColor, selectedColor) {
     for (const n of this.state.nodes) {
       let nodeAlpha = visibleNodeAlpha.get(n.id);
       if (!nodeAlpha) {
@@ -176,43 +197,55 @@ export class Canvas2D {
       ctx.fill();
       ctx.restore();
     }
+  }
 
-    // Preview
-    if (this.preview) {
-      ctx.save();
-      ctx.strokeStyle = previewColor;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([6, 4]);
-      ctx.beginPath();
-      if (this.preview.mode === 'rect') {
-        const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
-        const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
-        const x = Math.min(s1.x, s2.x);
-        const y = Math.min(s1.y, s2.y);
-        const ww = Math.abs(s2.x - s1.x);
-        const hh = Math.abs(s2.y - s1.y);
-        ctx.rect(x, y, ww, hh);
-      } else if (this.preview.mode === 'polyline' && Array.isArray(this.preview.points)) {
-        const pts = this.preview.points.map(p => this.worldToScreen(p.x, p.y));
-        if (pts.length > 0) {
-          ctx.moveTo(pts[0].x, pts[0].y);
-          for (let i = 1; i < pts.length; i++) {
-            ctx.lineTo(pts[i].x, pts[i].y);
-          }
+  _drawPreview(ctx, previewColor) {
+    if (!this.preview) return;
+
+    ctx.save();
+    ctx.strokeStyle = previewColor;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    if (this.preview.mode === 'rect') {
+      const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
+      const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
+      const x = Math.min(s1.x, s2.x);
+      const y = Math.min(s1.y, s2.y);
+      const ww = Math.abs(s2.x - s1.x);
+      const hh = Math.abs(s2.y - s1.y);
+      ctx.rect(x, y, ww, hh);
+    } else if (this.preview.mode === 'polyline' && Array.isArray(this.preview.points)) {
+      const pts = this.preview.points.map(p => this.worldToScreen(p.x, p.y));
+      if (pts.length > 0) {
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
         }
-      } else {
-        const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
-        const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
-        ctx.moveTo(s1.x, s1.y);
-        ctx.lineTo(s2.x, s2.y);
       }
-      ctx.stroke();
-      if (this.preview.label && this.state.settings.showPlacementLabels !== false) {
-        const labelPoint = this._previewLabelPoint();
-        this._drawPreviewLabel(ctx, this.preview.label, labelPoint.x + 8, labelPoint.y - 8, previewColor);
-      }
-      ctx.restore();
+    } else {
+      const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
+      const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
     }
+    ctx.stroke();
+    if (this.preview.label && this.state.settings.showPlacementLabels !== false) {
+      const labelPoint = this._previewLabelPoint();
+      this._drawPreviewLabel(ctx, this.preview.label, labelPoint.x + 8, labelPoint.y - 8, previewColor);
+    }
+    ctx.restore();
+  }
+
+  // Fills a triangular arrowhead whose tip is at (x, y), pointing along
+  // `angle` (radians, screen space). Callers set ctx.fillStyle beforehand.
+  _drawArrowHead(ctx, x, y, angle, { size, spread }) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - size * Math.cos(angle - spread), y - size * Math.sin(angle - spread));
+    ctx.lineTo(x - size * Math.cos(angle + spread), y - size * Math.sin(angle + spread));
+    ctx.closePath();
+    ctx.fill();
   }
 
   _previewLabelPoint() {
@@ -289,7 +322,7 @@ export class Canvas2D {
   }
 
   _drawVBrace(ctx, member, n1, n2, isSelected, selectedColor, memberDefault) {
-    const offset = this.state.settings.wallDisplayOffset || 120;
+    const offset = resolveWallDisplayOffset(this.state.settings);
 
     // Direction and perpendicular in world space
     const dx = n2.x - n1.x;
@@ -314,7 +347,7 @@ export class Canvas2D {
     const slen = Math.hypot(sdx, sdy);
     if (slen < 4) return;
 
-    const triH = 14;
+    const triH = VBRACE_TRIANGLE_HEIGHT_PX;
     const spx = (-sdy / slen) * triH;
     const spy = (sdx / slen) * triH;
 
@@ -337,42 +370,27 @@ export class Canvas2D {
     ctx.closePath();
     ctx.stroke();
 
-    // Diagonals
+    // Diagonals. Corner order matches braceDiagonals():
+    // [start-bottom, end-bottom, end-top, start-top] = [s4, s3, s2, s1].
+    const corners = [s4, s3, s2, s1];
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    if (member.bracePattern === 'cross') {
-      // X pattern
+    for (const [a, b] of braceDiagonals(member.bracePattern)) {
       ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s3.x, s3.y);
+      ctx.moveTo(corners[a].x, corners[a].y);
+      ctx.lineTo(corners[b].x, corners[b].y);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(s4.x, s4.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.stroke();
-      // Fill rectangle
-      ctx.fillStyle = toRgba(color, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.lineTo(s3.x, s3.y);
-      ctx.lineTo(s4.x, s4.y);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      // Single diagonal: s4 → s2 (start-bottom to end-top)
-      ctx.beginPath();
-      ctx.moveTo(s4.x, s4.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.stroke();
-      // Fill right triangle: s1, s2, s4
-      ctx.fillStyle = toRgba(color, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.lineTo(s4.x, s4.y);
-      ctx.closePath();
-      ctx.fill();
     }
+
+    // Panel fill over the diagonals: full rectangle for cross, right triangle
+    // (s1, s2, s4) for a single diagonal.
+    ctx.fillStyle = toRgba(color, 0.12);
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    if (member.bracePattern === 'cross') ctx.lineTo(s3.x, s3.y);
+    ctx.lineTo(s4.x, s4.y);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
   }
@@ -394,7 +412,7 @@ export class Canvas2D {
   }
 
   _drawSurfaces(ctx, selectedColor) {
-    const wallOffset = this.state.settings.wallDisplayOffset || 120;
+    const wallOffset = resolveWallDisplayOffset(this.state.settings);
 
     for (const s of this.state.surfaces) {
       if (!this.state.isSurfaceVisible(s, '2d')) continue;
@@ -494,7 +512,6 @@ export class Canvas2D {
     const p2 = this.worldToScreen(arrow.x2, arrow.y2);
     const color = isSelected ? selectedColor : resolveSurfaceColor(surface);
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    const head = 7;
 
     ctx.save();
     ctx.strokeStyle = color;
@@ -504,12 +521,7 @@ export class Canvas2D {
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(p2.x, p2.y);
-    ctx.lineTo(p2.x - Math.cos(angle - Math.PI / 6) * head, p2.y - Math.sin(angle - Math.PI / 6) * head);
-    ctx.lineTo(p2.x - Math.cos(angle + Math.PI / 6) * head, p2.y - Math.sin(angle + Math.PI / 6) * head);
-    ctx.closePath();
-    ctx.fill();
+    this._drawArrowHead(ctx, p2.x, p2.y, angle, ROOF_SLOPE_ARROW_HEAD);
     ctx.restore();
   }
 
@@ -517,7 +529,7 @@ export class Canvas2D {
     if (points.length < 2) return;
     const surfaceColor = resolveSurfaceColor(s);
 
-    const offset = this.state.settings.wallDisplayOffset || 120;
+    const offset = resolveWallDisplayOffset(this.state.settings);
     const oPts = offsetPolygonOutward(points, offset);
     const screenOff = oPts.map(p => this.worldToScreen(p.x, p.y));
     const screenOrig = points.map(p => this.worldToScreen(p.x, p.y));
@@ -576,7 +588,7 @@ export class Canvas2D {
     const p2 = this.worldToScreen(ld.x2, ld.y2);
     const x = Math.min(p1.x, p2.x), y = Math.min(p1.y, p2.y);
     const w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
-    const color = isSelected ? selectedColor : (ld.color || '#e57373');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
 
     ctx.save();
     ctx.fillStyle = toRgba(color, 0.18);
@@ -597,12 +609,7 @@ export class Canvas2D {
       ctx.moveTo(cx, cy - 10);
       ctx.lineTo(cx, cy + 10);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx, cy + 10);
-      ctx.lineTo(cx - 4, cy + 4);
-      ctx.lineTo(cx + 4, cy + 4);
-      ctx.closePath();
-      ctx.fill();
+      this._drawArrowHead(ctx, cx, cy + 10, Math.PI / 2, DOWN_ARROW_HEAD);
     }
 
     // Value text
@@ -618,7 +625,7 @@ export class Canvas2D {
   _drawLineLoad(ctx, ld, isSelected, selectedColor) {
     const p1 = this.worldToScreen(ld.x1, ld.y1);
     const p2 = this.worldToScreen(ld.x2, ld.y2);
-    const color = isSelected ? selectedColor : (ld.color || '#ffb74d');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
     const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
     ctx.save();
@@ -643,12 +650,7 @@ export class Canvas2D {
         ctx.moveTo(ax, ay);
         ctx.lineTo(ax, ay + 8);
         ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(ax, ay + 8);
-        ctx.lineTo(ax - 3, ay + 4);
-        ctx.lineTo(ax + 3, ay + 4);
-        ctx.closePath();
-        ctx.fill();
+        this._drawArrowHead(ctx, ax, ay + 8, Math.PI / 2, LINE_LOAD_ARROW_HEAD);
       }
     }
 
@@ -664,7 +666,7 @@ export class Canvas2D {
 
   _drawPointLoad(ctx, ld, isSelected, selectedColor) {
     const p = this.worldToScreen(ld.x1, ld.y1);
-    const color = isSelected ? selectedColor : (ld.color || '#ba68c8');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
     const r = 8;
 
     ctx.save();
@@ -694,12 +696,7 @@ export class Canvas2D {
       ctx.moveTo(p.x, p.y + dir * (r + 2));
       ctx.lineTo(p.x, p.y + dir * (r + 14));
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y + dir * (r + 14));
-      ctx.lineTo(p.x - 4, p.y + dir * (r + 8));
-      ctx.lineTo(p.x + 4, p.y + dir * (r + 8));
-      ctx.closePath();
-      ctx.fill();
+      this._drawArrowHead(ctx, p.x, p.y + dir * (r + 14), dir * (Math.PI / 2), DOWN_ARROW_HEAD);
     }
     ctx.restore();
   }
@@ -731,23 +728,9 @@ export class Canvas2D {
     ctx.stroke();
 
     const angle = Math.atan2(y2 - y1, x2 - x1);
-    const size = 7;
-
-    // 終点矢印
-    ctx.beginPath();
-    ctx.moveTo(x2, y2);
-    ctx.lineTo(x2 - size * Math.cos(angle - Math.PI / 7), y2 - size * Math.sin(angle - Math.PI / 7));
-    ctx.lineTo(x2 - size * Math.cos(angle + Math.PI / 7), y2 - size * Math.sin(angle + Math.PI / 7));
-    ctx.closePath();
-    ctx.fill();
-
-    // 始点矢印
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x1 + size * Math.cos(angle - Math.PI / 7), y1 + size * Math.sin(angle - Math.PI / 7));
-    ctx.lineTo(x1 + size * Math.cos(angle + Math.PI / 7), y1 + size * Math.sin(angle + Math.PI / 7));
-    ctx.closePath();
-    ctx.fill();
+    // 終点矢印 / 始点矢印 (both ends, pointing outward)
+    this._drawArrowHead(ctx, x2, y2, angle, FLOOR_LOAD_ARROW_HEAD);
+    this._drawArrowHead(ctx, x1, y1, angle + Math.PI, FLOOR_LOAD_ARROW_HEAD);
   }
 
   _drawSupports(ctx, selectedColor) {
@@ -765,14 +748,13 @@ export class Canvas2D {
 
   _drawSupport(ctx, sup, isSelected, selectedColor) {
     const p = this.worldToScreen(sup.x, sup.y);
-    const color = isSelected ? selectedColor : '#4ade80';
-    const sz = 12;
+    const color = isSelected ? selectedColor : SUPPORT_COLOR;
+    const sz = SUPPORT_SYMBOL_SIZE_PX;
+    const baseOffset = sz * SUPPORT_BASE_FACTOR;
 
     ctx.save();
 
-    const allTrans = sup.dx && sup.dy && sup.dz;
-    const allRot = sup.rx && sup.ry && sup.rz;
-    const isFixed = allTrans && allRot;
+    const isFixed = isFixedSupport(sup);
 
     // Triangle: apex at support point, base below
     ctx.strokeStyle = color;
@@ -780,15 +762,15 @@ export class Canvas2D {
     ctx.fillStyle = toRgba(color, 0.25);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x - sz, p.y + sz * 1.4);
-    ctx.lineTo(p.x + sz, p.y + sz * 1.4);
+    ctx.lineTo(p.x - sz, p.y + baseOffset);
+    ctx.lineTo(p.x + sz, p.y + baseOffset);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     if (isFixed) {
       // Fixed support: ground line + hatching
-      const baseY = p.y + sz * 1.4;
+      const baseY = p.y + baseOffset;
       ctx.beginPath();
       ctx.moveTo(p.x - sz - 3, baseY);
       ctx.lineTo(p.x + sz + 3, baseY);
@@ -802,7 +784,7 @@ export class Canvas2D {
       }
     } else {
       // Roller / partial: small circles under base
-      const baseY = p.y + sz * 1.4;
+      const baseY = p.y + baseOffset;
       ctx.beginPath();
       ctx.moveTo(p.x - sz - 3, baseY + 5);
       ctx.lineTo(p.x + sz + 3, baseY + 5);
@@ -821,7 +803,7 @@ export class Canvas2D {
       ctx.fillStyle = color;
       ctx.font = '9px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(dofs.join(','), p.x, p.y + sz * 1.4 + 18);
+      ctx.fillText(dofs.join(','), p.x, p.y + baseOffset + 18);
     }
 
     ctx.restore();

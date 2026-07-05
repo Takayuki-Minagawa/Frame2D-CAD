@@ -9,8 +9,8 @@ test('roof draft toolbar exposes roof group id and passes it into new roof surfa
 
   assert.match(html, /id="label-roof-group-id"/);
   assert.match(html, /id="input-roof-group-id"/);
-  assert.match(uiSource, /surfaceDraftRoofGroupId = String\(e\.target\.value \|\| ''\)\.trim\(\) \|\| 'RG1'/);
+  assert.match(uiSource, /surfaceDraftRoofGroupId = String\(e\.target\.value \|\| ''\)\.trim\(\) \|\| DEFAULT_ROOF_GROUP_ID/);
   assert.match(uiSource, /roofGroupLabel\.style\.display = isRoof \? '' : 'none'/);
-  assert.match(uiSource, /groupEl\.value = this\.state\.surfaceDraftRoofGroupId \|\| 'RG1'/);
+  assert.match(uiSource, /groupEl\.value = this\.state\.surfaceDraftRoofGroupId \|\| DEFAULT_ROOF_GROUP_ID/);
   assert.match(toolsSource, /options\.roofGroupId = this\.state\.surfaceDraftRoofGroupId \|\| 'RG1'/);
 });

@@ -24,11 +24,11 @@ test('roof property panel exposes group validation and regeneration controls', a
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 
   assert.match(uiSource, /id="btn-roof-validate-group"/);
-  assert.match(uiSource, /validateRoofGroup\(surface\.roofGroupId \|\| 'RG1'\)/);
+  assert.match(uiSource, /validateRoofGroup\(surface\.roofGroupId \|\| DEFAULT_ROOF_GROUP_ID\)/);
   assert.match(uiSource, /id="btn-roof-remove-generated"/);
-  assert.match(uiSource, /removeRoofGeneratedElements\(surface\.roofGroupId \|\| 'RG1'\)/);
+  assert.match(uiSource, /removeRoofGeneratedElements\(surface\.roofGroupId \|\| DEFAULT_ROOF_GROUP_ID\)/);
   assert.match(uiSource, /id="btn-roof-regenerate"/);
-  assert.match(uiSource, /regenerateRoofGeneratedElements\(surface\.roofGroupId \|\| 'RG1'/);
+  assert.match(uiSource, /regenerateRoofGeneratedElements\(surface\.roofGroupId \|\| DEFAULT_ROOF_GROUP_ID/);
   assert.match(i18nSource, /roofValidateGroup/);
   assert.match(i18nSource, /roofRegenerateGenerated/);
   assert.match(readme, /生成要素削除/);

@@ -1,8 +1,16 @@
 // ui.js - UI controls (toolbar, property panel, status bar)
 
-import { t } from './i18n.js';
-import { resolveMemberColor, roofRoleLabelKey } from './member-style.js';
+import { t, getLang } from './i18n.js';
+import { escapeHtml, markInputInvalid, clearInputInvalid } from './dom-utils.js';
+import { resolveMemberColor, roofRoleLabelKey } from './element-style.js';
 import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, normalizeGridSize } from './state.js';
+import {
+  DEFAULT_EAVE_DEPTH_MM,
+  DEFAULT_RAFTER_SPACING_MM,
+  DEFAULT_ROOF_GROUP_ID,
+  MODEL_CHECK_DISPLAY_LIMIT,
+  ZOOM_PERCENT_FACTOR,
+} from './constants.js';
 import {
   computeMemberLengthM,
   computeQuantitySummary,
@@ -19,7 +27,7 @@ export class UI {
     this._quantitySummaryLastKey = null;
 
     this._setupToolbar();
-    this.refreshLayerSelectors();
+    this.refreshLevelSelectors();
   }
 
   _setupToolbar() {
@@ -75,7 +83,7 @@ export class UI {
 
     document.getElementById('sel-display-preset').addEventListener('change', e => {
       this.state.applyDisplayPreset(e.target.value);
-      this.refreshLayerSelectors();
+      this.refreshLevelSelectors();
       this.callbacks.onPropertyChange?.();
     });
 
@@ -122,10 +130,10 @@ export class UI {
 
     // Active layer
     document.getElementById('sel-active-layer').addEventListener('change', e => {
-      this.state.activeLayerId = e.target.value;
+      this.state.activeLevelId = e.target.value;
       this._syncWallHeightInputs(false);
       this._updateMemberLayerHint();
-      this.callbacks.onLayerChange?.(this.state.activeLayerId);
+      this.callbacks.onLayerChange?.(this.state.activeLevelId);
     });
 
     // Member default type
@@ -160,7 +168,7 @@ export class UI {
       this.state.surfaceDraftLoadDir = e.target.value;
     });
     document.getElementById('sel-top-layer').addEventListener('change', e => {
-      this.state.surfaceDraftTopLayerId = e.target.value;
+      this.state.surfaceDraftTopLevelId = e.target.value;
     });
     document.getElementById('sel-wall-height-mode').addEventListener('change', e => {
       this.state.surfaceDraftHeightMode = e.target.value;
@@ -196,7 +204,7 @@ export class UI {
       e.target.value = String(this.state.surfaceDraftRoofBaseOffset);
     });
     document.getElementById('input-roof-group-id').addEventListener('change', e => {
-      this.state.surfaceDraftRoofGroupId = String(e.target.value || '').trim() || 'RG1';
+      this.state.surfaceDraftRoofGroupId = String(e.target.value || '').trim() || DEFAULT_ROOF_GROUP_ID;
       e.target.value = this.state.surfaceDraftRoofGroupId;
     });
 
@@ -300,10 +308,10 @@ export class UI {
     modeEl.value = mode;
 
     if (applyPreset || mode !== 'custom') {
-      const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+      const topLevelId = this.state.getNextLevelId(this.state.activeLevelId);
       const offsets = this.state.getSurfaceHeightOffsets({
         heightMode: mode,
-        levelId: this.state.activeLayerId,
+        levelId: this.state.activeLevelId,
         topLevelId,
         bottomOffset: this.state.surfaceDraftBottomOffset,
         topOffset: this.state.surfaceDraftTopOffset,
@@ -327,10 +335,10 @@ export class UI {
     if (slopeEl) slopeEl.value = String(this.state.surfaceDraftRoofSlope || 0);
     if (directionEl) directionEl.value = this.state.surfaceDraftRoofDirection || 'xPlus';
     if (baseOffsetEl) baseOffsetEl.value = String(this.state.surfaceDraftRoofBaseOffset || 0);
-    if (groupEl) groupEl.value = this.state.surfaceDraftRoofGroupId || 'RG1';
+    if (groupEl) groupEl.value = this.state.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID;
   }
 
-  refreshLayerSelectors() {
+  refreshLevelSelectors() {
     const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
     const layerHtml = sortedLevels
       .map(l => `<option value="${l.id}">${l.name} (z=${l.z})</option>`)
@@ -340,11 +348,11 @@ export class UI {
     const selTop = document.getElementById('sel-top-layer');
     if (selActive) {
       selActive.innerHTML = layerHtml;
-      selActive.value = this.state.activeLayerId;
+      selActive.value = this.state.activeLevelId;
     }
     if (selTop) {
       selTop.innerHTML = layerHtml;
-      selTop.value = this.state.surfaceDraftTopLayerId;
+      selTop.value = this.state.surfaceDraftTopLevelId;
     }
     const selMemberType = document.getElementById('sel-member-type');
     if (selMemberType) selMemberType.value = this.state.memberDraftType;
@@ -398,11 +406,11 @@ export class UI {
     const target = document.getElementById('sel-copy-target-layer');
     if (source) {
       source.innerHTML = layerHtml;
-      source.value = this.state.activeLayerId;
+      source.value = this.state.activeLevelId;
     }
     if (target) {
       target.innerHTML = layerHtml;
-      target.value = this.state.getNextLevelId(this.state.activeLayerId) || this.state.activeLayerId;
+      target.value = this.state.getNextLevelId(this.state.activeLevelId) || this.state.activeLevelId;
     }
   }
 
@@ -444,38 +452,35 @@ export class UI {
       container.innerHTML = `<p class="quantity-note">${t('modelCheckNoIssues')}</p>`;
       return;
     }
+    const limit = MODEL_CHECK_DISPLAY_LIMIT;
     container.innerHTML = `
       <ul class="model-check-list">
-        ${issues.slice(0, 12).map(issue => `
+        ${issues.slice(0, limit).map(issue => `
           <li class="model-check-item model-check-${escapeHtml(issue.severity)}">
-            <b>${escapeHtml(t(`modelCheck${capitalize(issue.severity)}`))}</b>
+            <b>${escapeHtml(t('modelCheck' + capitalize(issue.severity)))}</b>
             ${escapeHtml(issue.message)}
           </li>
         `).join('')}
       </ul>
-      ${issues.length > 12 ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore').replace('{count}', issues.length - 12))}</p>` : ''}
+      ${issues.length > limit ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore', { count: issues.length - limit }))}</p>` : ''}
     `;
   }
 
   _updateMemberLayerHint() {
     const hint = document.getElementById('member-layer-hint');
     if (!hint) return;
-    const activeLevel = this.state.levels.find(l => l.id === this.state.activeLayerId);
-    const topLevelId = this.state.getNextLevelId(this.state.activeLayerId);
+    const activeLevel = this.state.levels.find(l => l.id === this.state.activeLevelId);
+    const topLevelId = this.state.getNextLevelId(this.state.activeLevelId);
     const topLevel = this.state.levels.find(l => l.id === topLevelId);
-    const activeLabel = activeLevel ? `${activeLevel.name} (z=${activeLevel.z})` : (this.state.activeLayerId || '-');
+    const activeLabel = activeLevel ? `${activeLevel.name} (z=${activeLevel.z})` : (this.state.activeLevelId || '-');
     const topLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : '-';
 
     if (this.state.memberDraftType === 'column') {
-      hint.textContent = t('memberLayerHintColumn')
-        .replace('{base}', activeLabel)
-        .replace('{top}', topLabel);
+      hint.textContent = t('memberLayerHintColumn', { base: activeLabel, top: topLabel });
     } else if (this.state.memberDraftType === 'vbrace') {
-      hint.textContent = t('memberLayerHintVBrace')
-        .replace('{base}', activeLabel)
-        .replace('{top}', topLabel);
+      hint.textContent = t('memberLayerHintVBrace', { base: activeLabel, top: topLabel });
     } else {
-      hint.textContent = t('memberLayerHintPlan').replace('{layer}', activeLabel);
+      hint.textContent = t('memberLayerHintPlan', { layer: activeLabel });
     }
   }
 
@@ -507,6 +512,23 @@ export class UI {
       return;
     }
 
+    this._renderMemberProperties(container, member);
+  }
+
+  // Shared property-input binder used by every _renderXxxProperties method.
+  // applyFn receives the (optionally transformed) input value and performs the
+  // state mutation. Checkboxes are detected automatically or via the checkbox
+  // option; transform additionally receives the element for advanced parsing.
+  _bindPropInput(id, applyFn, { transform = v => v, checkbox = false } = {}) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      const raw = (checkbox || el.type === 'checkbox') ? el.checked : el.value;
+      applyFn(transform(raw, el));
+    });
+  }
+
+  _renderMemberProperties(container, member) {
     const isColumn = member.type === 'column';
     const isVBrace = member.type === 'vbrace';
     const hasTopLevel = isColumn || isVBrace;
@@ -637,15 +659,10 @@ export class UI {
       </div>
     `;
 
-    const bind = (id, key, transform = v => v) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        const val = transform(el.value);
-        this.state.updateMember(member.id, { [key]: val });
-        this.callbacks.onPropertyChange?.(member.id);
-      });
-    };
+    const bind = (id, key, transform) => this._bindPropInput(id, val => {
+      this.state.updateMember(member.id, { [key]: val });
+      this.callbacks.onPropertyChange?.(member.id);
+    }, { transform });
 
     const bindEnd = (conditionId, springId, key) => {
       const conditionEl = document.getElementById(conditionId);
@@ -737,7 +754,7 @@ export class UI {
       ).join('')
       : `<option value="${escapeHtml(surface.sectionName || '')}" selected>${escapeHtml(surface.sectionName || '-')}</option>`;
     const heightModeOptions = ['full', 'waist', 'hanging', 'custom']
-      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t(`wallHeight${capitalize(mode)}`)}</option>`)
+      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t('wallHeight' + capitalize(mode))}</option>`)
       .join('');
     const windProjectionFields = isWindSurface ? `
       <div class="prop-group">
@@ -754,45 +771,7 @@ export class UI {
         </div>
       </div>
     ` : '';
-    const roofAutoGenerationFields = canGenerateRoof ? `
-      <div class="prop-group">
-        <label>${t('roofAutoGenerate')}</label>
-        <select id="prop-auto-roof-pattern">
-          <option value="single">${t('roofPatternSingle')}</option>
-          <option value="gableX">${t('roofPatternGableX')}</option>
-          <option value="gableY">${t('roofPatternGableY')}</option>
-          <option value="hip">${t('roofPatternHip')}</option>
-        </select>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofGroupId')}</label>
-          <input type="text" id="prop-auto-roof-group-id" value="${escapeHtml(this.state.surfaceDraftRoofGroupId || 'RG1')}">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofSlope')}</label>
-          <input type="number" id="prop-auto-roof-slope" value="${this.state.surfaceDraftRoofSlope || 0.3}" min="0" step="0.01">
-        </div>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofBaseOffset')} (mm)</label>
-          <input type="number" id="prop-auto-roof-base-offset" value="${Math.round(this.state.surfaceDraftRoofBaseOffset || 0)}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofDirection')}</label>
-          <select id="prop-auto-roof-direction">
-            <option value="xPlus" ${this.state.surfaceDraftRoofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
-            <option value="xMinus" ${this.state.surfaceDraftRoofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
-            <option value="yPlus" ${this.state.surfaceDraftRoofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
-            <option value="yMinus" ${this.state.surfaceDraftRoofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
-          </select>
-        </div>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-auto-roof-planes">${t('roofGeneratePlanes')}</button>
-      </div>
-    ` : '';
+    const roofAutoGenerationFields = canGenerateRoof ? this._surfaceRoofAutoGenHtml() : '';
 
     container.innerHTML = `
       <div class="prop-group">
@@ -808,16 +787,7 @@ export class UI {
         <select id="prop-surface-section">${sectionOptions}</select>
         <button type="button" id="prop-apply-draft-surface-section" class="prop-inline-btn" title="${escapeHtml(t('applyAsDraftHint'))}">${escapeHtml(t('applyAsDraft'))}</button>
       </div>
-      ${surface.type === 'floor' ? `
-      <div class="prop-group">
-        <label>${t('loadDirection')}</label>
-        <select id="prop-load-direction">
-          <option value="x" ${surface.loadDirection === 'x' ? 'selected' : ''}>X</option>
-          <option value="y" ${surface.loadDirection === 'y' ? 'selected' : ''}>Y</option>
-          <option value="twoWay" ${surface.loadDirection === 'twoWay' ? 'selected' : ''}>${t('twoWay')}</option>
-        </select>
-      </div>
-      ` : ''}
+      ${surface.type === 'floor' ? this._surfaceFloorHtml(surface) : ''}
       ${roofAutoGenerationFields}
       ${isRectangularWall ? `
       <div class="prop-group">
@@ -839,89 +809,8 @@ export class UI {
         <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
       </div>
       ` : ''}
-      ${isGableWall ? `
-      <div class="prop-group">
-        <label>${t('wallBottomOffset')} (mm)</label>
-        <input type="number" id="prop-gable-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('gableStartTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(gableTopOffset(surface, 'gableStartTopOffset'))}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>${t('gableEndTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('wallVerticalRange')}</label>
-        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
-      </div>
-      ` : ''}
-      ${isSloped ? `
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofSlope')}</label>
-          <input type="number" id="prop-roof-slope" value="${surface.roofSlope || 0}" min="0" step="0.01">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofBaseOffset')} (mm)</label>
-          <input type="number" id="prop-roof-base-offset" value="${Math.round(surface.roofBaseOffset || 0)}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofDirection')}</label>
-        <select id="prop-roof-direction">
-          <option value="xPlus" ${surface.roofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
-          <option value="xMinus" ${surface.roofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
-          <option value="yPlus" ${surface.roofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
-          <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
-        </select>
-      </div>
-      ${isRoof ? `
-      <div class="prop-group">
-        <label>${t('roofGroupId')}</label>
-        <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || 'RG1')}">
-      </div>
-      ` : ''}
-      ${isRoof ? `
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofFramingSpacing')} (mm)</label>
-        <input type="number" id="prop-roof-framing-spacing" value="910" min="1" step="10">
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-slope-members">${t('roofGenerateSlopeMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofEaveDepth')} (mm)</label>
-        <input type="number" id="prop-roof-eave-depth" value="600" min="1" step="50">
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-eaves">${t('roofGenerateEaves')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-validate-group">${t('roofValidateGroup')}</button>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <button type="button" class="support-preset-btn" id="btn-roof-remove-generated">${t('roofRemoveGenerated')}</button>
-        </div>
-        <div class="prop-group">
-          <button type="button" class="support-preset-btn" id="btn-roof-regenerate">${t('roofRegenerateGenerated')}</button>
-        </div>
-      </div>
-      ` : ''}
-      ` : ''}
+      ${isGableWall ? this._surfaceGableWallHtml(surface, range) : ''}
+      ${isSloped ? this._surfaceSlopedHtml(surface, isRoof) : ''}
       ${windProjectionFields}
       <div class="prop-group">
         <label>${t('propColor')}</label>
@@ -955,22 +844,10 @@ export class UI {
       </div>
     `;
 
-    const bind = (id, key, transform = v => v) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        this.state.updateSurface(surface.id, { [key]: transform(el.value, el) });
-        this.callbacks.onPropertyChange?.(surface.id);
-      });
-    };
-    const bindChecked = (id, key) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        this.state.updateSurface(surface.id, { [key]: el.checked });
-        this.callbacks.onPropertyChange?.(surface.id);
-      });
-    };
+    const bind = (id, key, transform) => this._bindPropInput(id, val => {
+      this.state.updateSurface(surface.id, { [key]: val });
+      this.callbacks.onPropertyChange?.(surface.id);
+    }, { transform });
 
     bind('prop-surface-section', 'sectionName');
     const applyDraftSurfaceBtn = document.getElementById('prop-apply-draft-surface-section');
@@ -993,154 +870,313 @@ export class UI {
     bind('prop-roof-slope', 'roofSlope', (_value, el) => Math.max(0, readNumberInput(el, surface.roofSlope || 0)));
     bind('prop-roof-direction', 'roofDirection');
     bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
-    bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || 'RG1');
+    bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || DEFAULT_ROOF_GROUP_ID);
     bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
-    bindChecked('prop-surface-include-wind', 'includeWind');
-    bindChecked('prop-surface-include-seismic', 'includeSeismicWeight');
-    document.getElementById('btn-roof-edge-members')?.addEventListener('click', () => {
-      const members = this.state.addRoofEdgeMembers(surface.id);
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, members.length, 'roofGeneratedMembers');
-    });
-    document.getElementById('btn-roof-slope-members')?.addEventListener('click', () => {
-      const spacingEl = document.getElementById('prop-roof-framing-spacing');
-      const spacing = Math.max(1, readNumberInput(spacingEl, 910));
-      if (spacingEl) spacingEl.value = String(spacing);
-      const members = this.state.addRoofSlopeMembers(surface.id, { spacing });
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, members.length, 'roofGeneratedSlopeMembers');
-    });
-    document.getElementById('btn-roof-joint-members')?.addEventListener('click', () => {
-      const members = this.state.addRoofJointMembers(surface.roofGroupId || 'RG1');
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, members.length, 'roofGeneratedJointMembers');
-    });
-    document.getElementById('btn-roof-eaves')?.addEventListener('click', () => {
-      const depthEl = document.getElementById('prop-roof-eave-depth');
-      const depth = Math.max(1, readNumberInput(depthEl, 600));
-      if (depthEl) depthEl.value = String(depth);
-      const eaves = this.state.addEavesFromRoofGroup(surface.roofGroupId || 'RG1', { depth });
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, eaves.length, 'roofGeneratedEaves');
-    });
-    document.getElementById('btn-roof-gable-walls')?.addEventListener('click', () => {
-      const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || 'RG1');
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
-    });
-    document.getElementById('btn-roof-validate-group')?.addEventListener('click', () => {
-      const result = this.state.validateRoofGroup(surface.roofGroupId || 'RG1');
-      const message = result.issues.length
-        ? t('roofValidationIssues').replace('{n}', String(result.issues.length))
-        : t('roofValidationOk');
-      this._showInlineNotice(container, message);
-    });
-    document.getElementById('btn-roof-remove-generated')?.addEventListener('click', () => {
-      const removed = this.state.removeRoofGeneratedElements(surface.roofGroupId || 'RG1');
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, removed.total, 'roofRemovedGenerated');
-    });
-    document.getElementById('btn-roof-regenerate')?.addEventListener('click', () => {
-      const spacingEl = document.getElementById('prop-roof-framing-spacing');
-      const depthEl = document.getElementById('prop-roof-eave-depth');
-      const spacing = Math.max(1, readNumberInput(spacingEl, 910));
-      const depth = Math.max(1, readNumberInput(depthEl, 600));
-      if (spacingEl) spacingEl.value = String(spacing);
-      if (depthEl) depthEl.value = String(depth);
-      const result = this.state.regenerateRoofGeneratedElements(surface.roofGroupId || 'RG1', { spacing, depth });
-      this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, result.generatedTotal, 'roofRegeneratedElements');
-    });
-    document.getElementById('btn-auto-roof-planes')?.addEventListener('click', () => {
-      const groupEl = document.getElementById('prop-auto-roof-group-id');
-      const slopeEl = document.getElementById('prop-auto-roof-slope');
-      const baseOffsetEl = document.getElementById('prop-auto-roof-base-offset');
-      const directionEl = document.getElementById('prop-auto-roof-direction');
-      const pattern = document.getElementById('prop-auto-roof-pattern')?.value || 'single';
-      const roofGroupId = String(groupEl?.value || '').trim() || 'RG1';
-      const roofSlope = Math.max(0, readNumberInput(slopeEl, this.state.surfaceDraftRoofSlope || 0.3));
-      const roofBaseOffset = readNumberInput(baseOffsetEl, this.state.surfaceDraftRoofBaseOffset || 0);
-      const roofDirection = directionEl?.value || this.state.surfaceDraftRoofDirection || 'xPlus';
-      if (groupEl) groupEl.value = roofGroupId;
-      if (slopeEl) slopeEl.value = String(roofSlope);
-      if (baseOffsetEl) baseOffsetEl.value = String(roofBaseOffset);
-      this.state.surfaceDraftRoofGroupId = roofGroupId;
-      this.state.surfaceDraftRoofSlope = roofSlope;
-      this.state.surfaceDraftRoofBaseOffset = roofBaseOffset;
-      this.state.surfaceDraftRoofDirection = roofDirection;
-      const roofs = this.state.addRoofPlanesFromSurface(surface.id, {
-        pattern,
-        roofGroupId,
-        roofSlope,
-        roofBaseOffset,
-        roofDirection,
+    bind('prop-surface-include-wind', 'includeWind');
+    bind('prop-surface-include-seismic', 'includeSeismicWeight');
+
+    this._bindRoofGenerationButtons(container, surface);
+    this._bindWallOffsetValidation(surface);
+    this._bindGableWallOffsets(surface);
+  }
+
+  // Per-type surface HTML fragments. Kept as pure string builders so the
+  // orchestrator above stays readable; the rectangular-wall block and the
+  // calculated wind fields remain inline there because they gate shared layout.
+  _surfaceFloorHtml(surface) {
+    return `
+      <div class="prop-group">
+        <label>${t('loadDirection')}</label>
+        <select id="prop-load-direction">
+          <option value="x" ${surface.loadDirection === 'x' ? 'selected' : ''}>X</option>
+          <option value="y" ${surface.loadDirection === 'y' ? 'selected' : ''}>Y</option>
+          <option value="twoWay" ${surface.loadDirection === 'twoWay' ? 'selected' : ''}>${t('twoWay')}</option>
+        </select>
+      </div>
+    `;
+  }
+
+  _surfaceRoofAutoGenHtml() {
+    return `
+      <div class="prop-group">
+        <label>${t('roofAutoGenerate')}</label>
+        <select id="prop-auto-roof-pattern">
+          <option value="single">${t('roofPatternSingle')}</option>
+          <option value="gableX">${t('roofPatternGableX')}</option>
+          <option value="gableY">${t('roofPatternGableY')}</option>
+          <option value="hip">${t('roofPatternHip')}</option>
+        </select>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofGroupId')}</label>
+          <input type="text" id="prop-auto-roof-group-id" value="${escapeHtml(this.state.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID)}">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofSlope')}</label>
+          <input type="number" id="prop-auto-roof-slope" value="${this.state.surfaceDraftRoofSlope || 0.3}" min="0" step="0.01">
+        </div>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofBaseOffset')} (mm)</label>
+          <input type="number" id="prop-auto-roof-base-offset" value="${Math.round(this.state.surfaceDraftRoofBaseOffset || 0)}" step="100">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofDirection')}</label>
+          <select id="prop-auto-roof-direction">
+            <option value="xPlus" ${this.state.surfaceDraftRoofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
+            <option value="xMinus" ${this.state.surfaceDraftRoofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
+            <option value="yPlus" ${this.state.surfaceDraftRoofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
+            <option value="yMinus" ${this.state.surfaceDraftRoofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
+          </select>
+        </div>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-auto-roof-planes">${t('roofGeneratePlanes')}</button>
+      </div>
+    `;
+  }
+
+  _surfaceGableWallHtml(surface, range) {
+    return `
+      <div class="prop-group">
+        <label>${t('wallBottomOffset')} (mm)</label>
+        <input type="number" id="prop-gable-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('gableStartTopOffset')} (mm)</label>
+          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(gableTopOffset(surface, 'gableStartTopOffset'))}" step="100">
+        </div>
+        <div class="prop-group">
+          <label>${t('gableEndTopOffset')} (mm)</label>
+          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
+        </div>
+      </div>
+      <div class="prop-group">
+        <label>${t('wallVerticalRange')}</label>
+        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
+      </div>
+    `;
+  }
+
+  _surfaceSlopedHtml(surface, isRoof) {
+    return `
+      <div class="prop-row">
+        <div class="prop-group">
+          <label>${t('roofSlope')}</label>
+          <input type="number" id="prop-roof-slope" value="${surface.roofSlope || 0}" min="0" step="0.01">
+        </div>
+        <div class="prop-group">
+          <label>${t('roofBaseOffset')} (mm)</label>
+          <input type="number" id="prop-roof-base-offset" value="${Math.round(surface.roofBaseOffset || 0)}" step="100">
+        </div>
+      </div>
+      <div class="prop-group">
+        <label>${t('roofDirection')}</label>
+        <select id="prop-roof-direction">
+          <option value="xPlus" ${surface.roofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
+          <option value="xMinus" ${surface.roofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
+          <option value="yPlus" ${surface.roofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
+          <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
+        </select>
+      </div>
+      ${isRoof ? `
+      <div class="prop-group">
+        <label>${t('roofGroupId')}</label>
+        <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID)}">
+      </div>
+      ` : ''}
+      ${isRoof ? `
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
+      </div>
+      <div class="prop-group">
+        <label>${t('roofFramingSpacing')} (mm)</label>
+        <input type="number" id="prop-roof-framing-spacing" value="${DEFAULT_RAFTER_SPACING_MM}" min="1" step="10">
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-slope-members">${t('roofGenerateSlopeMembers')}</button>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
+      </div>
+      <div class="prop-group">
+        <label>${t('roofEaveDepth')} (mm)</label>
+        <input type="number" id="prop-roof-eave-depth" value="${DEFAULT_EAVE_DEPTH_MM}" min="1" step="50">
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-eaves">${t('roofGenerateEaves')}</button>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-roof-validate-group">${t('roofValidateGroup')}</button>
+      </div>
+      <div class="prop-row">
+        <div class="prop-group">
+          <button type="button" class="support-preset-btn" id="btn-roof-remove-generated">${t('roofRemoveGenerated')}</button>
+        </div>
+        <div class="prop-group">
+          <button type="button" class="support-preset-btn" id="btn-roof-regenerate">${t('roofRegenerateGenerated')}</button>
+        </div>
+      </div>
+      ` : ''}
+    `;
+  }
+
+  // Table-driven binder for the roof auto-generation buttons: each entry maps a
+  // button element id to the click handler that drives the matching state method.
+  _bindRoofGenerationButtons(container, surface) {
+    const bindings = [
+      ['btn-roof-edge-members', () => {
+        const members = this.state.addRoofEdgeMembers(surface.id);
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, members.length, 'roofGeneratedMembers');
+      }],
+      ['btn-roof-slope-members', () => {
+        const spacingEl = document.getElementById('prop-roof-framing-spacing');
+        const spacing = Math.max(1, readNumberInput(spacingEl, DEFAULT_RAFTER_SPACING_MM));
+        if (spacingEl) spacingEl.value = String(spacing);
+        const members = this.state.addRoofSlopeMembers(surface.id, { spacing });
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, members.length, 'roofGeneratedSlopeMembers');
+      }],
+      ['btn-roof-joint-members', () => {
+        const members = this.state.addRoofJointMembers(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, members.length, 'roofGeneratedJointMembers');
+      }],
+      ['btn-roof-eaves', () => {
+        const depthEl = document.getElementById('prop-roof-eave-depth');
+        const depth = Math.max(1, readNumberInput(depthEl, DEFAULT_EAVE_DEPTH_MM));
+        if (depthEl) depthEl.value = String(depth);
+        const eaves = this.state.addEavesFromRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID, { depth });
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, eaves.length, 'roofGeneratedEaves');
+      }],
+      ['btn-roof-gable-walls', () => {
+        const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
+      }],
+      ['btn-roof-validate-group', () => {
+        const result = this.state.validateRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
+        const message = result.issues.length
+          ? t('roofValidationIssues', { n: result.issues.length })
+          : t('roofValidationOk');
+        this._showInlineNotice(container, message);
+      }],
+      ['btn-roof-remove-generated', () => {
+        const removed = this.state.removeRoofGeneratedElements(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, removed.total, 'roofRemovedGenerated');
+      }],
+      ['btn-roof-regenerate', () => {
+        const spacingEl = document.getElementById('prop-roof-framing-spacing');
+        const depthEl = document.getElementById('prop-roof-eave-depth');
+        const spacing = Math.max(1, readNumberInput(spacingEl, DEFAULT_RAFTER_SPACING_MM));
+        const depth = Math.max(1, readNumberInput(depthEl, DEFAULT_EAVE_DEPTH_MM));
+        if (spacingEl) spacingEl.value = String(spacing);
+        if (depthEl) depthEl.value = String(depth);
+        const result = this.state.regenerateRoofGeneratedElements(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID, { spacing, depth });
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, result.generatedTotal, 'roofRegeneratedElements');
+      }],
+      ['btn-auto-roof-planes', () => {
+        const groupEl = document.getElementById('prop-auto-roof-group-id');
+        const slopeEl = document.getElementById('prop-auto-roof-slope');
+        const baseOffsetEl = document.getElementById('prop-auto-roof-base-offset');
+        const directionEl = document.getElementById('prop-auto-roof-direction');
+        const pattern = document.getElementById('prop-auto-roof-pattern')?.value || 'single';
+        const roofGroupId = String(groupEl?.value || '').trim() || DEFAULT_ROOF_GROUP_ID;
+        const roofSlope = Math.max(0, readNumberInput(slopeEl, this.state.surfaceDraftRoofSlope || 0.3));
+        const roofBaseOffset = readNumberInput(baseOffsetEl, this.state.surfaceDraftRoofBaseOffset || 0);
+        const roofDirection = directionEl?.value || this.state.surfaceDraftRoofDirection || 'xPlus';
+        if (groupEl) groupEl.value = roofGroupId;
+        if (slopeEl) slopeEl.value = String(roofSlope);
+        if (baseOffsetEl) baseOffsetEl.value = String(roofBaseOffset);
+        this.state.surfaceDraftRoofGroupId = roofGroupId;
+        this.state.surfaceDraftRoofSlope = roofSlope;
+        this.state.surfaceDraftRoofBaseOffset = roofBaseOffset;
+        this.state.surfaceDraftRoofDirection = roofDirection;
+        const roofs = this.state.addRoofPlanesFromSurface(surface.id, {
+          pattern,
+          roofGroupId,
+          roofSlope,
+          roofBaseOffset,
+          roofDirection,
+        });
+        this.callbacks.onPropertyChange?.(surface.id);
+        this._showGenerationNotice(container, roofs.length, 'roofGeneratedPlanes');
+      }],
+    ];
+    for (const [id, handler] of bindings) {
+      document.getElementById(id)?.addEventListener('click', handler);
+    }
+  }
+
+  _bindWallOffsetValidation(surface) {
+    const bottomEl = document.getElementById('prop-wall-bottom-offset');
+    const topEl = document.getElementById('prop-wall-top-offset');
+    if (!bottomEl || !topEl) return;
+    const apply = () => {
+      const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
+      const topOffset = readNumberInput(topEl, surface.topOffset || 0);
+      if (topOffset <= bottomOffset) {
+        markInputInvalid(topEl, t('wallInvalidHeight'));
+        return;
+      }
+      clearInputInvalid(bottomEl);
+      clearInputInvalid(topEl);
+      this.state.updateSurface(surface.id, {
+        heightMode: 'custom',
+        bottomOffset,
+        topOffset,
       });
       this.callbacks.onPropertyChange?.(surface.id);
-      this._showGenerationNotice(container, roofs.length, 'roofGeneratedPlanes');
-    });
-
-    const bindWallHeightOffsets = () => {
-      const bottomEl = document.getElementById('prop-wall-bottom-offset');
-      const topEl = document.getElementById('prop-wall-top-offset');
-      if (!bottomEl || !topEl) return;
-      const apply = () => {
-        const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
-        const topOffset = readNumberInput(topEl, surface.topOffset || 0);
-        if (topOffset <= bottomOffset) {
-          markInputInvalid(topEl, t('wallInvalidHeight'));
-          return;
-        }
-        clearInputInvalid(bottomEl);
-        clearInputInvalid(topEl);
-        this.state.updateSurface(surface.id, {
-          heightMode: 'custom',
-          bottomOffset,
-          topOffset,
-        });
-        this.callbacks.onPropertyChange?.(surface.id);
-      };
-      bottomEl.addEventListener('change', apply);
-      topEl.addEventListener('change', apply);
     };
-    bindWallHeightOffsets();
+    bottomEl.addEventListener('change', apply);
+    topEl.addEventListener('change', apply);
+  }
 
-    const bindGableWallOffsets = () => {
-      const bottomEl = document.getElementById('prop-gable-bottom-offset');
-      const startEl = document.getElementById('prop-gable-start-top-offset');
-      const endEl = document.getElementById('prop-gable-end-top-offset');
-      if (!bottomEl || !startEl || !endEl) return;
-      const apply = () => {
-        const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
-        const gableStartTopOffset = readNumberInput(startEl, gableTopOffset(surface, 'gableStartTopOffset'));
-        const gableEndTopOffset = readNumberInput(endEl, gableTopOffset(surface, 'gableEndTopOffset'));
-        let isValid = true;
-        if (gableStartTopOffset < bottomOffset) {
-          markInputInvalid(startEl, t('gableInvalidTop'));
-          isValid = false;
-        } else {
-          clearInputInvalid(startEl);
-        }
-        if (gableEndTopOffset < bottomOffset) {
-          markInputInvalid(endEl, t('gableInvalidTop'));
-          isValid = false;
-        } else {
-          clearInputInvalid(endEl);
-        }
-        if (!isValid) return;
-        clearInputInvalid(bottomEl);
-        this.state.updateSurface(surface.id, {
-          heightMode: 'custom',
-          bottomOffset,
-          gableStartTopOffset,
-          gableEndTopOffset,
-        });
-        this.callbacks.onPropertyChange?.(surface.id);
-      };
-      bottomEl.addEventListener('change', apply);
-      startEl.addEventListener('change', apply);
-      endEl.addEventListener('change', apply);
+  _bindGableWallOffsets(surface) {
+    const bottomEl = document.getElementById('prop-gable-bottom-offset');
+    const startEl = document.getElementById('prop-gable-start-top-offset');
+    const endEl = document.getElementById('prop-gable-end-top-offset');
+    if (!bottomEl || !startEl || !endEl) return;
+    const apply = () => {
+      const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
+      const gableStartTopOffset = readNumberInput(startEl, gableTopOffset(surface, 'gableStartTopOffset'));
+      const gableEndTopOffset = readNumberInput(endEl, gableTopOffset(surface, 'gableEndTopOffset'));
+      let isValid = true;
+      if (gableStartTopOffset < bottomOffset) {
+        markInputInvalid(startEl, t('gableInvalidTop'));
+        isValid = false;
+      } else {
+        clearInputInvalid(startEl);
+      }
+      if (gableEndTopOffset < bottomOffset) {
+        markInputInvalid(endEl, t('gableInvalidTop'));
+        isValid = false;
+      } else {
+        clearInputInvalid(endEl);
+      }
+      if (!isValid) return;
+      clearInputInvalid(bottomEl);
+      this.state.updateSurface(surface.id, {
+        heightMode: 'custom',
+        bottomOffset,
+        gableStartTopOffset,
+        gableEndTopOffset,
+      });
+      this.callbacks.onPropertyChange?.(surface.id);
     };
-    bindGableWallOffsets();
+    bottomEl.addEventListener('change', apply);
+    startEl.addEventListener('change', apply);
+    endEl.addEventListener('change', apply);
   }
 
   _showInlineNotice(container, message) {
@@ -1152,7 +1188,7 @@ export class UI {
 
   _showGenerationNotice(container, count, messageKey) {
     const message = count > 0
-      ? t(messageKey).replace('{n}', String(count))
+      ? t(messageKey, { n: count })
       : t('roofGeneratedNone');
     this._showInlineNotice(container, message);
   }
@@ -1236,14 +1272,10 @@ export class UI {
       </div>
     `;
 
-    const bind = (id, key, transform = v => v) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        this.state.updateLoad(load.id, { [key]: transform(el.value) });
-        this.callbacks.onPropertyChange?.(load.id);
-      });
-    };
+    const bind = (id, key, transform) => this._bindPropInput(id, val => {
+      this.state.updateLoad(load.id, { [key]: val });
+      this.callbacks.onPropertyChange?.(load.id);
+    }, { transform });
 
     bind('prop-ld-x1', 'x1', parseFloat);
     bind('prop-ld-y1', 'y1', parseFloat);
@@ -1317,14 +1349,10 @@ export class UI {
       </div>
     `;
 
-    const bind = (id, key, transform = v => v) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        this.state.updateSupport(support.id, { [key]: transform(el.type === 'checkbox' ? el.checked : el.value) });
-        this.callbacks.onPropertyChange?.(support.id);
-      });
-    };
+    const bind = (id, key, transform) => this._bindPropInput(id, val => {
+      this.state.updateSupport(support.id, { [key]: val });
+      this.callbacks.onPropertyChange?.(support.id);
+    }, { transform });
 
     bind('prop-sup-x', 'x', parseFloat);
     bind('prop-sup-y', 'y', parseFloat);
@@ -1353,19 +1381,13 @@ export class UI {
   }
 
   refreshQuantitySummary({ force = false } = {}) {
-    const key = this._quantitySummaryStateKey();
+    // Lightweight change signature: the model revision bumps on every mutating
+    // state method (including load/undo/redo), and the display language changes
+    // the rendered labels. This avoids stringifying the whole model each call.
+    const key = `${this.state.revision}|${getLang()}`;
     if (!force && key === this._quantitySummaryLastKey) return;
     this._quantitySummaryLastKey = key;
     this._renderQuantitySummary();
-  }
-
-  _quantitySummaryStateKey() {
-    return JSON.stringify({
-      levels: this.state.levels,
-      nodes: this.state.nodes,
-      members: this.state.members,
-      surfaces: this.state.surfaces,
-    });
   }
 
   _renderQuantitySummary() {
@@ -1524,7 +1546,7 @@ export class UI {
 
   updateZoom(scale) {
     const el = document.getElementById('status-zoom');
-    if (el) el.textContent = `Zoom: ${Math.round(scale * 2000)}%`;
+    if (el) el.textContent = `Zoom: ${Math.round(scale * ZOOM_PERCENT_FACTOR)}%`;
   }
 
   applyLanguage() {
@@ -1532,21 +1554,12 @@ export class UI {
       const key = el.dataset.i18n;
       el.textContent = t(key);
     });
-    this.refreshLayerSelectors();
+    this.refreshLevelSelectors();
     this._updateToolUI();
     this.updateStatusBar();
     this.refreshQuantitySummary({ force: true });
     this.updatePropertyPanel();
   }
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 function formatNumber(value) {
@@ -1581,17 +1594,4 @@ function finiteValue(value, fallback = 0) {
   if (Number.isFinite(n)) return n;
   const fallbackNumber = Number(fallback);
   return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
-}
-
-function markInputInvalid(input, message) {
-  if (!input) return;
-  input.classList.add('input-error');
-  input.setCustomValidity(message);
-  input.reportValidity();
-}
-
-function clearInputInvalid(input) {
-  if (!input) return;
-  input.classList.remove('input-error');
-  input.setCustomValidity('');
 }
