@@ -99,10 +99,16 @@ export function initLayerModal({ state, onModelChange, refreshLevelSelectors }) 
           return;
         }
         const usage = state.getLevelUsage(level.id);
-        const total = usage.members.length + usage.surfaces.length;
+        const total = usage.members.length + usage.surfaces.length
+          + usage.loads.length + usage.supports.length;
         if (total > 0) {
           showNotice(
-            t('layerInUse', { m: usage.members.length, s: usage.surfaces.length }),
+            t('layerInUse', {
+              m: usage.members.length,
+              s: usage.surfaces.length,
+              l: usage.loads.length,
+              p: usage.supports.length,
+            }),
             'error'
           );
           return;

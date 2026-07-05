@@ -1219,13 +1219,16 @@ export class AppState {
     const members = this.members.filter(m => m.levelId === id || m.topLevelId === id);
     const surfaces = this.surfaces.filter(s => s.levelId === id || s.topLevelId === id);
     const loads = this.loads.filter(l => l.levelId === id);
-    return { members, surfaces, loads };
+    const supports = this.supports.filter(s => s.levelId === id);
+    return { members, surfaces, loads, supports };
   }
 
   removeLevel(id) {
     if (this.levels.length <= 1) return false;
-    const { members, surfaces, loads } = this.getLevelUsage(id);
-    if (members.length > 0 || surfaces.length > 0 || loads.length > 0) return false;
+    const { members, surfaces, loads, supports } = this.getLevelUsage(id);
+    if (members.length > 0 || surfaces.length > 0 || loads.length > 0 || supports.length > 0) {
+      return false;
+    }
     this.levels = this.levels.filter(l => l.id !== id);
     if (this.activeLevelId === id) {
       this.activeLevelId = this.levels[0].id;
