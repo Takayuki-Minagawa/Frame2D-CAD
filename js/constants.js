@@ -20,6 +20,10 @@ export const HANGING_WALL_DEPTH_MM = 600;
 
 // Display
 export const WALL_DISPLAY_OFFSET_MM = 120;
+// Max number of model-check issues shown before collapsing into a "+N more" note
+export const MODEL_CHECK_DISPLAY_LIMIT = 12;
+// Canvas scale-to-percent factor for the zoom status readout (scale * factor = %)
+export const ZOOM_PERCENT_FACTOR = 2000;
 
 // Hit testing
 export const HIT_TOLERANCE_MM = 300;

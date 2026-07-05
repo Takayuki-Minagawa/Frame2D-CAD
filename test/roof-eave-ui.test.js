@@ -8,7 +8,7 @@ test('roof property panel exposes roof group eave generation controls', async ()
 
   assert.match(uiSource, /id="prop-roof-eave-depth"/);
   assert.match(uiSource, /id="btn-roof-eaves"/);
-  assert.match(uiSource, /addEavesFromRoofGroup\(surface\.roofGroupId \|\| 'RG1',\s*\{ depth \}\)/);
+  assert.match(uiSource, /addEavesFromRoofGroup\(surface\.roofGroupId \|\| DEFAULT_ROOF_GROUP_ID,\s*\{ depth \}\)/);
   assert.match(uiSource, /roofGeneratedEaves/);
   assert.match(i18nSource, /roofEaveDepth/);
   assert.match(i18nSource, /roofGenerateEaves/);
