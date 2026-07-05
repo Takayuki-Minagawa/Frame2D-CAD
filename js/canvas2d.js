@@ -2,8 +2,14 @@
 
 import { drawGrid } from './grid.js';
 import { cssVar } from './dom-utils.js';
-import { resolveMemberColor, resolveSurfaceColor } from './element-style.js';
+import {
+  resolveMemberColor,
+  resolveSurfaceColor,
+  resolveLoadColor,
+  SUPPORT_COLOR,
+} from './element-style.js';
 import { offsetPolygonOutward } from './geometry-utils.js';
+import { isFixedSupport, braceDiagonals, resolveWallDisplayOffset } from './view-semantics.js';
 import { roofSlopeArrow } from './roof-geometry.js';
 import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
@@ -14,6 +20,12 @@ const ROOF_SLOPE_ARROW_HEAD = { size: 7, spread: Math.PI / 6 };
 const FLOOR_LOAD_ARROW_HEAD = { size: 7, spread: Math.PI / 7 };
 const DOWN_ARROW_HEAD = { size: Math.hypot(6, 4), spread: Math.atan2(4, 6) }; // 6 back, 4 half-width
 const LINE_LOAD_ARROW_HEAD = { size: Math.hypot(4, 3), spread: Math.atan2(3, 4) }; // 4 back, 3 half-width
+
+// V-brace triangle height (screen px) for the 2D panel outline.
+const VBRACE_TRIANGLE_HEIGHT_PX = 14;
+// Support symbol size (screen px) and base-offset factor.
+const SUPPORT_SYMBOL_SIZE_PX = 12;
+const SUPPORT_BASE_FACTOR = 1.4;
 
 export class Canvas2D {
   constructor(canvasEl, state) {
@@ -310,7 +322,7 @@ export class Canvas2D {
   }
 
   _drawVBrace(ctx, member, n1, n2, isSelected, selectedColor, memberDefault) {
-    const offset = this.state.settings.wallDisplayOffset || 120;
+    const offset = resolveWallDisplayOffset(this.state.settings);
 
     // Direction and perpendicular in world space
     const dx = n2.x - n1.x;
@@ -335,7 +347,7 @@ export class Canvas2D {
     const slen = Math.hypot(sdx, sdy);
     if (slen < 4) return;
 
-    const triH = 14;
+    const triH = VBRACE_TRIANGLE_HEIGHT_PX;
     const spx = (-sdy / slen) * triH;
     const spy = (sdx / slen) * triH;
 
@@ -358,42 +370,27 @@ export class Canvas2D {
     ctx.closePath();
     ctx.stroke();
 
-    // Diagonals
+    // Diagonals. Corner order matches braceDiagonals():
+    // [start-bottom, end-bottom, end-top, start-top] = [s4, s3, s2, s1].
+    const corners = [s4, s3, s2, s1];
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    if (member.bracePattern === 'cross') {
-      // X pattern
+    for (const [a, b] of braceDiagonals(member.bracePattern)) {
       ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s3.x, s3.y);
+      ctx.moveTo(corners[a].x, corners[a].y);
+      ctx.lineTo(corners[b].x, corners[b].y);
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(s4.x, s4.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.stroke();
-      // Fill rectangle
-      ctx.fillStyle = toRgba(color, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.lineTo(s3.x, s3.y);
-      ctx.lineTo(s4.x, s4.y);
-      ctx.closePath();
-      ctx.fill();
-    } else {
-      // Single diagonal: s4 → s2 (start-bottom to end-top)
-      ctx.beginPath();
-      ctx.moveTo(s4.x, s4.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.stroke();
-      // Fill right triangle: s1, s2, s4
-      ctx.fillStyle = toRgba(color, 0.12);
-      ctx.beginPath();
-      ctx.moveTo(s1.x, s1.y);
-      ctx.lineTo(s2.x, s2.y);
-      ctx.lineTo(s4.x, s4.y);
-      ctx.closePath();
-      ctx.fill();
     }
+
+    // Panel fill over the diagonals: full rectangle for cross, right triangle
+    // (s1, s2, s4) for a single diagonal.
+    ctx.fillStyle = toRgba(color, 0.12);
+    ctx.beginPath();
+    ctx.moveTo(s1.x, s1.y);
+    ctx.lineTo(s2.x, s2.y);
+    if (member.bracePattern === 'cross') ctx.lineTo(s3.x, s3.y);
+    ctx.lineTo(s4.x, s4.y);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
   }
@@ -415,7 +412,7 @@ export class Canvas2D {
   }
 
   _drawSurfaces(ctx, selectedColor) {
-    const wallOffset = this.state.settings.wallDisplayOffset || 120;
+    const wallOffset = resolveWallDisplayOffset(this.state.settings);
 
     for (const s of this.state.surfaces) {
       if (!this.state.isSurfaceVisible(s, '2d')) continue;
@@ -532,7 +529,7 @@ export class Canvas2D {
     if (points.length < 2) return;
     const surfaceColor = resolveSurfaceColor(s);
 
-    const offset = this.state.settings.wallDisplayOffset || 120;
+    const offset = resolveWallDisplayOffset(this.state.settings);
     const oPts = offsetPolygonOutward(points, offset);
     const screenOff = oPts.map(p => this.worldToScreen(p.x, p.y));
     const screenOrig = points.map(p => this.worldToScreen(p.x, p.y));
@@ -591,7 +588,7 @@ export class Canvas2D {
     const p2 = this.worldToScreen(ld.x2, ld.y2);
     const x = Math.min(p1.x, p2.x), y = Math.min(p1.y, p2.y);
     const w = Math.abs(p2.x - p1.x), h = Math.abs(p2.y - p1.y);
-    const color = isSelected ? selectedColor : (ld.color || '#e57373');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
 
     ctx.save();
     ctx.fillStyle = toRgba(color, 0.18);
@@ -628,7 +625,7 @@ export class Canvas2D {
   _drawLineLoad(ctx, ld, isSelected, selectedColor) {
     const p1 = this.worldToScreen(ld.x1, ld.y1);
     const p2 = this.worldToScreen(ld.x2, ld.y2);
-    const color = isSelected ? selectedColor : (ld.color || '#ffb74d');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
     const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
 
     ctx.save();
@@ -669,7 +666,7 @@ export class Canvas2D {
 
   _drawPointLoad(ctx, ld, isSelected, selectedColor) {
     const p = this.worldToScreen(ld.x1, ld.y1);
-    const color = isSelected ? selectedColor : (ld.color || '#ba68c8');
+    const color = isSelected ? selectedColor : resolveLoadColor(ld);
     const r = 8;
 
     ctx.save();
@@ -751,14 +748,13 @@ export class Canvas2D {
 
   _drawSupport(ctx, sup, isSelected, selectedColor) {
     const p = this.worldToScreen(sup.x, sup.y);
-    const color = isSelected ? selectedColor : '#4ade80';
-    const sz = 12;
+    const color = isSelected ? selectedColor : SUPPORT_COLOR;
+    const sz = SUPPORT_SYMBOL_SIZE_PX;
+    const baseOffset = sz * SUPPORT_BASE_FACTOR;
 
     ctx.save();
 
-    const allTrans = sup.dx && sup.dy && sup.dz;
-    const allRot = sup.rx && sup.ry && sup.rz;
-    const isFixed = allTrans && allRot;
+    const isFixed = isFixedSupport(sup);
 
     // Triangle: apex at support point, base below
     ctx.strokeStyle = color;
@@ -766,15 +762,15 @@ export class Canvas2D {
     ctx.fillStyle = toRgba(color, 0.25);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x - sz, p.y + sz * 1.4);
-    ctx.lineTo(p.x + sz, p.y + sz * 1.4);
+    ctx.lineTo(p.x - sz, p.y + baseOffset);
+    ctx.lineTo(p.x + sz, p.y + baseOffset);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
     if (isFixed) {
       // Fixed support: ground line + hatching
-      const baseY = p.y + sz * 1.4;
+      const baseY = p.y + baseOffset;
       ctx.beginPath();
       ctx.moveTo(p.x - sz - 3, baseY);
       ctx.lineTo(p.x + sz + 3, baseY);
@@ -788,7 +784,7 @@ export class Canvas2D {
       }
     } else {
       // Roller / partial: small circles under base
-      const baseY = p.y + sz * 1.4;
+      const baseY = p.y + baseOffset;
       ctx.beginPath();
       ctx.moveTo(p.x - sz - 3, baseY + 5);
       ctx.lineTo(p.x + sz + 3, baseY + 5);
@@ -807,7 +803,7 @@ export class Canvas2D {
       ctx.fillStyle = color;
       ctx.font = '9px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(dofs.join(','), p.x, p.y + sz * 1.4 + 18);
+      ctx.fillText(dofs.join(','), p.x, p.y + baseOffset + 18);
     }
 
     ctx.restore();

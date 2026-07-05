@@ -59,3 +59,17 @@ export function resolveSurfaceColor(surface) {
   if (isHexColor(surface?.color)) return surface.color;
   return defaultSurfaceColorForType(surface?.type);
 }
+
+// Default display colors for load types, shared by the 2D canvas and 3D viewer.
+export const LOAD_TYPE_COLORS = {
+  areaLoad: '#e57373',
+  lineLoad: '#ffb74d',
+  pointLoad: '#ba68c8',
+};
+
+export function resolveLoadColor(load) {
+  return load?.color || LOAD_TYPE_COLORS[load?.type] || LOAD_TYPE_COLORS.areaLoad;
+}
+
+// Support symbol color (green), shared by the 2D canvas and 3D viewer.
+export const SUPPORT_COLOR = '#4ade80';

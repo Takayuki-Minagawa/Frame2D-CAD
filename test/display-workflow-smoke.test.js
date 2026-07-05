@@ -67,7 +67,10 @@ test('3D viewer uses 3D layer display and element filters', async () => {
   assert.match(viewerSource, /isSurfaceVisible\(s,\s*'3d'\)/);
   assert.match(viewerSource, /isMemberVisible\(m,\s*'3d'\)/);
   assert.match(viewerSource, /getPlanLayerStyle\(m\.levelId,\s*\{\s*view:\s*'3d'\s*\}\)/);
-  assert.match(viewerSource, /opacity:\s*0\.35 \* opacityMultiplier/);
+  // Wall surface opacity (0.35) is applied through a named constant and scaled
+  // by the per-layer alpha (opacityMultiplier).
+  assert.match(viewerSource, /wall:\s*0\.35/);
+  assert.match(viewerSource, /SURFACE_OPACITY\.wall \* opacityMultiplier/);
   assert.match(viewerSource, /_addBeamHSection3D/);
   assert.match(viewerSource, /beam3dSectionMode/);
 });
