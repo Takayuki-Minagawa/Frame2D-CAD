@@ -235,6 +235,36 @@ function layerToken(value) {
     c => `_${c.codePointAt(0).toString(16).toUpperCase()}_`);
 }
 
+// AutoCAD caps layer names at 255 characters, and escaping quadruples the
+// length of a non-passthrough character, so a 61-character level id already
+// overflows the cap ('MEMBER_BEAM_' + 61 x 4 = 256).
+const MAX_LAYER_NAME_LENGTH = 255;
+
+// FNV-1a run with two seeds: 64 bits of uppercase hex, enough to keep the
+// truncated names apart without pulling in a hash dependency.
+function layerHash(text) {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x85ebca6b) >>> 0;
+  }
+  const hex = h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+  return hex.toUpperCase();
+}
+
+// Joins the layer name parts and keeps the result within AutoCAD's limit. An
+// over-long name is truncated and suffixed with a hash of the full name, so
+// names that share a prefix stay distinct. The suffix is uppercase hex, so the
+// case-insensitive injectivity of layerToken() carries over.
+function layerName(...parts) {
+  const name = parts.join('_');
+  if (name.length <= MAX_LAYER_NAME_LENGTH) return name;
+  const suffix = `-${layerHash(name)}`;
+  return name.slice(0, MAX_LAYER_NAME_LENGTH - suffix.length) + suffix;
+}
+
 // Builds a DXF document of the plan drawing. options.levelId limits the
 // output to one level ('all' or missing = every level). Layer names carry the
 // level id (e.g. MEMBER_BEAM_L1) so overlapping levels stay distinguishable.
@@ -248,7 +278,7 @@ export function buildDXF(state, options = {}) {
     const n1 = state.getNode(member.startNodeId);
     const n2 = state.getNode(member.endNodeId);
     if (!n1 || !n2) continue;
-    const layer = `${MEMBER_LAYERS[member.type] || 'MEMBER'}_${layerToken(member.levelId)}`;
+    const layer = layerName(MEMBER_LAYERS[member.type] || 'MEMBER', layerToken(member.levelId));
     if (member.type === 'column') {
       circleEntity(out, layer, n1.x, n1.y, Math.max(20, (member.section?.b || 100) / 2));
     } else {
@@ -258,7 +288,9 @@ export function buildDXF(state, options = {}) {
 
   for (const surface of state.surfaces) {
     if (!includeLevel(surface.levelId)) continue;
-    const layer = `SURFACE_${layerToken(String(surface.type || 'other').toUpperCase())}_${layerToken(surface.levelId)}`;
+    const layer = layerName('SURFACE',
+      layerToken(String(surface.type || 'other').toUpperCase()),
+      layerToken(surface.levelId));
     if (Array.isArray(surface.points) && surface.points.length >= 2) {
       const pts = surface.points;
       const isClosedShape = surface.shape === 'polygon';
