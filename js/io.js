@@ -1,5 +1,7 @@
-// io.js - JSON/CSV Export / Import
+// io.js - JSON/CSV/DXF/PNG Export / Import
 
+import { buildAnalysisCSV, buildAnalysisModel } from './analysis-export.js';
+import { buildDXF, parseDXF } from './dxf.js';
 import {
   computeMemberLengthM,
   computeQuantitySummary,
@@ -152,6 +154,51 @@ export function buildQuantityDetailCSV(state) {
 export function exportQuantityDetailCSV(state) {
   const name = state.meta?.name || 'lineframe';
   downloadCsv(`${name}_quantity_details_${timestamp()}.csv`, buildQuantityDetailCSV(state));
+}
+
+export function exportAnalysisJSON(state) {
+  const name = state.meta?.name || 'lineframe';
+  downloadJson(`${name}_analysis_${timestamp()}.json`, buildAnalysisModel(state));
+}
+
+export function exportAnalysisCSV(state) {
+  const name = state.meta?.name || 'lineframe';
+  downloadCsv(`${name}_analysis_${timestamp()}.csv`, buildAnalysisCSV(state));
+}
+
+export function exportDXF(state, options = {}) {
+  const name = state.meta?.name || 'lineframe';
+  const dxf = buildDXF(state, options);
+  downloadBlob(`${name}_plan_${timestamp()}.dxf`, new Blob([dxf], { type: 'application/dxf' }));
+}
+
+export function exportCanvasPNG(canvas, state) {
+  const name = state.meta?.name || 'lineframe';
+  canvas.toBlob(blob => {
+    if (blob) downloadBlob(`${name}_plan_${timestamp()}.png`, blob);
+  }, 'image/png');
+}
+
+// Reads a DXF file and installs it as the drawing underlay.
+export function importDXFUnderlay(file, state) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { entities } = parseDXF(reader.result);
+        if (!entities.length) {
+          reject(new Error('No drawable entities found'));
+          return;
+        }
+        state.setUnderlay({ name: file.name, entities });
+        resolve({ count: entities.length });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
 }
 
 export function importJSON(file, state, history) {

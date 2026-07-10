@@ -51,6 +51,11 @@ const SUPPORT_CONE_HEIGHT_M = 0.22;
 const SUPPORT_PLATE_THICKNESS_M = 0.03;
 const SUPPORT_ROLLER_RADIUS_M = 0.055;
 
+// Highlight color for the selected element (matches the 2D selection accent).
+const SELECTED_COLOR_3D = '#f38ba8';
+// Pointer movement (px) below which a pointerup counts as a pick click.
+const PICK_CLICK_MAX_PX = 5;
+
 export class Viewer3D {
   constructor(containerEl, state) {
     this.container = containerEl;
@@ -77,6 +82,11 @@ export class Viewer3D {
     this._isAnimating = false;
     this._sceneDirty = true;
     this._pendingInitialCamera = true;
+
+    // Click-to-select support: app.js sets onPick to receive {kind, id}.
+    this.onPick = null;
+    this._pointerDownPos = null;
+    this._raycaster = null;
 
     // Shared material caches keyed by color/opacity so identical surfaces,
     // members, edges and lines reuse one GPU material instead of allocating a
@@ -140,6 +150,40 @@ export class Viewer3D {
 
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.container);
+
+    this._raycaster = new THREE.Raycaster();
+    this.renderer.domElement.addEventListener('pointerdown', e => {
+      if (e.button === 0) this._pointerDownPos = { x: e.clientX, y: e.clientY };
+    });
+    this.renderer.domElement.addEventListener('pointerup', e => {
+      const down = this._pointerDownPos;
+      this._pointerDownPos = null;
+      if (!down || e.button !== 0) return;
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > PICK_CLICK_MAX_PX) return;
+      this._pickAt(e.clientX, e.clientY);
+    });
+  }
+
+  // Raycasts the member/surface groups at the given client position and
+  // reports the first element carrying pick metadata.
+  _pickAt(clientX, clientY) {
+    if (!this.onPick || !this._raycaster) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    this._raycaster.setFromCamera(ndc, this.camera);
+    const hits = this._raycaster.intersectObjects([this.memberGroup, this.surfaceGroup], true);
+    for (const hit of hits) {
+      let obj = hit.object;
+      while (obj && !obj.userData?.pick) obj = obj.parent;
+      if (obj?.userData?.pick) {
+        this.onPick(obj.userData.pick);
+        return;
+      }
+    }
+    this.onPick(null);
   }
 
   // Coordinate-system rule (single source of truth):
@@ -410,9 +454,27 @@ export class Viewer3D {
     }
   }
 
+  // Selection-aware colors shared by every member / surface builder.
+  _memberColor(member) {
+    return this.state.isMemberSelected(member.id) ? SELECTED_COLOR_3D : resolveMemberColor(member);
+  }
+
+  _surfaceColor(surface) {
+    return surface.id === this.state.selectedSurfaceId ? SELECTED_COLOR_3D : resolveSurfaceColor(surface);
+  }
+
+  // Tags every object added to `group` after index `fromIndex` with pick
+  // metadata so raycast hits resolve back to the model element.
+  _tagPickRange(group, fromIndex, pick) {
+    for (let i = fromIndex; i < group.children.length; i++) {
+      group.children[i].userData.pick = pick;
+    }
+  }
+
   _buildSurfaces() {
     for (const s of this.state.surfaces || []) {
       if (!this.state.isSurfaceVisible(s, '3d')) continue;
+      const childrenBefore = this.surfaceGroup.children.length;
       const layerAlpha = this.state.getPlanLayerStyle(s.levelId, { view: '3d' }).alpha;
       const range = resolveSurfaceVerticalRange(this.state, s);
       const base = range.bottom;
@@ -421,28 +483,23 @@ export class Viewer3D {
 
       if (isSlopedSurfaceType(s.type)) {
         this._addRoofSurface3D(s, layerAlpha);
-        continue;
-      }
-
-      if (isPolygon) {
+      } else if (isPolygon) {
         if (s.type === 'exteriorWall') {
           this._addExteriorWallEdges3D(s, base, top, layerAlpha);
         } else {
           this._addPolygonSurface3D(s, base, top, layerAlpha);
         }
-        continue;
-      }
-
-      if (s.shape === 'line') {
+      } else if (s.shape === 'line') {
         if (isGableWallSurfaceType(s.type)) {
           this._addGableWallLine3D(s, layerAlpha);
-          continue;
+        } else {
+          this._addWallLine3D(s, base, top, layerAlpha);
         }
-        this._addWallLine3D(s, base, top, layerAlpha);
-        continue;
+      } else {
+        this._addSurfaceBox3D(s, base, top, layerAlpha);
       }
 
-      this._addSurfaceBox3D(s, base, top, layerAlpha);
+      this._tagPickRange(this.surfaceGroup, childrenBefore, { kind: 'surface', id: s.id });
     }
   }
 
@@ -471,7 +528,7 @@ export class Viewer3D {
     this._addBoxWithEdges(this.surfaceGroup, {
       size: { x: xSize, y: ySize, z: zSize },
       position: center,
-      color: resolveSurfaceColor(s),
+      color: this._surfaceColor(s),
       opacity: (isWallType ? SURFACE_OPACITY.wall : SURFACE_OPACITY.floor) * opacityMultiplier,
       edgeOpacity: SURFACE_EDGE_OPACITY * opacityMultiplier,
     });
@@ -509,7 +566,7 @@ export class Viewer3D {
     this._addWallSegmentBox3D(
       { x: surface.x1, y: surface.y1 },
       { x: surface.x2, y: surface.y2 },
-      yBaseM, heightM, resolveSurfaceColor(surface), opacityMultiplier
+      yBaseM, heightM, this._surfaceColor(surface), opacityMultiplier
     );
   }
 
@@ -532,7 +589,7 @@ export class Viewer3D {
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
     geometry.computeVertexNormals();
     const material = this._standardMaterial({
-      color: resolveSurfaceColor(surface),
+      color: this._surfaceColor(surface),
       opacity: SURFACE_OPACITY.gableWall * opacityMultiplier,
       side: THREE.DoubleSide,
     });
@@ -548,59 +605,65 @@ export class Viewer3D {
     const visibleMemberNodeIds = new Set();
     for (const m of this.state.members) {
       if (!this.state.isMemberVisible(m, '3d')) continue;
-      const layerAlpha = this.state.getPlanLayerStyle(m.levelId, { view: '3d' }).alpha;
-      const n1 = this.state.getNode(m.startNodeId);
-      if (!n1) continue;
-      visibleMemberNodeIds.add(m.startNodeId);
-      visibleMemberNodeIds.add(m.endNodeId);
-
-      if (m.type === 'column') {
-        this._addColumn3D(m, n1, layerAlpha);
-        continue;
-      }
-
-      const n2 = this.state.getNode(m.endNodeId);
-      if (!n2) continue;
-
-      if (m.type === 'vbrace') {
-        this._addVBrace3D(m, n1, n2, layerAlpha);
-        continue;
-      }
-
-      const levelYm = this._levelZm(m.levelId);
-      const startY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.startZ))
-        ? Number(m.startZ) * MM_TO_M
-        : levelYm;
-      const endY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.endZ))
-        ? Number(m.endZ) * MM_TO_M
-        : levelYm;
-
-      const start = this._toScene(n1.x, n1.y, 0);
-      start.y = startY;
-      const end = this._toScene(n2.x, n2.y, 0);
-      end.y = endY;
-
-      const direction = new THREE.Vector3().subVectors(end, start);
-      const length = direction.length();
-      if (length < 0.001) continue;
-
-      if (this._isMemberLineMode()) {
-        this._addMemberLine3D(start, end, resolveMemberColor(m), layerAlpha);
-        continue;
-      }
-
-      const b = (m.section?.b || DEFAULT_SECTION_B_MM) * MM_TO_M;
-      const h = (m.section?.h || DEFAULT_SECTION_H_MM) * MM_TO_M;
-
-      const color = resolveMemberColor(m);
-      if (m.type === 'beam' && this._beam3DSectionMode() !== 'box') {
-        this._addBeamHSection3D(start, end, direction, length, b, h, color, layerAlpha);
-        continue;
-      }
-
-      this._addMemberBox3D(start, end, direction, length, b, h, color, layerAlpha);
+      const childrenBefore = this.memberGroup.children.length;
+      this._buildMemberVisual(m, visibleMemberNodeIds);
+      this._tagPickRange(this.memberGroup, childrenBefore, { kind: 'member', id: m.id });
     }
     return visibleMemberNodeIds;
+  }
+
+  _buildMemberVisual(m, visibleMemberNodeIds) {
+    const layerAlpha = this.state.getPlanLayerStyle(m.levelId, { view: '3d' }).alpha;
+    const n1 = this.state.getNode(m.startNodeId);
+    if (!n1) return;
+    visibleMemberNodeIds.add(m.startNodeId);
+    visibleMemberNodeIds.add(m.endNodeId);
+
+    if (m.type === 'column') {
+      this._addColumn3D(m, n1, layerAlpha);
+      return;
+    }
+
+    const n2 = this.state.getNode(m.endNodeId);
+    if (!n2) return;
+
+    if (m.type === 'vbrace') {
+      this._addVBrace3D(m, n1, n2, layerAlpha);
+      return;
+    }
+
+    const levelYm = this._levelZm(m.levelId);
+    const startY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.startZ))
+      ? Number(m.startZ) * MM_TO_M
+      : levelYm;
+    const endY = m.geometryMode === 'explicit3d' && Number.isFinite(Number(m.endZ))
+      ? Number(m.endZ) * MM_TO_M
+      : levelYm;
+
+    const start = this._toScene(n1.x, n1.y, 0);
+    start.y = startY;
+    const end = this._toScene(n2.x, n2.y, 0);
+    end.y = endY;
+
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    if (length < 0.001) return;
+
+    if (this._isMemberLineMode()) {
+      this._addMemberLine3D(start, end, this._memberColor(m), layerAlpha);
+      return;
+    }
+
+    const b = (m.section?.b || DEFAULT_SECTION_B_MM) * MM_TO_M;
+    const h = (m.section?.h || DEFAULT_SECTION_H_MM) * MM_TO_M;
+
+    const color = this._memberColor(m);
+    if (m.type === 'beam' && this._beam3DSectionMode() !== 'box') {
+      this._addBeamHSection3D(start, end, direction, length, b, h, color, layerAlpha);
+      return;
+    }
+
+    this._addMemberBox3D(start, end, direction, length, b, h, color, layerAlpha);
   }
 
   _buildNodes(visibleMemberNodeIds) {
@@ -671,7 +734,7 @@ export class Viewer3D {
     if (this._isMemberLineMode()) {
       const start = this._sceneAt(node, bottomZ);
       const end = this._sceneAt(node, topZ);
-      this._addMemberLine3D(start, end, resolveMemberColor(member), opacityMultiplier);
+      this._addMemberLine3D(start, end, this._memberColor(member), opacityMultiplier);
       return;
     }
 
@@ -682,7 +745,7 @@ export class Viewer3D {
     this._addBoxWithEdges(this.memberGroup, {
       size: { x: b, y: height, z: h },
       position: center,
-      color: resolveMemberColor(member),
+      color: this._memberColor(member),
       opacity: opacityMultiplier,
       wireframe: this.showWireframe,
       edgeOpacity: this.showWireframe ? null : MEMBER_EDGE_OPACITY * opacityMultiplier,
@@ -773,7 +836,7 @@ export class Viewer3D {
 
     const yBottom = this._levelZm(member.levelId);
     const yTop = this._levelZm(member.topLevelId);
-    const color = resolveMemberColor(member);
+    const color = this._memberColor(member);
     const mat = this._lineMaterial({ color, opacity: opacityMultiplier, transparent: opacityMultiplier < 1, linewidth: 2 });
 
     // Corner order matches braceDiagonals(): [start-bottom, end-bottom, end-top, start-top].
@@ -799,7 +862,7 @@ export class Viewer3D {
     const points = surface.points.map(p => new THREE.Vector2(p.x * MM_TO_M, -p.y * MM_TO_M));
     const shape = new THREE.Shape(points);
     const isWallType = isWallSurfaceType(surface.type);
-    const color = resolveSurfaceColor(surface);
+    const color = this._surfaceColor(surface);
 
     if (isWallType) {
       const height = Math.max(0.1, Math.abs(top - base) * MM_TO_M);
@@ -841,7 +904,7 @@ export class Viewer3D {
     const yBaseM = Math.min(base, top) * MM_TO_M;
     const wallOffset = resolveWallDisplayOffset(this.state.settings);
     const oPts = offsetPolygonOutward(points, wallOffset);
-    const color = resolveSurfaceColor(surface);
+    const color = this._surfaceColor(surface);
 
     for (let i = 0; i < oPts.length; i++) {
       this._addWallSegmentBox3D(oPts[i], oPts[(i + 1) % oPts.length], yBaseM, heightM, color, opacityMultiplier);
@@ -873,7 +936,7 @@ export class Viewer3D {
     geometry.computeVertexNormals();
 
     const material = this._standardMaterial({
-      color: resolveSurfaceColor(surface),
+      color: this._surfaceColor(surface),
       opacity: SURFACE_OPACITY.roof * opacityMultiplier,
       side: THREE.DoubleSide,
     });

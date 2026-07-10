@@ -119,3 +119,30 @@ test('clear empties both stacks', () => {
   assert.equal(history.undo(), false);
   assert.equal(history.redo(), false);
 });
+
+test('transact records an undo entry only when the callback reports a change', () => {
+  const state = new AppState();
+  const history = new History(state);
+
+  // Establish a redo entry to verify no-ops leave it intact.
+  history.save();
+  state.addNode(0, 0);
+  history.undo();
+  assert.equal(history.redoStack.length, 1);
+
+  // No-op: nothing recorded, redo preserved.
+  assert.equal(history.transact(() => false), false);
+  assert.equal(history.undoStack.length, 0);
+  assert.equal(history.redoStack.length, 1);
+
+  // Real change: undo entry recorded, redo cleared, undo restores.
+  const changed = history.transact(() => {
+    state.addNode(1000, 0);
+    return true;
+  });
+  assert.equal(changed, true);
+  assert.equal(state.nodes.length, 1);
+  assert.equal(history.redoStack.length, 0);
+  assert.equal(history.undo(), true);
+  assert.equal(state.nodes.length, 0);
+});

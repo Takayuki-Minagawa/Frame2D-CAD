@@ -7,9 +7,27 @@ export const helpContentJa = `
   <tr><td><b>面材作成</b></td><td>「面材」ツール(Fキー)。矩形は対角2点、ポリラインは連続クリック→始点クリックまたはEnterで閉合</td></tr>
   <tr><td><b>荷重作成</b></td><td>「荷重」ツール(Lキー)。面荷重は矩形2点、線荷重は線分2点、点荷重は1点クリック</td></tr>
   <tr><td><b>支点配置</b></td><td>「支点」ツール(Sキー)でキャンバス上をクリック。プロパティパネルで6自由度(DX/DY/DZ/RX/RY/RZ)を設定</td></tr>
-  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重・支点をクリック</td></tr>
-  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ。またはプロパティパネルで始点/終点のX,Y座標を数値入力</td></tr>
-  <tr><td><b>削除</b></td><td>要素を選択してDeleteキー</td></tr>
+  <tr><td><b>選択</b></td><td>「要素」ツール(Vキー)で線材・面材・荷重・支点をクリック。3D表示でも部材・面材をクリックで選択できます</td></tr>
+  <tr><td><b>複数選択</b></td><td>Shift+クリックで線材を追加/解除。空白からドラッグで矩形範囲選択。右パネルで一括断面変更・ミラー・回転・配列複製・一括削除</td></tr>
+  <tr><td><b>計測</b></td><td>「計測」ツール(Dキー)で2点をクリックすると距離・dX・dYを表示。Escで消去</td></tr>
+  <tr><td><b>移動</b></td><td>選択後、ノードまたは線材をドラッグ（複数選択中はグループごと移動）。またはプロパティパネルで始点/終点のX,Y座標を数値入力</td></tr>
+  <tr><td><b>削除</b></td><td>要素を選択してDeleteキー（複数選択にも対応）</td></tr>
+</table>
+
+<h3>通り芯・下絵・軸組図</h3>
+<table>
+  <tr><td><b>通り芯</b></td><td>ツールバーの「通り芯管理」でX/Y通りの名前と座標を定義。2Dに一点鎖線で表示され、交点にスナップします</td></tr>
+  <tr><td><b>下絵DXF</b></td><td>「下絵DXF読込」でDXF(LINE/POLYLINE/CIRCLE/ARC)を下絵表示。「下絵表示」で切替、「下絵クリア」で削除</td></tr>
+  <tr><td><b>軸組図</b></td><td>上部「軸組図」ボタンで通り芯を選び、その構面の立面（柱・梁・ブレース・レベル線）を表示</td></tr>
+  <tr><td><b>モデル整形</b></td><td>右パネルの「節点マージ」で近接節点を統合、「交差部材を分割」で交差/T字部の梁・水平ブレースを分割し節点共有</td></tr>
+</table>
+
+<h3>荷重ケースと解析エクスポート</h3>
+<table>
+  <tr><td><b>荷重ケース</b></td><td>荷重ツールとプロパティパネルで DL/LL/EQX/EQY/WX/WY を設定</td></tr>
+  <tr><td><b>荷重組合せ</b></td><td>設定 → 荷重組合せ でケースごとの係数を編集・追加</td></tr>
+  <tr><td><b>解析出力</b></td><td>「解析JSON出力」「解析CSV出力」で共有3D節点・要素・断面・材端・支点・荷重・組合せを出力（単位 mm, N）</td></tr>
+  <tr><td><b>図面出力</b></td><td>「図面DXF出力」「PNG出力」で平面図を出力</td></tr>
 </table>
 
 <h3>画面操作</h3>
@@ -112,9 +130,27 @@ export const helpContentEn = `
   <tr><td><b>Create surface</b></td><td>Use "Surface" (F). Rectangle: 2 diagonal points. Polyline: click points, then click first point or Enter to close</td></tr>
   <tr><td><b>Create load</b></td><td>Use "Load" (L). Area load: 2-point rectangle. Line load: 2-point line. Point load: single click</td></tr>
   <tr><td><b>Place support</b></td><td>Use "Support" (S). Click to place. Edit 6 DOFs (DX/DY/DZ/RX/RY/RZ) in the property panel</td></tr>
-  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load/support element</td></tr>
-  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element. Or edit start/end X,Y coordinates in the property panel</td></tr>
-  <tr><td><b>Delete</b></td><td>Select an element and press Delete key</td></tr>
+  <tr><td><b>Select</b></td><td>Use "Element" tool (V key), click a line/surface/load/support element. Members and surfaces can also be picked by clicking in the 3D view</td></tr>
+  <tr><td><b>Multi-select</b></td><td>Shift+click toggles members; drag from empty space for a marquee selection. The panel offers batch section change, mirror, rotate, array copy, and batch delete</td></tr>
+  <tr><td><b>Measure</b></td><td>Use "Measure" (D). Click two points to show length, dX, and dY. Esc clears</td></tr>
+  <tr><td><b>Move</b></td><td>After selecting, drag a node or line element (the whole group moves during multi-selection). Or edit start/end X,Y coordinates in the property panel</td></tr>
+  <tr><td><b>Delete</b></td><td>Select element(s) and press Delete key</td></tr>
+</table>
+
+<h3>Grid Axes, Underlay &amp; Elevation</h3>
+<table>
+  <tr><td><b>Grid axes</b></td><td>"Grid Axes" in the toolbar defines named X/Y axis lines. They render as dash-dot lines and snap at intersections</td></tr>
+  <tr><td><b>DXF underlay</b></td><td>"Import DXF underlay" shows DXF (LINE/POLYLINE/CIRCLE/ARC) beneath the plan. Toggle with "Show underlay", remove with "Clear underlay"</td></tr>
+  <tr><td><b>Elevation</b></td><td>The "Elevation" button renders the frame elevation (columns, beams, braces, level lines) of a selected grid axis</td></tr>
+  <tr><td><b>Model cleanup</b></td><td>"Merge nodes" unifies nearby nodes; "Split crossing members" splits beams/horizontal braces at crossings and T-junctions to share nodes</td></tr>
+</table>
+
+<h3>Load Cases &amp; Analysis Export</h3>
+<table>
+  <tr><td><b>Load cases</b></td><td>Assign DL/LL/EQX/EQY/WX/WY in the load tool and property panel</td></tr>
+  <tr><td><b>Combinations</b></td><td>Settings → Load Combinations to edit per-case factors</td></tr>
+  <tr><td><b>Analysis export</b></td><td>"Analysis JSON" / "Analysis CSV" export shared 3D nodes, elements, sections, end conditions, supports, loads, and combinations (units: mm, N)</td></tr>
+  <tr><td><b>Drawing export</b></td><td>"Plan DXF" / "Plan PNG" export the plan drawing</td></tr>
 </table>
 
 <h3>View Controls</h3>

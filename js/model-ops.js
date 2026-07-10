@@ -1,8 +1,14 @@
-// model-ops.js - Cross-cutting model operations (validation, level copy)
-// extracted from state.js. Functions take the AppState instance as their
-// first argument; AppState keeps thin delegating methods.
+// model-ops.js - Cross-cutting model operations (validation, level copy,
+// node merge, member split and copy transforms) extracted from state.js.
+// Functions take the AppState instance as their first argument; AppState
+// keeps thin delegating methods.
 
-import { DEFAULT_ROOF_GROUP_ID } from './constants.js';
+import {
+  DEFAULT_ROOF_GROUP_ID,
+  MEMBER_SPLIT_TOLERANCE_MM,
+  NODE_MERGE_TOLERANCE_MM,
+} from './constants.js';
+import { positiveNumber } from './geometry-utils.js';
 import {
   isRoofSurfaceType,
   isWallSurfaceType,
@@ -220,4 +226,310 @@ export function copyLevelElements(state, sourceLevelId, targetLevelId, options =
   }
 
   return counts;
+}
+
+// --- Node merge -------------------------------------------------------------
+
+// Merges nodes that lie within `tolerance` (mm) of each other. The node with
+// the smallest id in a cluster survives; members are re-pointed to it.
+export function mergeNearbyNodes(state, options = {}) {
+  const tolerance = positiveNumber(options.tolerance, NODE_MERGE_TOLERANCE_MM);
+  const nodes = [...state.nodes].sort((a, b) => a.id - b.id);
+  const remap = new Map();
+
+  for (let i = 0; i < nodes.length; i++) {
+    const target = nodes[i];
+    if (remap.has(target.id)) continue;
+    for (let j = i + 1; j < nodes.length; j++) {
+      const other = nodes[j];
+      if (remap.has(other.id)) continue;
+      if (Math.hypot(other.x - target.x, other.y - target.y) <= tolerance) {
+        remap.set(other.id, target.id);
+      }
+    }
+  }
+
+  if (!remap.size) return { mergedNodes: 0 };
+
+  for (const member of state.members) {
+    if (remap.has(member.startNodeId)) member.startNodeId = remap.get(member.startNodeId);
+    if (remap.has(member.endNodeId)) member.endNodeId = remap.get(member.endNodeId);
+  }
+  state.nodes = state.nodes.filter(n => !remap.has(n.id));
+  state._touch();
+  return { mergedNodes: remap.size };
+}
+
+// --- Member split at intersections ------------------------------------------
+
+// Returns the intersection point of segments a1-a2 / b1-b2 when they properly
+// cross (interior-interior); null for parallel or non-crossing segments.
+function segmentCrossPoint(a1, a2, b1, b2) {
+  const dax = a2.x - a1.x;
+  const day = a2.y - a1.y;
+  const dbx = b2.x - b1.x;
+  const dby = b2.y - b1.y;
+  const cross = dax * dby - day * dbx;
+  if (Math.abs(cross) < 1e-9) return null;
+  const t = ((b1.x - a1.x) * dby - (b1.y - a1.y) * dbx) / cross;
+  const u = ((b1.x - a1.x) * day - (b1.y - a1.y) * dax) / cross;
+  if (t <= 0 || t >= 1 || u <= 0 || u >= 1) return null;
+  return { x: a1.x + t * dax, y: a1.y + t * day };
+}
+
+// Projects point p onto segment a-b; returns the projected point when it lies
+// strictly inside the segment and within `tolerance` of p, otherwise null.
+function interiorProjection(p, a, b, tolerance) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1) return null;
+  const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  const len = Math.sqrt(len2);
+  const minT = tolerance / len;
+  if (t <= minT || t >= 1 - minT) return null;
+  const proj = { x: a.x + t * dx, y: a.y + t * dy };
+  if (Math.hypot(proj.x - p.x, proj.y - p.y) > tolerance) return null;
+  return proj;
+}
+
+// Splits in-plane beams / horizontal braces at their mutual intersection and
+// T-junction points so crossing members share analysis nodes. Roof members
+// (explicit 3D) and vertical elements are left untouched.
+export function splitIntersectingMembers(state, options = {}) {
+  const tolerance = positiveNumber(options.tolerance, MEMBER_SPLIT_TOLERANCE_MM);
+  const targets = state.members.filter(m =>
+    (m.type === 'beam' || m.type === 'hbrace') &&
+    m.geometryMode !== 'explicit3d' &&
+    !m.roofRole
+  );
+
+  const geometry = new Map();
+  for (const member of targets) {
+    const n1 = state.getNode(member.startNodeId);
+    const n2 = state.getNode(member.endNodeId);
+    if (!n1 || !n2) continue;
+    if (Math.hypot(n2.x - n1.x, n2.y - n1.y) < 1) continue;
+    geometry.set(member.id, { member, n1, n2 });
+  }
+
+  const splitPoints = new Map();
+  const addSplit = (entry, point) => {
+    const { member, n1, n2 } = entry;
+    const proj = interiorProjection(point, n1, n2, Math.max(tolerance, 1));
+    if (!proj) return;
+    const list = splitPoints.get(member.id) || [];
+    if (list.some(p => Math.hypot(p.x - proj.x, p.y - proj.y) <= tolerance)) return;
+    list.push(proj);
+    splitPoints.set(member.id, list);
+  };
+
+  const entries = [...geometry.values()];
+  for (let i = 0; i < entries.length; i++) {
+    for (let j = i + 1; j < entries.length; j++) {
+      const a = entries[i];
+      const b = entries[j];
+      if (a.member.levelId !== b.member.levelId) continue;
+      const cross = segmentCrossPoint(a.n1, a.n2, b.n1, b.n2);
+      if (cross) {
+        addSplit(a, cross);
+        addSplit(b, cross);
+      }
+      // T-junctions: an endpoint of one member lying on the other.
+      addSplit(a, b.n1);
+      addSplit(a, b.n2);
+      addSplit(b, a.n1);
+      addSplit(b, a.n2);
+    }
+  }
+
+  if (!splitPoints.size) return { splitMembers: 0, createdMembers: 0 };
+
+  let createdMembers = 0;
+  for (const [memberId, points] of splitPoints) {
+    const entry = geometry.get(memberId);
+    const { member, n1, n2 } = entry;
+    const dx = n2.x - n1.x;
+    const dy = n2.y - n1.y;
+    const len2 = dx * dx + dy * dy;
+    points.sort((p, q) => {
+      const tp = ((p.x - n1.x) * dx + (p.y - n1.y) * dy) / len2;
+      const tq = ((q.x - n1.x) * dx + (q.y - n1.y) * dy) / len2;
+      return tp - tq;
+    });
+
+    const chain = [state.getNode(member.startNodeId)];
+    for (const p of points) {
+      let node = state.findNodeAt(p.x, p.y, Math.max(tolerance, 1));
+      if (!node) node = state.addNode(p.x, p.y);
+      chain.push(node);
+    }
+    chain.push(state.getNode(member.endNodeId));
+
+    for (let k = 0; k < chain.length - 1; k++) {
+      const isFirst = k === 0;
+      const isLast = k === chain.length - 2;
+      state.addMember(chain[k].id, chain[k + 1].id, {
+        type: member.type,
+        sectionName: member.sectionName,
+        levelId: member.levelId,
+        topLevelId: member.topLevelId,
+        bracePattern: member.bracePattern,
+        // Interior cut ends stay rigid so the split beam reads as continuous.
+        endI: isFirst ? member.endI : { condition: 'rigid', springSymbol: null },
+        endJ: isLast ? member.endJ : { condition: 'rigid', springSymbol: null },
+      });
+      createdMembers++;
+    }
+    state.removeMember(member.id);
+  }
+
+  state._touch();
+  return { splitMembers: splitPoints.size, createdMembers };
+}
+
+// --- Copy transforms (mirror / rotate / array) --------------------------------
+
+function copyMemberWithPoints(state, member, p1, p2, nodeTolerance = 1) {
+  let startNode = state.findNodeAt(p1.x, p1.y, nodeTolerance);
+  if (!startNode) startNode = state.addNode(p1.x, p1.y);
+  let endNode = member.type === 'column'
+    ? startNode
+    : state.findNodeAt(p2.x, p2.y, nodeTolerance);
+  if (!endNode) endNode = state.addNode(p2.x, p2.y);
+  return state.addMember(startNode.id, endNode.id, {
+    type: member.type,
+    sectionName: member.sectionName,
+    levelId: member.levelId,
+    topLevelId: member.topLevelId,
+    geometryMode: member.geometryMode,
+    startZ: member.startZ,
+    endZ: member.endZ,
+    roofRole: member.roofRole,
+    bracePattern: member.bracePattern,
+    endI: member.endI,
+    endJ: member.endJ,
+  });
+}
+
+function resolveMemberEndpoints(state, ids) {
+  const resolved = [];
+  for (const id of ids) {
+    const member = state.getMember(id);
+    if (!member) continue;
+    const n1 = state.getNode(member.startNodeId);
+    const n2 = state.getNode(member.endNodeId);
+    if (!n1 || !n2) continue;
+    resolved.push({ member, n1, n2 });
+  }
+  return resolved;
+}
+
+// Mirrors the given members across x=coord (axis 'x') or y=coord (axis 'y'),
+// creating mirrored copies. Returns the created members.
+export function mirrorMembers(state, ids, options = {}) {
+  const axis = options.axis === 'y' ? 'y' : 'x';
+  const coord = Number(options.coord) || 0;
+  const mirror = p => axis === 'x'
+    ? { x: 2 * coord - p.x, y: p.y }
+    : { x: p.x, y: 2 * coord - p.y };
+  const created = [];
+  for (const { member, n1, n2 } of resolveMemberEndpoints(state, ids)) {
+    created.push(copyMemberWithPoints(state, member, mirror(n1), mirror(n2)));
+  }
+  return created;
+}
+
+// Rotates the given members in place by 90/180/270 degrees (CCW) around the
+// selection's bounding-box center (or an explicit cx/cy). Nodes shared with
+// unselected members are detached first so the rest of the model stays put.
+export function rotateMembers(state, ids, options = {}) {
+  const angle = [90, 180, 270].includes(Number(options.angle)) ? Number(options.angle) : 90;
+  const resolved = resolveMemberEndpoints(state, ids);
+  if (!resolved.length) return { rotated: 0 };
+
+  let cx = Number(options.cx);
+  let cy = Number(options.cy);
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const { n1, n2 } of resolved) {
+      minX = Math.min(minX, n1.x, n2.x);
+      maxX = Math.max(maxX, n1.x, n2.x);
+      minY = Math.min(minY, n1.y, n2.y);
+      maxY = Math.max(maxY, n1.y, n2.y);
+    }
+    cx = (minX + maxX) / 2;
+    cy = (minY + maxY) / 2;
+  }
+
+  const idSet = new Set(ids);
+  const selectionNodes = new Set();
+  for (const { member } of resolved) {
+    selectionNodes.add(member.startNodeId);
+    selectionNodes.add(member.endNodeId);
+  }
+
+  // Detach nodes shared with unselected members.
+  const remap = new Map();
+  for (const nodeId of selectionNodes) {
+    const sharedOutside = state.members.some(m =>
+      !idSet.has(m.id) && (m.startNodeId === nodeId || m.endNodeId === nodeId)
+    );
+    if (!sharedOutside) continue;
+    const source = state.getNode(nodeId);
+    if (!source) continue;
+    const clone = state.addNode(source.x, source.y, source.z || 0);
+    remap.set(nodeId, clone.id);
+  }
+  if (remap.size) {
+    for (const { member } of resolved) {
+      if (remap.has(member.startNodeId)) member.startNodeId = remap.get(member.startNodeId);
+      if (remap.has(member.endNodeId)) member.endNodeId = remap.get(member.endNodeId);
+    }
+  }
+
+  const rotate = (x, y) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    if (angle === 90) return { x: cx - dy, y: cy + dx };
+    if (angle === 180) return { x: cx - dx, y: cy - dy };
+    return { x: cx + dy, y: cy - dx };
+  };
+
+  const doneNodes = new Set();
+  for (const { member } of resolved) {
+    for (const nodeId of [member.startNodeId, member.endNodeId]) {
+      if (doneNodes.has(nodeId)) continue;
+      doneNodes.add(nodeId);
+      const node = state.getNode(nodeId);
+      if (!node) continue;
+      const p = rotate(node.x, node.y);
+      node.x = p.x;
+      node.y = p.y;
+    }
+  }
+  state._touch();
+  return { rotated: resolved.length };
+}
+
+// Creates `count` copies of the given members, each offset by (dx, dy) from
+// the previous copy. Returns the created members.
+export function arrayCopyMembers(state, ids, options = {}) {
+  const dx = Number(options.dx) || 0;
+  const dy = Number(options.dy) || 0;
+  const count = Math.max(1, Math.min(100, Math.round(Number(options.count) || 1)));
+  if (dx === 0 && dy === 0) return [];
+  const resolved = resolveMemberEndpoints(state, ids);
+  const created = [];
+  for (let k = 1; k <= count; k++) {
+    for (const { member, n1, n2 } of resolved) {
+      created.push(copyMemberWithPoints(
+        state,
+        member,
+        { x: n1.x + dx * k, y: n1.y + dy * k },
+        { x: n2.x + dx * k, y: n2.y + dy * k }
+      ));
+    }
+  }
+  return created;
 }

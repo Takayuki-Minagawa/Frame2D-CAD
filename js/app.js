@@ -12,7 +12,12 @@ import { Canvas2D } from './canvas2d.js';
 import { ToolManager } from './tools.js';
 import { UI } from './ui.js';
 import {
+  exportAnalysisCSV,
+  exportAnalysisJSON,
+  exportCanvasPNG,
+  exportDXF,
   exportJSON,
+  importDXFUnderlay,
   importJSON,
   exportQuantityDetailCSV,
   exportQuantitySummaryCSV,
@@ -24,6 +29,11 @@ import { showNotice } from './notice.js';
 import { initSidePanels } from './side-panels.js';
 import { initUserDefModal } from './user-def-modal.js';
 import { initLayerModal } from './layer-modal.js';
+import { initAxesModal } from './axes-modal.js';
+import { initComboModal } from './combo-modal.js';
+import { initElevationModal } from './elevation-modal.js';
+import { clearAutosave, initAutosave, readAutosave } from './autosave.js';
+import { buildSampleModel } from './samples.js';
 
 // --- Initialize ---
 
@@ -48,6 +58,16 @@ async function loadViewer3D() {
   try {
     const { Viewer3D } = await import('./viewer3d.js');
     viewer3d = new Viewer3D(viewerContainer, state);
+    // Click-to-select in the 3D view: share the 2D selection state so the
+    // property panel follows.
+    viewer3d.onPick = (pick) => {
+      if (pick) {
+        state.select(pick.kind, pick.id);
+      } else {
+        state.clearSelection();
+      }
+      update();
+    };
     return viewer3d;
   } catch (err) {
     console.error('Failed to load 3D viewer:', err);
@@ -93,11 +113,12 @@ const ui = new UI(state, {
       showNotice(t('copyLevelInvalid'), 'error');
       return;
     }
-    history.save();
-    const counts = state.copyLevelElements(sourceLevelId, targetLevelId);
-    const total = counts.members + counts.surfaces + counts.loads + counts.supports;
-    if (!total) {
-      history.undo();
+    let counts;
+    const changed = history.transact(() => {
+      counts = state.copyLevelElements(sourceLevelId, targetLevelId);
+      return counts.members + counts.surfaces + counts.loads + counts.supports > 0;
+    });
+    if (!changed) {
       showNotice(t('copyLevelNoItems'), 'error');
       return;
     }
@@ -120,6 +141,9 @@ const ui = new UI(state, {
         : t('modelCheckNoIssues'),
       issues.length ? 'error' : 'success'
     );
+  },
+  onBeforeBigChange() {
+    history.save();
   },
 });
 
@@ -179,19 +203,121 @@ document.getElementById('btn-quantity-detail-export')?.addEventListener('click',
   showNotice(t('quantityDetailCsvExported'), 'success');
 });
 
+document.getElementById('btn-analysis-export')?.addEventListener('click', () => {
+  exportAnalysisJSON(state);
+  showNotice(t('analysisExported'), 'success');
+});
+
+document.getElementById('btn-analysis-csv-export')?.addEventListener('click', () => {
+  exportAnalysisCSV(state);
+  showNotice(t('analysisCsvExported'), 'success');
+});
+
+document.getElementById('btn-dxf-export')?.addEventListener('click', () => {
+  exportDXF(state, { levelId: 'all' });
+  showNotice(t('dxfExported'), 'success');
+});
+
+document.getElementById('btn-png-export')?.addEventListener('click', () => {
+  canvas2d.draw();
+  exportCanvasPNG(canvasEl, state);
+  showNotice(t('pngExported'), 'success');
+});
+
+// --- Model cleanup (node merge / member split) ---
+
+document.getElementById('btn-merge-nodes')?.addEventListener('click', () => {
+  let result;
+  history.transact(() => {
+    result = state.mergeNearbyNodes();
+    return result.mergedNodes > 0;
+  });
+  update();
+  showNotice(
+    result.mergedNodes
+      ? t('mergeNodesDone', { n: result.mergedNodes })
+      : t('mergeNodesNone'),
+    'success'
+  );
+});
+
+document.getElementById('btn-split-members')?.addEventListener('click', () => {
+  let result;
+  history.transact(() => {
+    result = state.splitIntersectingMembers();
+    return result.splitMembers > 0;
+  });
+  update();
+  showNotice(
+    result.splitMembers
+      ? t('splitMembersDone', { n: result.splitMembers, c: result.createdMembers })
+      : t('splitMembersNone'),
+    'success'
+  );
+});
+
+// --- DXF underlay ---
+
+document.getElementById('btn-underlay-import')?.addEventListener('click', () => {
+  document.getElementById('file-underlay-import').click();
+});
+
+document.getElementById('file-underlay-import')?.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const { count } = await importDXFUnderlay(file, state);
+    state.updateSetting('showUnderlay', true);
+    const chk = document.getElementById('chk-show-underlay');
+    if (chk) chk.checked = true;
+    update();
+    showNotice(t('underlayImported', { n: count }), 'success');
+  } catch (err) {
+    showNotice(t('underlayImportFailed') + err.message, 'error', 6500);
+  }
+  e.target.value = '';
+});
+
+document.getElementById('btn-underlay-clear')?.addEventListener('click', () => {
+  if (state.clearUnderlay()) {
+    update();
+    showNotice(t('underlayCleared'), 'success');
+  }
+});
+
+document.getElementById('chk-show-underlay')?.addEventListener('change', (e) => {
+  state.updateSetting('showUnderlay', e.target.checked);
+  update();
+});
+
+document.getElementById('chk-show-axes')?.addEventListener('change', (e) => {
+  state.updateSetting('showAxes', e.target.checked);
+  update();
+});
+
 document.getElementById('btn-import-trigger').addEventListener('click', () => {
   document.getElementById('file-import').click();
 });
+
+// Re-syncs the toolbar controls with state.settings after any whole-model
+// replacement (file import, autosave restore, sample load).
+function syncSettingsControls() {
+  document.getElementById('chk-snap').checked = state.settings.snap;
+  document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
+  document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
+  document.getElementById('sel-grid').value = String(state.settings.gridSize);
+  const chkAxes = document.getElementById('chk-show-axes');
+  if (chkAxes) chkAxes.checked = state.settings.showAxes !== false;
+  const chkUnderlay = document.getElementById('chk-show-underlay');
+  if (chkUnderlay) chkUnderlay.checked = state.settings.showUnderlay !== false;
+}
 
 document.getElementById('file-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   try {
     await importJSON(file, state, history);
-    document.getElementById('chk-snap').checked = state.settings.snap;
-    document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
-    document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
-    document.getElementById('sel-grid').value = String(state.settings.gridSize);
+    syncSettingsControls();
     ui.refreshLevelSelectors();
     update();
     showNotice(t('cadImported'), 'success');
@@ -213,6 +339,71 @@ const layerModal = initLayerModal({
   state,
   onModelChange: update,
   refreshLevelSelectors: () => ui.refreshLevelSelectors(),
+});
+
+const axesModal = initAxesModal({
+  state,
+  onModelChange: update,
+});
+
+const comboModal = initComboModal({
+  state,
+  onModelChange: update,
+});
+
+const elevationModal = initElevationModal({ state });
+
+// --- Autosave / crash recovery ---
+
+const autosaveEntry = readAutosave();
+if (autosaveEntry) {
+  const savedAt = new Date(autosaveEntry.savedAt);
+  const timeLabel = Number.isNaN(savedAt.getTime())
+    ? '-'
+    : savedAt.toLocaleString();
+  if (confirm(t('autosaveRestorePrompt', { time: timeLabel }))) {
+    try {
+      state.loadJSON(autosaveEntry.data);
+      syncSettingsControls();
+      ui.refreshLevelSelectors();
+      update();
+      showNotice(t('autosaveRestored'), 'success');
+    } catch (err) {
+      console.error('Autosave restore failed:', err);
+      showNotice(t('autosaveRestoreFailed'), 'error', 6500);
+      clearAutosave();
+    }
+  } else {
+    clearAutosave();
+  }
+}
+
+initAutosave({ state });
+
+// --- Sample models ---
+
+function loadSample(sampleId) {
+  history.save();
+  try {
+    state.loadJSON(buildSampleModel(sampleId));
+    syncSettingsControls();
+    ui.refreshLevelSelectors();
+    hideSettingsModal();
+    update();
+    showNotice(t('sampleLoaded'), 'success');
+  } catch (err) {
+    console.error('Sample load failed:', err);
+    history.undo();
+    showNotice(t('sampleLoadFailed'), 'error', 6500);
+  }
+}
+
+document.getElementById('btn-sample-gable')?.addEventListener('click', () => loadSample('gableHouse'));
+document.getElementById('btn-sample-frame')?.addEventListener('click', () => loadSample('twoStoryFrame'));
+
+document.getElementById('btn-open-combos')?.addEventListener('click', () => {
+  hideSettingsModal();
+  comboModal.show();
 });
 
 // --- Settings Modal ---
@@ -326,6 +517,15 @@ window.addEventListener('keydown', (e) => {
       e.stopPropagation();
     } else if (layerModal.isOpen()) {
       layerModal.hide();
+      e.stopPropagation();
+    } else if (axesModal.isOpen()) {
+      axesModal.hide();
+      e.stopPropagation();
+    } else if (comboModal.isOpen()) {
+      comboModal.hide();
+      e.stopPropagation();
+    } else if (elevationModal.isOpen()) {
+      elevationModal.hide();
       e.stopPropagation();
     } else if (settingsModal.classList.contains('visible')) {
       hideSettingsModal();

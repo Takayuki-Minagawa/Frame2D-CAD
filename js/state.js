@@ -1,6 +1,7 @@
 // state.js - Data model and state management
 
 import {
+  DEFAULT_LOAD_CASE,
   DEFAULT_ROOF_GROUP_ID,
   DEFAULT_ROOF_SLOPE_RATIO,
   DEFAULT_SECTION_B_MM,
@@ -8,6 +9,7 @@ import {
   DEFAULT_STORY_HEIGHT_MM,
   HANGING_WALL_DEPTH_MM,
   HIT_TOLERANCE_MM,
+  LOAD_CASES,
   WAIST_WALL_TOP_OFFSET_MM,
   WALL_DISPLAY_OFFSET_MM,
 } from './constants.js';
@@ -111,6 +113,11 @@ export class AppState {
     this.supports = [];
     this.sectionCatalog = createDefaultSectionCatalog();
     this.springCatalog = createDefaultSpringCatalog();
+    this.axes = [];
+    this.loadCombinations = createDefaultLoadCombinations();
+    // Optional imported drawing underlay ({ name, entities }) shown beneath
+    // the plan; not part of the structural model.
+    this.underlay = null;
 
     // Monotonic model revision counter; bumped by _touch() whenever a public
     // method mutates the model. Not serialized.
@@ -128,11 +135,21 @@ export class AppState {
     this._levelCounter = 1;
     this._loadCounter = 0;
     this._supportCounter = 0;
+    this._axisCounter = 0;
+    this._loadComboCounter = this.loadCombinations.length;
   }
 
   // Bumps the model revision. Called by every mutating public method.
   _touch() {
     this.revision += 1;
+  }
+
+  // Settings are persisted with the model, so edits must bump the revision —
+  // otherwise a settings-only change would never reach the autosave snapshot.
+  updateSetting(key, value) {
+    if (this.settings[key] === value) return;
+    this.settings[key] = value;
+    this._touch();
   }
 
   // Resets selection, tool, and draft state to the initial defaults.
@@ -141,10 +158,12 @@ export class AppState {
   resetRuntimeState() {
     this.selectedNodeId = null;
     this.selectedMemberId = null;
+    this.selectedMemberIds = [];
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
     this.selectedSupportId = null;
     this.currentTool = 'member';
+    this.loadDraftCase = DEFAULT_LOAD_CASE;
     this.memberDraftType = 'beam';
     // Sticky ("paste") section per type: once a section is chosen for a type,
     // newly drawn members/surfaces of that type reuse it instead of reverting
@@ -175,15 +194,56 @@ export class AppState {
     const field = SELECTION_FIELDS[kind];
     if (!field) return null;
     this[field] = id;
+    if (kind === 'member') this.selectedMemberIds = [id];
     return id;
   }
 
   clearSelection() {
     this.selectedNodeId = null;
     this.selectedMemberId = null;
+    this.selectedMemberIds = [];
     this.selectedSurfaceId = null;
     this.selectedLoadId = null;
     this.selectedSupportId = null;
+  }
+
+  // Selection applied after a draw tool creates an element: the new element
+  // becomes the only selection of any kind (single- and multi-select member
+  // fields stay in sync). Clearing the support selection too keeps Delete
+  // acting on the element the user just drew, never on a stale support.
+  selectDrawn(kind, id) {
+    this.clearSelection();
+    this.selectedMemberId = kind === 'member' ? id : null;
+    this.selectedMemberIds = kind === 'member' ? [id] : [];
+    this.selectedSurfaceId = kind === 'surface' ? id : null;
+    this.selectedLoadId = kind === 'load' ? id : null;
+  }
+
+  // --- Multi-selection (members) ---
+
+  // Replaces the member selection with the given ids (other kinds cleared).
+  selectMembers(ids) {
+    this.clearSelection();
+    const valid = (Array.isArray(ids) ? ids : []).filter(id => this.getMember(id));
+    this.selectedMemberIds = [...new Set(valid)];
+    this.selectedMemberId = this.selectedMemberIds.length === 1 ? this.selectedMemberIds[0] : null;
+    return this.selectedMemberIds;
+  }
+
+  // Adds or removes one member from the multi-selection (Shift+click).
+  toggleMemberSelection(id) {
+    if (!this.getMember(id)) return this.selectedMemberIds;
+    const ids = new Set(this.selectedMemberIds);
+    if (ids.has(id)) {
+      ids.delete(id);
+    } else {
+      ids.add(id);
+    }
+    return this.selectMembers([...ids]);
+  }
+
+  isMemberSelected(id) {
+    return this.selectedMemberId === id || this.selectedMemberIds.includes(id);
   }
 
   // --- Section & Spring catalogs ---
@@ -913,6 +973,12 @@ export class AppState {
     if (this.selectedMemberId === id) {
       this.selectedMemberId = null;
     }
+    this.selectedMemberIds = this.selectedMemberIds.filter(mid => mid !== id);
+    // A multi-selection reduced to one member becomes a normal single
+    // selection so the property panel and Delete stay consistent.
+    if (this.selectedMemberIds.length === 1) {
+      this.selectedMemberId = this.selectedMemberIds[0];
+    }
     this._touch();
   }
 
@@ -1248,6 +1314,125 @@ export class AppState {
     return modelOps.validateModel(this);
   }
 
+  mergeNearbyNodes(options = {}) {
+    return modelOps.mergeNearbyNodes(this, options);
+  }
+
+  splitIntersectingMembers(options = {}) {
+    return modelOps.splitIntersectingMembers(this, options);
+  }
+
+  mirrorMembers(ids, options = {}) {
+    return modelOps.mirrorMembers(this, ids, options);
+  }
+
+  rotateMembers(ids, options = {}) {
+    return modelOps.rotateMembers(this, ids, options);
+  }
+
+  arrayCopyMembers(ids, options = {}) {
+    return modelOps.arrayCopyMembers(this, ids, options);
+  }
+
+  // --- Axes (通り芯) ---
+
+  nextAxisId() {
+    this._axisCounter++;
+    return `AX${this._axisCounter}`;
+  }
+
+  addAxis(dir, name, coord) {
+    const normalizedDir = dir === 'y' ? 'y' : 'x';
+    const axis = {
+      id: this.nextAxisId(),
+      dir: normalizedDir,
+      name: sanitizeText(name) || this._nextAxisName(normalizedDir),
+      coord: sanitizeNumber(coord, 0),
+    };
+    this.axes.push(axis);
+    this._touch();
+    return axis;
+  }
+
+  _nextAxisName(dir) {
+    const prefix = dir === 'y' ? 'Y' : 'X';
+    let n = 1;
+    while (this.axes.some(a => a.name === `${prefix}${n}`)) n++;
+    return `${prefix}${n}`;
+  }
+
+  getAxis(id) {
+    return this.axes.find(a => a.id === id);
+  }
+
+  updateAxis(id, props) {
+    const axis = this.getAxis(id);
+    if (!axis) return null;
+    if (hasOwn(props, 'dir')) axis.dir = props.dir === 'y' ? 'y' : 'x';
+    if (hasOwn(props, 'name')) axis.name = sanitizeText(props.name) || axis.name;
+    if (hasOwn(props, 'coord')) axis.coord = sanitizeNumber(props.coord, axis.coord);
+    this._touch();
+    return axis;
+  }
+
+  removeAxis(id) {
+    const before = this.axes.length;
+    this.axes = this.axes.filter(a => a.id !== id);
+    if (this.axes.length !== before) this._touch();
+    return this.axes.length !== before;
+  }
+
+  // --- Load combinations ---
+
+  addLoadCombination(name, factors = {}) {
+    this._loadComboCounter++;
+    const combo = {
+      id: `LC${this._loadComboCounter}`,
+      name: sanitizeText(name) || `LC${this._loadComboCounter}`,
+      factors: normalizeLoadFactors(factors),
+    };
+    this.loadCombinations.push(combo);
+    this._touch();
+    return combo;
+  }
+
+  updateLoadCombination(id, props) {
+    const combo = this.loadCombinations.find(c => c.id === id);
+    if (!combo) return null;
+    if (hasOwn(props, 'name')) combo.name = sanitizeText(props.name) || combo.name;
+    if (hasOwn(props, 'factors')) combo.factors = normalizeLoadFactors(props.factors);
+    this._touch();
+    return combo;
+  }
+
+  removeLoadCombination(id) {
+    const before = this.loadCombinations.length;
+    this.loadCombinations = this.loadCombinations.filter(c => c.id !== id);
+    if (this.loadCombinations.length !== before) this._touch();
+    return this.loadCombinations.length !== before;
+  }
+
+  // --- Drawing underlay ---
+
+  setUnderlay(underlay) {
+    if (!underlay || !Array.isArray(underlay.entities) || !underlay.entities.length) {
+      return null;
+    }
+    this.underlay = {
+      name: sanitizeText(underlay.name) || 'underlay',
+      entities: underlay.entities,
+    };
+    this._touch();
+    return this.underlay;
+  }
+
+  clearUnderlay() {
+    if (!this.underlay) return false;
+    this.underlay = null;
+    this._touch();
+    return true;
+  }
+
   // --- Loads ---
 
   nextLoadId() {
@@ -1261,6 +1446,7 @@ export class AppState {
       id,
       type,
       levelId: props.levelId || this.activeLevelId || 'L0',
+      loadCase: normalizeLoadCase(props.loadCase || this.loadDraftCase),
     };
     if (type === 'areaLoad') {
       Object.assign(base, {
@@ -1295,7 +1481,9 @@ export class AppState {
   updateLoad(id, props) {
     const load = this.getLoad(id);
     if (load) {
-      Object.assign(load, props);
+      const patch = { ...props };
+      if (hasOwn(patch, 'loadCase')) patch.loadCase = normalizeLoadCase(patch.loadCase);
+      Object.assign(load, patch);
       this._touch();
     }
     return load;
@@ -1414,6 +1602,40 @@ export function createDefaultLevels() {
     { id: 'L0', name: 'GL', z: 0 },
     { id: 'L1', name: '2F', z: DEFAULT_STORY_HEIGHT_MM },
   ];
+}
+
+export function normalizeLoadCase(value) {
+  const text = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return LOAD_CASES.includes(text) ? text : DEFAULT_LOAD_CASE;
+}
+
+export function normalizeLoadFactors(factors) {
+  const result = {};
+  for (const loadCase of LOAD_CASES) {
+    const n = Number(factors?.[loadCase]);
+    if (Number.isFinite(n) && n !== 0) result[loadCase] = n;
+  }
+  return result;
+}
+
+export function createDefaultLoadCombinations() {
+  return [
+    { id: 'LC1', name: 'G+P', factors: { DL: 1, LL: 1 } },
+    { id: 'LC2', name: 'G+P+EQX', factors: { DL: 1, LL: 1, EQX: 1 } },
+    { id: 'LC3', name: 'G+P+EQY', factors: { DL: 1, LL: 1, EQY: 1 } },
+    { id: 'LC4', name: 'G+P+WX', factors: { DL: 1, LL: 1, WX: 1 } },
+    { id: 'LC5', name: 'G+P+WY', factors: { DL: 1, LL: 1, WY: 1 } },
+  ];
+}
+
+// Normalizes a loaded/imported axis record; returns null when unusable.
+export function normalizeAxisEntry(raw, fallbackId) {
+  if (!raw) return null;
+  const coord = Number(raw.coord);
+  if (!Number.isFinite(coord)) return null;
+  const dir = raw.dir === 'y' ? 'y' : 'x';
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : fallbackId;
+  return { id: raw.id || fallbackId, dir, name, coord };
 }
 
 function hasOwn(obj, key) {

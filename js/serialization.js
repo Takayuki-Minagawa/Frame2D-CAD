@@ -8,10 +8,14 @@ import { positiveNumber as sanitizePositiveNumber } from './geometry-utils.js';
 import { cloneSection, hydrateSectionCatalog, hydrateSpringCatalog } from './section-catalog.js';
 import {
   createDefaultLevels,
+  createDefaultLoadCombinations,
   defaultSurfaceDrawColor,
   isGableWallSurfaceType,
   isRoofSurfaceType,
   isSlopedSurfaceType,
+  normalizeAxisEntry,
+  normalizeLoadCase,
+  normalizeLoadFactors,
   normalizeMemberGeometryMode,
   sanitizeOptionalNumber,
   sanitizeRoofGroupId,
@@ -22,7 +26,7 @@ function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export const CURRENT_SCHEMA_VERSION = 10;
+export const CURRENT_SCHEMA_VERSION = 11;
 const SUPPORTED_SCHEMA_VERSIONS = new Set(
   Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, index) => index + 1)
 );
@@ -68,6 +72,11 @@ export function serializeModel(state) {
     meta: { ...state.meta },
     settings: { ...state.settings },
     levels: state.levels.map(l => ({ ...l })),
+    axes: state.axes.map(a => ({ ...a })),
+    loadCombinations: state.loadCombinations.map(c => ({ ...c, factors: { ...c.factors } })),
+    underlay: state.underlay
+      ? { name: state.underlay.name, entities: structuredClone(state.underlay.entities) }
+      : null,
     nodes: state.nodes.map(n => ({ ...n })),
     sectionCatalog: usedSectionCatalog(state).map(s => cloneSection(s)),
     springCatalog: usedSpringCatalog(state).map(s => ({ ...s })),
@@ -124,7 +133,7 @@ export function serializeModel(state) {
       }
       return surface;
     }),
-    loads: state.loads.map(l => ({ ...l })),
+    loads: state.loads.map(l => ({ ...l, loadCase: normalizeLoadCase(l.loadCase) })),
     supports: state.supports.map(s => ({
       id: s.id,
       x: s.x,
@@ -153,6 +162,21 @@ export function loadModelJSON(state, data) {
     : createDefaultLevels();
   state.activeLevelId = state.levels[0]?.id || 'L0';
   state.surfaceDraftTopLevelId = state.levels[1]?.id || state.activeLevelId;
+  state.axes = (data.axes || [])
+    .map((a, idx) => normalizeAxisEntry(a, `AX${idx + 1}`))
+    .filter(Boolean);
+  // A present-but-empty array is a deliberate "no combinations" state and is
+  // preserved; only files without the field (schema < 11) get the defaults.
+  state.loadCombinations = Array.isArray(data.loadCombinations)
+    ? data.loadCombinations.map((c, idx) => ({
+      id: c.id || `LC${idx + 1}`,
+      name: typeof c.name === 'string' && c.name.trim() ? c.name.trim() : `LC${idx + 1}`,
+      factors: normalizeLoadFactors(c.factors),
+    }))
+    : createDefaultLoadCombinations();
+  state.underlay = data.underlay && Array.isArray(data.underlay.entities) && data.underlay.entities.length
+    ? { name: sanitizeText(data.underlay.name) || 'underlay', entities: structuredClone(data.underlay.entities) }
+    : null;
   state.nodes = (data.nodes || []).map(n => ({ ...n }));
   // Preserve current custom user definitions across CAD load
   const prevCustomSections = state.sectionCatalog.filter(s => !s.isDefault);
@@ -178,7 +202,11 @@ export function loadModelJSON(state, data) {
   state.surfaces = (data.surfaces || []).map((s, idx) =>
     normalizeLoadedSurface(state, { id: s.id || `S${idx + 1}`, ...s })
   );
-  state.loads = (data.loads || []).map((l, idx) => ({ id: l.id || `LD${idx + 1}`, ...l }));
+  state.loads = (data.loads || []).map((l, idx) => ({
+    id: l.id || `LD${idx + 1}`,
+    ...l,
+    loadCase: normalizeLoadCase(l.loadCase),
+  }));
   state.supports = (data.supports || []).map((s, idx) => ({
     id: s.id || `SUP${idx + 1}`,
     x: s.x || 0,
@@ -201,6 +229,8 @@ export function loadModelJSON(state, data) {
   state._levelCounter = maxIdNum(state.levels);
   state._loadCounter = maxIdNumPrefix(state.loads, 'LD');
   state._supportCounter = maxIdNumPrefix(state.supports, 'SUP');
+  state._axisCounter = maxIdNumPrefix(state.axes, 'AX');
+  state._loadComboCounter = maxIdNumPrefix(state.loadCombinations, 'LC');
   state._touch();
 }
 

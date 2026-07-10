@@ -1,5 +1,6 @@
 // grid.js - Grid drawing and snap calculation
 
+import { AXIS_SNAP_TOLERANCE_PX } from './constants.js';
 import { cssVar } from './dom-utils.js';
 
 // Origin legend layout (bottom-left corner), in screen px
@@ -156,6 +157,23 @@ export function snapToNode(x, y, state, tolerance) {
   return null;
 }
 
+// Nearest axis (通り芯) coordinate for one plan direction within tolerance,
+// or null. dir 'x' axes constrain the X coordinate, 'y' axes the Y coordinate.
+export function snapToAxisCoord(value, dir, state, tolerance) {
+  if (!state.settings.showAxes) return null;
+  let best = null;
+  let bestDist = tolerance;
+  for (const axis of state.axes || []) {
+    if (axis.dir !== dir) continue;
+    const d = Math.abs(axis.coord - value);
+    if (d < bestDist) {
+      bestDist = d;
+      best = axis.coord;
+    }
+  }
+  return best;
+}
+
 export function applySnap(worldX, worldY, state, camera) {
   if (!state.settings.snap) return { x: worldX, y: worldY };
 
@@ -164,5 +182,14 @@ export function applySnap(worldX, worldY, state, camera) {
   const nodeSnap = snapToNode(worldX, worldY, state, tolerance);
   if (nodeSnap) return nodeSnap;
 
-  return snapToGrid(worldX, worldY, state.settings.gridSize);
+  // Axis lines snap per coordinate, so axis intersections snap naturally;
+  // the other coordinate falls back to the grid.
+  const axisTolerance = AXIS_SNAP_TOLERANCE_PX / camera.scale;
+  const axisX = snapToAxisCoord(worldX, 'x', state, axisTolerance);
+  const axisY = snapToAxisCoord(worldY, 'y', state, axisTolerance);
+  const grid = snapToGrid(worldX, worldY, state.settings.gridSize);
+  return {
+    x: axisX !== null ? axisX : grid.x,
+    y: axisY !== null ? axisY : grid.y,
+  };
 }

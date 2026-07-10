@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Element Modeler - Ver.1.0.4</title>
+  <title>Element Modeler - Ver.1.1.0</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="style.css?v=1.0.4">
+  <link rel="stylesheet" href="style.css?v=1.1.0">
 </head>
 <body>
   <!-- Left Toolbar -->
@@ -29,7 +29,11 @@
           <option value="surface" data-i18n="surface">面材</option>
           <option value="load" data-i18n="load">荷重</option>
           <option value="support" data-i18n="support">支点</option>
+          <option value="measure" data-i18n="measureTool">計測</option>
         </select>
+      </div>
+      <div class="layer-controls">
+        <button id="btn-axes-manage" title="Grid axes">&#9881; <span data-i18n="axesManage">通り芯管理</span></button>
       </div>
       <hr>
     </div>
@@ -132,6 +136,17 @@
           <option value="pointLoad" data-i18n="pointLoad">点荷重</option>
         </select>
       </label>
+      <label class="grid-label">
+        <span data-i18n="loadCaseLabel">荷重ケース</span>
+        <select id="sel-load-case">
+          <option value="DL">DL</option>
+          <option value="LL">LL</option>
+          <option value="EQX">EQX</option>
+          <option value="EQY">EQY</option>
+          <option value="WX">WX</option>
+          <option value="WY">WY</option>
+        </select>
+      </label>
     </div>
     <hr>
     <label class="toggle-label">
@@ -145,6 +160,14 @@
     <label class="toggle-label">
       <input type="checkbox" id="chk-wide-pick">
       <span data-i18n="widePick">広域選択</span>
+    </label>
+    <label class="toggle-label">
+      <input type="checkbox" id="chk-show-axes" checked>
+      <span data-i18n="showAxes">通り芯表示</span>
+    </label>
+    <label class="toggle-label">
+      <input type="checkbox" id="chk-show-underlay" checked>
+      <span data-i18n="showUnderlay">下絵表示</span>
     </label>
     <label class="grid-label">
       <span data-i18n="displayPreset">表示プリセット</span>
@@ -249,6 +272,15 @@
     <button id="btn-export" title="Save CAD data">&#128190; <span data-i18n="export">CAD保存</span></button>
     <button id="btn-import-trigger" title="Load CAD data">&#128194; <span data-i18n="import">CAD読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
+    <hr>
+    <button id="btn-analysis-export" title="Export analysis model (JSON)">&#128640; <span data-i18n="analysisExport">解析JSON出力</span></button>
+    <button id="btn-analysis-csv-export" title="Export analysis model (CSV)">&#128640; <span data-i18n="analysisCsvExport">解析CSV出力</span></button>
+    <button id="btn-dxf-export" title="Export plan DXF">&#128196; <span data-i18n="dxfExport">図面DXF出力</span></button>
+    <button id="btn-png-export" title="Export plan PNG">&#128247; <span data-i18n="pngExport">PNG出力</span></button>
+    <hr>
+    <button id="btn-underlay-import" title="Import DXF underlay">&#128209; <span data-i18n="underlayImport">下絵DXF読込</span></button>
+    <button id="btn-underlay-clear" title="Clear underlay">&#128465; <span data-i18n="underlayClear">下絵クリア</span></button>
+    <input type="file" id="file-underlay-import" accept=".dxf" hidden>
   </aside>
   <div id="toolbar-resizer" class="side-resizer side-resizer-left" role="separator" aria-label="Resize toolbar" aria-orientation="vertical">
     <button id="btn-toggle-toolbar" class="panel-toggle-btn" type="button" aria-label="Hide toolbar" title="ツールパネルを隠す">‹</button>
@@ -260,6 +292,7 @@
     <nav id="view-tabs">
       <button id="tab-2d" class="tab-btn active" data-i18n="tab2d">2D CAD</button>
       <button id="tab-3d" class="tab-btn" data-i18n="tab3d">3D 表示</button>
+      <button id="btn-elevation-open" class="tab-btn" data-i18n="elevationOpen">軸組図</button>
     </nav>
 
     <!-- Canvas Container -->
@@ -274,7 +307,7 @@
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
       <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
-      <span id="status-version">Ver.1.0.4</span>
+      <span id="status-version">Ver.1.1.0</span>
     </footer>
   </main>
   <div id="property-resizer" class="side-resizer side-resizer-right" role="separator" aria-label="Resize properties" aria-orientation="vertical">
@@ -289,6 +322,8 @@
     </div>
     <h2 data-i18n="quantitySummary">集計</h2>
     <button id="btn-model-check" class="support-preset-btn" data-i18n="modelCheck">モデルチェック</button>
+    <button id="btn-merge-nodes" class="support-preset-btn" data-i18n="mergeNodes">節点マージ</button>
+    <button id="btn-split-members" class="support-preset-btn" data-i18n="splitMembers">交差部材を分割</button>
     <div id="model-check-content"></div>
     <button id="btn-quantity-export" class="support-preset-btn" data-i18n="quantityCsvExport">CSV出力</button>
     <button id="btn-quantity-detail-export" class="support-preset-btn" data-i18n="quantityDetailCsvExport">詳細CSV出力</button>
@@ -330,7 +365,15 @@
         </div>
         <hr>
         <button id="btn-open-user-def" class="settings-help-btn">&#9881; <span data-i18n="userDefManage">ユーザー定義</span></button>
-        <button id="btn-open-help" class="settings-help-btn stack-gap">&#10067; <span data-i18n="help">ヘルプ</span></button>
+        <button id="btn-open-combos" class="settings-help-btn stack-gap">&#9878; <span data-i18n="comboManage">荷重組合せ</span></button>
+        <hr>
+        <div class="settings-group">
+          <label data-i18n="sampleModels">サンプルモデル</label>
+        </div>
+        <button id="btn-sample-gable" class="settings-help-btn">&#127968; <span data-i18n="sampleGable">平屋+切妻屋根</span></button>
+        <button id="btn-sample-frame" class="settings-help-btn stack-gap">&#127970; <span data-i18n="sampleFrame">2階建フレーム</span></button>
+        <hr>
+        <button id="btn-open-help" class="settings-help-btn">&#10067; <span data-i18n="help">ヘルプ</span></button>
       </div>
     </div>
   </div>
@@ -456,6 +499,55 @@
     </div>
   </div>
 
+  <!-- Grid Axes Modal -->
+  <div id="axes-modal" class="modal-overlay">
+    <div class="modal-content modal-layer">
+      <div class="modal-header">
+        <h2 data-i18n="axesManage">通り芯管理</h2>
+        <button id="btn-axes-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div id="axes-list"></div>
+        <div class="support-preset-row">
+          <button id="btn-axes-add-x" class="settings-help-btn">+ <span data-i18n="axisAddX">X通りを追加</span></button>
+          <button id="btn-axes-add-y" class="settings-help-btn">+ <span data-i18n="axisAddY">Y通りを追加</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Combination Modal -->
+  <div id="combo-modal" class="modal-overlay">
+    <div class="modal-content modal-combo">
+      <div class="modal-header">
+        <h2 data-i18n="comboManage">荷重組合せ</h2>
+        <button id="btn-combo-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div id="combo-list"></div>
+        <button id="btn-combo-add" class="settings-help-btn">+ <span data-i18n="comboAdd">組合せを追加</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Elevation (Frame) Modal -->
+  <div id="elevation-modal" class="modal-overlay">
+    <div class="modal-content modal-elevation">
+      <div class="modal-header">
+        <h2 data-i18n="elevationTitle">軸組図</h2>
+        <button id="btn-elevation-close" class="modal-close" data-i18n="helpClose">閉じる</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-group">
+          <label data-i18n="elevationAxis">通り芯</label>
+          <select id="elevation-axis"></select>
+        </div>
+        <p id="elevation-empty" class="quantity-note" hidden></p>
+        <canvas id="elevation-canvas" class="elevation-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+
   <script type="importmap">
   {
     "imports": {
@@ -464,6 +556,6 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=1.0.4"></script>
+  <script type="module" src="js/app.js?v=1.1.0"></script>
 </body>
 </html>

@@ -37,6 +37,9 @@ export function createDefaultSettings() {
     memberTypeFilter: 'all',
     sectionFilter: 'all',
     displayPreset: 'input',
+    showAxes: true,
+    showUnderlay: true,
+    autosave: true,
   };
 }
 
@@ -59,6 +62,9 @@ export function normalizeSettings(raw) {
   settings.sectionFilter = sanitizeText(settings.sectionFilter) || 'all';
   settings.displayPreset = normalizeDisplayPreset(settings.displayPreset);
   settings.gridSize = normalizeGridSize(settings.gridSize);
+  settings.showAxes = settings.showAxes !== false;
+  settings.showUnderlay = settings.showUnderlay !== false;
+  settings.autosave = settings.autosave !== false;
   return settings;
 }
 
