@@ -25,6 +25,17 @@ export const MODEL_CHECK_DISPLAY_LIMIT = 12;
 // Canvas scale-to-percent factor for the zoom status readout (scale * factor = %)
 export const ZOOM_PERCENT_FACTOR = 2000;
 
+// Load cases (fixed identifiers; labels resolved through i18n `loadCase<ID>`)
+export const LOAD_CASES = ['DL', 'LL', 'EQX', 'EQY', 'WX', 'WY'];
+export const DEFAULT_LOAD_CASE = 'DL';
+
+// Node merge / member split defaults (mm)
+export const NODE_MERGE_TOLERANCE_MM = 1;
+export const MEMBER_SPLIT_TOLERANCE_MM = 1;
+
+// Axis (通り芯) rendering
+export const AXIS_SNAP_TOLERANCE_PX = 12;
+
 // Hit testing
 export const HIT_TOLERANCE_MM = 300;
 export const PICK_TOLERANCE_PX = 8;

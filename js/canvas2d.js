@@ -44,6 +44,8 @@ export class Canvas2D {
 
     // Temporary drawing state
     this.preview = null; // { ... , mode: 'line'|'rect'|'polyline' }
+    this.marquee = null; // { x1, y1, x2, y2 } world coords (rect selection)
+    this.measure = null; // { x1, y1, x2, y2, done } world coords
 
     this._resizeObserver = new ResizeObserver(() => this.resize());
     this._resizeObserver.observe(this.canvas.parentElement);
@@ -116,12 +118,158 @@ export class Canvas2D {
 
     drawGrid(ctx, this.camera, this.state.settings.gridSize, w, h);
 
+    this._drawUnderlay(ctx);
+    this._drawAxes(ctx, w, h);
     this._drawSurfaces(ctx, selectedColor);
     this._drawLoads(ctx, selectedColor);
     this._drawSupports(ctx, selectedColor);
     const visibleNodeAlpha = this._drawMembers(ctx, selectedColor, memberDefault);
     this._drawNodes(ctx, visibleNodeAlpha, nodeColor, selectedColor);
     this._drawPreview(ctx, previewColor);
+    this._drawMarquee(ctx, previewColor);
+    this._drawMeasure(ctx, previewColor);
+  }
+
+  // Imported DXF underlay: thin halftone strokes beneath the model.
+  _drawUnderlay(ctx) {
+    const underlay = this.state.underlay;
+    if (!underlay || this.state.settings.showUnderlay === false) return;
+
+    ctx.save();
+    ctx.strokeStyle = cssVar('--underlay-color') || '#7a7a8a';
+    ctx.globalAlpha *= 0.55;
+    ctx.lineWidth = 1;
+
+    for (const e of underlay.entities) {
+      ctx.beginPath();
+      if (e.type === 'line') {
+        const p1 = this.worldToScreen(e.x1, e.y1);
+        const p2 = this.worldToScreen(e.x2, e.y2);
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+      } else if (e.type === 'polyline' && Array.isArray(e.points) && e.points.length >= 2) {
+        const pts = e.points.map(p => this.worldToScreen(p.x, p.y));
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        if (e.closed) ctx.closePath();
+      } else if (e.type === 'circle') {
+        const c = this.worldToScreen(e.cx, e.cy);
+        ctx.arc(c.x, c.y, e.r * this.camera.scale, 0, Math.PI * 2);
+      } else if (e.type === 'arc') {
+        const c = this.worldToScreen(e.cx, e.cy);
+        // World Y-up to screen Y-down flips angle direction.
+        const start = -(e.startAngle * Math.PI) / 180;
+        const end = -(e.endAngle * Math.PI) / 180;
+        ctx.arc(c.x, c.y, e.r * this.camera.scale, start, end, true);
+      } else {
+        continue;
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Grid axes (通り芯): dash-dot lines with name bubbles at the canvas edge.
+  _drawAxes(ctx, w, h) {
+    if (!this.state.settings.showAxes || !this.state.axes?.length) return;
+    const color = cssVar('--axis-color') || '#c084fc';
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([14, 4, 3, 4]);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const axis of this.state.axes) {
+      if (axis.dir === 'x') {
+        const sx = axis.coord * this.camera.scale + this.camera.offsetX;
+        if (sx < -20 || sx > w + 20) continue;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, h);
+        ctx.stroke();
+        this._drawAxisLabel(ctx, axis.name, sx, 14, color);
+      } else {
+        const sy = this.camera.offsetY - axis.coord * this.camera.scale;
+        if (sy < -20 || sy > h + 20) continue;
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(w, sy);
+        ctx.stroke();
+        this._drawAxisLabel(ctx, axis.name, 18, sy, color);
+      }
+    }
+    ctx.restore();
+  }
+
+  _drawAxisLabel(ctx, name, x, y, color) {
+    const label = String(name || '');
+    if (!label) return;
+    ctx.save();
+    ctx.setLineDash([]);
+    const r = Math.max(10, ctx.measureText(label).width / 2 + 5);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20, 22, 34, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fillText(label, x, y + 0.5);
+    ctx.restore();
+  }
+
+  _drawMarquee(ctx, previewColor) {
+    if (!this.marquee) return;
+    const p1 = this.worldToScreen(this.marquee.x1, this.marquee.y1);
+    const p2 = this.worldToScreen(this.marquee.x2, this.marquee.y2);
+    ctx.save();
+    ctx.strokeStyle = previewColor;
+    ctx.fillStyle = toRgba(previewColor, 0.08);
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.rect(
+      Math.min(p1.x, p2.x),
+      Math.min(p1.y, p2.y),
+      Math.abs(p2.x - p1.x),
+      Math.abs(p2.y - p1.y)
+    );
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawMeasure(ctx, previewColor) {
+    if (!this.measure) return;
+    const { x1, y1, x2, y2 } = this.measure;
+    const p1 = this.worldToScreen(x1, y1);
+    const p2 = this.worldToScreen(x2, y2);
+
+    ctx.save();
+    ctx.strokeStyle = previewColor;
+    ctx.fillStyle = previewColor;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const p of [p1, p2]) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const dx = Math.round(x2 - x1);
+    const dy = Math.round(y2 - y1);
+    const len = Math.round(Math.hypot(dx, dy));
+    const label = `L=${len}  dX=${dx}  dY=${dy}`;
+    this._drawPreviewLabel(ctx, label, (p1.x + p2.x) / 2 + 8, (p1.y + p2.y) / 2 - 8, previewColor);
+    ctx.restore();
   }
 
   // Draws all visible members and returns a Map of nodeId -> strongest alpha
@@ -135,7 +283,7 @@ export class Canvas2D {
       const n2 = this.state.getNode(m.endNodeId);
       if (!n1 || !n2) continue;
 
-      const isSelected = m.id === this.state.selectedMemberId;
+      const isSelected = this.state.isMemberSelected(m.id);
       const alpha = isSelected ? 1 : layerStyle.alpha;
       visibleNodeAlpha.set(n1.id, Math.max(visibleNodeAlpha.get(n1.id) || 0, alpha));
       visibleNodeAlpha.set(n2.id, Math.max(visibleNodeAlpha.get(n2.id) || 0, alpha));

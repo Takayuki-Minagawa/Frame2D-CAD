@@ -8,6 +8,7 @@ import {
   DEFAULT_EAVE_DEPTH_MM,
   DEFAULT_RAFTER_SPACING_MM,
   DEFAULT_ROOF_GROUP_ID,
+  LOAD_CASES,
   MODEL_CHECK_DISPLAY_LIMIT,
   ZOOM_PERCENT_FACTOR,
 } from './constants.js';
@@ -213,6 +214,11 @@ export class UI {
       this.state.loadDraftType = e.target.value;
     });
 
+    // Load case for newly placed loads
+    document.getElementById('sel-load-case')?.addEventListener('change', e => {
+      this.state.loadDraftCase = e.target.value;
+    });
+
     // Keyboard shortcuts for tools
     window.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -226,6 +232,8 @@ export class UI {
         this.state.currentTool = 'load';
       } else if (e.key === 's' || e.key === 'S') {
         this.state.currentTool = 'support';
+      } else if (e.key === 'd' || e.key === 'D') {
+        this.state.currentTool = 'measure';
       } else {
         return;
       }
@@ -249,6 +257,7 @@ export class UI {
         surface: 'toolSurface',
         load: 'toolLoad',
         support: 'toolSupport',
+        measure: 'toolMeasure',
       };
       toolStatus.textContent = t(statusKeys[this.state.currentTool] || 'toolSelect');
     }
@@ -362,6 +371,8 @@ export class UI {
     if (selSurfaceMode) selSurfaceMode.value = this.state.surfaceDraftMode;
     const selLoadDir = document.getElementById('sel-load-direction');
     if (selLoadDir) selLoadDir.value = this.state.surfaceDraftLoadDir;
+    const selLoadCase = document.getElementById('sel-load-case');
+    if (selLoadCase) selLoadCase.value = this.state.loadDraftCase || 'DL';
     const selPlanLayerMode = document.getElementById('sel-plan-layer-display-mode');
     if (selPlanLayerMode) selPlanLayerMode.value = this.state.settings.planLayerDisplayMode || 'all';
     const chkSelectionLock = document.getElementById('chk-plan-layer-selection-lock');
@@ -503,6 +514,11 @@ export class UI {
       return;
     }
 
+    if (this.state.selectedMemberIds.length > 1) {
+      this._renderMultiMemberProperties(container);
+      return;
+    }
+
     const member = this.state.selectedMemberId
       ? this.state.getMember(this.state.selectedMemberId)
       : null;
@@ -513,6 +529,156 @@ export class UI {
     }
 
     this._renderMemberProperties(container, member);
+  }
+
+  // Batch panel shown when 2+ members are selected: summary, batch section
+  // change and the copy/transform operations (mirror / rotate / array).
+  _renderMultiMemberProperties(container) {
+    const members = this.state.selectedMemberIds
+      .map(id => this.state.getMember(id))
+      .filter(Boolean);
+    if (!members.length) {
+      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
+      return;
+    }
+
+    const typeCounts = new Map();
+    for (const m of members) {
+      typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1);
+    }
+    const summary = [...typeCounts.entries()]
+      .map(([type, count]) => `${t(type)}: ${count}`)
+      .join(' / ');
+    const types = [...typeCounts.keys()];
+    const firstType = types[0];
+    const typeOptions = types
+      .map(type => `<option value="${escapeHtml(type)}">${escapeHtml(t(type))}</option>`)
+      .join('');
+
+    container.innerHTML = `
+      <div class="prop-group">
+        <label>${t('multiSelectCount')}</label>
+        <input type="text" value="${members.length} (${escapeHtml(summary)})" disabled>
+      </div>
+      <div class="prop-group">
+        <label>${t('multiSectionApply')}</label>
+        <div class="prop-row">
+          <div class="prop-group">
+            <select id="batch-member-type">${typeOptions}</select>
+          </div>
+          <div class="prop-group">
+            <select id="batch-section-name"></select>
+          </div>
+        </div>
+        <button type="button" class="support-preset-btn" id="btn-batch-apply-section">${t('multiApply')}</button>
+      </div>
+      <div class="prop-group">
+        <label>${t('multiMirror')}</label>
+        <div class="prop-row">
+          <div class="prop-group">
+            <select id="batch-mirror-axis">
+              <option value="x">${t('mirrorAxisX')}</option>
+              <option value="y">${t('mirrorAxisY')}</option>
+            </select>
+          </div>
+          <div class="prop-group">
+            <input type="number" id="batch-mirror-coord" value="0" step="100" title="${escapeHtml(t('mirrorCoordHint'))}">
+          </div>
+        </div>
+        <button type="button" class="support-preset-btn" id="btn-batch-mirror">${t('multiMirrorRun')}</button>
+      </div>
+      <div class="prop-group">
+        <label>${t('multiRotate')}</label>
+        <select id="batch-rotate-angle">
+          <option value="90">90°</option>
+          <option value="180">180°</option>
+          <option value="270">270°</option>
+        </select>
+        <button type="button" class="support-preset-btn" id="btn-batch-rotate">${t('multiRotateRun')}</button>
+      </div>
+      <div class="prop-group">
+        <label>${t('multiArray')}</label>
+        <div class="prop-row">
+          <div class="prop-group"><label>dX (mm)</label><input type="number" id="batch-array-dx" value="${this.state.settings.gridSize || 1000}" step="100"></div>
+          <div class="prop-group"><label>dY (mm)</label><input type="number" id="batch-array-dy" value="0" step="100"></div>
+        </div>
+        <div class="prop-group">
+          <label>${t('multiArrayCount')}</label>
+          <input type="number" id="batch-array-count" value="1" min="1" max="100" step="1">
+        </div>
+        <button type="button" class="support-preset-btn" id="btn-batch-array">${t('multiArrayRun')}</button>
+      </div>
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-batch-delete">${t('multiDelete')}</button>
+      </div>
+    `;
+
+    const typeSel = document.getElementById('batch-member-type');
+    const sectionSel = document.getElementById('batch-section-name');
+    const fillSections = () => {
+      const sections = this.state.listSections('member', typeSel.value || firstType);
+      sectionSel.innerHTML = sections
+        .map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
+        .join('');
+    };
+    fillSections();
+    typeSel.addEventListener('change', fillSections);
+
+    const selectedIds = () => this.state.selectedMemberIds.slice();
+    const runBatch = fn => {
+      this.callbacks.onBeforeBigChange?.();
+      fn();
+      this.callbacks.onPropertyChange?.();
+    };
+
+    document.getElementById('btn-batch-apply-section')?.addEventListener('click', () => {
+      const type = typeSel.value;
+      const sectionName = sectionSel.value;
+      if (!sectionName) return;
+      runBatch(() => {
+        for (const id of selectedIds()) {
+          const member = this.state.getMember(id);
+          if (member && member.type === type) {
+            this.state.updateMember(id, { sectionName });
+          }
+        }
+      });
+    });
+
+    document.getElementById('btn-batch-mirror')?.addEventListener('click', () => {
+      const axis = document.getElementById('batch-mirror-axis')?.value === 'y' ? 'y' : 'x';
+      const coord = parseFloat(document.getElementById('batch-mirror-coord')?.value) || 0;
+      runBatch(() => {
+        const created = this.state.mirrorMembers(selectedIds(), { axis, coord });
+        this.state.selectMembers(created.map(m => m.id));
+      });
+    });
+
+    document.getElementById('btn-batch-rotate')?.addEventListener('click', () => {
+      const angle = parseInt(document.getElementById('batch-rotate-angle')?.value, 10) || 90;
+      runBatch(() => {
+        this.state.rotateMembers(selectedIds(), { angle });
+      });
+    });
+
+    document.getElementById('btn-batch-array')?.addEventListener('click', () => {
+      const dx = parseFloat(document.getElementById('batch-array-dx')?.value) || 0;
+      const dy = parseFloat(document.getElementById('batch-array-dy')?.value) || 0;
+      const count = parseInt(document.getElementById('batch-array-count')?.value, 10) || 1;
+      if (dx === 0 && dy === 0) return;
+      runBatch(() => {
+        this.state.arrayCopyMembers(selectedIds(), { dx, dy, count });
+      });
+    });
+
+    document.getElementById('btn-batch-delete')?.addEventListener('click', () => {
+      runBatch(() => {
+        for (const id of selectedIds()) {
+          this.state.removeMember(id);
+        }
+        this.state.clearSelection();
+      });
+    });
   }
 
   // Shared property-input binder used by every _renderXxxProperties method.
@@ -1255,6 +1421,10 @@ export class UI {
         </div>`;
     }
 
+    const loadCaseOptions = LOAD_CASES
+      .map(c => `<option value="${c}" ${((load.loadCase || 'DL') === c) ? 'selected' : ''}>${c} - ${t('loadCase' + c)}</option>`)
+      .join('');
+
     container.innerHTML = `
       <div class="prop-group">
         <label>${t('propType')}</label>
@@ -1263,6 +1433,10 @@ export class UI {
       <div class="prop-group">
         <label>${t('propLayer')}</label>
         <input type="text" value="${escapeHtml(levelLabel)}" disabled>
+      </div>
+      <div class="prop-group">
+        <label>${t('loadCaseLabel')}</label>
+        <select id="prop-ld-case">${loadCaseOptions}</select>
       </div>
       ${coordFields}
       ${valueFields}
@@ -1289,6 +1463,7 @@ export class UI {
     bind('prop-ld-my', 'my', parseFloat);
     bind('prop-ld-mz', 'mz', parseFloat);
     bind('prop-ld-color', 'color');
+    bind('prop-ld-case', 'loadCase');
   }
 
   _renderSupportProperties(container) {

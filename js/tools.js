@@ -26,11 +26,14 @@ export class ToolManager {
     this._surfaceStart = null;
     this._surfacePolyline = [];
     this._loadStart = null;
+    this._measureStart = null;
 
     // Select tool drag state
-    this._dragTarget = null; // { type: 'node'|'member', id, offsetX?, offsetY? }
+    this._dragTarget = null; // { type: 'node'|'member'|'group', ... }
     this._isDragging = false;
     this._dragStartPos = null;
+    this._marqueeStart = null;
+    this._marqueeAdditive = false;
 
     this._setupEvents();
   }
@@ -135,6 +138,8 @@ export class ToolManager {
       this._loadDown(e);
     } else if (tool === 'support') {
       this._supportDown(e);
+    } else if (tool === 'measure') {
+      this._measureDown(e);
     }
   }
 
@@ -159,6 +164,8 @@ export class ToolManager {
       this._surfaceMove(e);
     } else if (tool === 'load') {
       this._loadMove(e);
+    } else if (tool === 'measure') {
+      this._measureMove(e);
     }
 
     const world = this._getWorldPos(e);
@@ -194,12 +201,15 @@ export class ToolManager {
     if (e.key === 'Escape') {
       if ((this.state.currentTool === 'member' && this._memberStart) ||
           (this.state.currentTool === 'surface' && (this._surfaceStart || this._surfacePolyline.length)) ||
-          (this.state.currentTool === 'load' && this._loadStart)) {
+          (this.state.currentTool === 'load' && this._loadStart) ||
+          (this.state.currentTool === 'measure' && (this._measureStart || this.canvas2d.measure))) {
         this._memberStart = null;
         this._surfaceStart = null;
         this._surfacePolyline = [];
         this._loadStart = null;
+        this._measureStart = null;
         this.canvas2d.preview = null;
+        this.canvas2d.measure = null;
         this.onUpdate();
       } else {
         this.state.clearSelection();
@@ -228,11 +238,15 @@ export class ToolManager {
         this.history.save();
         this.state.removeSurface(this.state.selectedSurfaceId);
         this.onUpdate();
-      } else if (this.state.selectedMemberId) {
-        const member = this.state.getMember(this.state.selectedMemberId);
-        if (!this.state.isMemberSelectable(member)) return;
+      } else if (this.state.selectedMemberIds.length > 0) {
+        const removable = this.state.selectedMemberIds
+          .map(id => this.state.getMember(id))
+          .filter(member => member && this.state.isMemberSelectable(member));
+        if (!removable.length) return;
         this.history.save();
-        this.state.removeMember(this.state.selectedMemberId);
+        for (const member of removable) {
+          this.state.removeMember(member.id);
+        }
         this.onUpdate();
       }
     }
@@ -267,6 +281,21 @@ export class ToolManager {
     const world = this._getWorldPos(e);
     const tolerance = this._pickTolerance();
 
+    // Shift+click toggles members in/out of the multi-selection.
+    if (e.shiftKey) {
+      const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
+      if (member) {
+        this.state.toggleMemberSelection(member.id);
+        this._dragTarget = null;
+        this.onUpdate();
+        return;
+      }
+      // Shift+drag on empty space: additive marquee.
+      this._marqueeStart = { x: world.x, y: world.y };
+      this._marqueeAdditive = true;
+      return;
+    }
+
     // Click-only hits, in priority order: support (small target) > load >
     // surface. The first hit wins and becomes the exclusive selection.
     const hitTests = [
@@ -295,29 +324,51 @@ export class ToolManager {
       return;
     }
 
-    // Member hit: select and start dragging the whole member
+    // Member hit: select and start dragging. Clicking a member of the current
+    // multi-selection drags the whole group.
     const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
     if (member) {
-      this.state.select('member', member.id);
-      const n1 = this.state.getNode(member.startNodeId);
-      const n2 = this.state.getNode(member.endNodeId);
-      this._dragTarget = {
-        type: 'member',
-        id: member.id,
-        offsetStartX: n1.x - world.x,
-        offsetStartY: n1.y - world.y,
-        offsetEndX: n2.x - world.x,
-        offsetEndY: n2.y - world.y,
-      };
+      if (this.state.selectedMemberIds.length > 1 && this.state.isMemberSelected(member.id)) {
+        this._dragTarget = this._buildGroupDragTarget();
+      } else {
+        this.state.select('member', member.id);
+        const n1 = this.state.getNode(member.startNodeId);
+        const n2 = this.state.getNode(member.endNodeId);
+        this._dragTarget = {
+          type: 'member',
+          id: member.id,
+          offsetStartX: n1.x - world.x,
+          offsetStartY: n1.y - world.y,
+          offsetEndX: n2.x - world.x,
+          offsetEndY: n2.y - world.y,
+        };
+      }
       this._isDragging = false;
       this._dragStartPos = { x: world.x, y: world.y };
       this.onUpdate();
       return;
     }
 
-    this.state.clearSelection();
+    // Empty space: begin a marquee selection (selection is replaced on
+    // mouseup; a plain click still clears it there).
+    this._marqueeStart = { x: world.x, y: world.y };
+    this._marqueeAdditive = false;
     this._dragTarget = null;
-    this.onUpdate();
+  }
+
+  // Snapshot of every node in the multi-selection for group dragging.
+  _buildGroupDragTarget() {
+    const nodeStart = new Map();
+    for (const id of this.state.selectedMemberIds) {
+      const member = this.state.getMember(id);
+      if (!member) continue;
+      for (const nodeId of [member.startNodeId, member.endNodeId]) {
+        if (nodeStart.has(nodeId)) continue;
+        const node = this.state.getNode(nodeId);
+        if (node) nodeStart.set(nodeId, { x: node.x, y: node.y });
+      }
+    }
+    return { type: 'group', nodeStart };
   }
 
   _findSelectableMemberNodeAt(x, y, tolerance) {
@@ -356,6 +407,18 @@ export class ToolManager {
   }
 
   _selectMove(e) {
+    if (this._marqueeStart) {
+      const world = this._getWorldPos(e);
+      this.canvas2d.marquee = {
+        x1: this._marqueeStart.x,
+        y1: this._marqueeStart.y,
+        x2: world.x,
+        y2: world.y,
+      };
+      this.onUpdate();
+      return;
+    }
+
     if (!this._dragTarget || !this._dragStartPos) return;
 
     const world = this._getWorldPos(e);
@@ -384,15 +447,67 @@ export class ToolManager {
         this.state.updateNode(member.startNodeId, { x: newStartX, y: newStartY });
         this.state.updateNode(member.endNodeId, { x: newEndX, y: newEndY });
       }
+    } else if (this._dragTarget.type === 'group') {
+      // Snap the drag delta to grid steps so the whole group keeps its shape.
+      let gdx = dx;
+      let gdy = dy;
+      if (this.state.settings.snap) {
+        const gridSize = this.state.settings.gridSize || 1;
+        gdx = Math.round(dx / gridSize) * gridSize;
+        gdy = Math.round(dy / gridSize) * gridSize;
+      }
+      for (const [nodeId, start] of this._dragTarget.nodeStart) {
+        this.state.updateNode(nodeId, { x: start.x + gdx, y: start.y + gdy });
+      }
     }
 
     this.onUpdate();
   }
 
-  _selectUp(_e) {
+  _selectUp(e) {
+    if (this._marqueeStart) {
+      this._finishMarquee(e);
+      return;
+    }
     this._dragTarget = null;
     this._isDragging = false;
     this._dragStartPos = null;
+  }
+
+  _finishMarquee(e) {
+    const world = this._getWorldPos(e);
+    const start = this._marqueeStart;
+    this._marqueeStart = null;
+    this.canvas2d.marquee = null;
+
+    const movedPx = Math.hypot(world.x - start.x, world.y - start.y) * this.canvas2d.camera.scale;
+    if (movedPx <= 3) {
+      // Plain click on empty space
+      if (!this._marqueeAdditive) this.state.clearSelection();
+      this.onUpdate();
+      return;
+    }
+
+    const minX = Math.min(start.x, world.x);
+    const maxX = Math.max(start.x, world.x);
+    const minY = Math.min(start.y, world.y);
+    const maxY = Math.max(start.y, world.y);
+    const inside = (x, y) => x >= minX && x <= maxX && y >= minY && y <= maxY;
+
+    const hitIds = [];
+    for (const member of this.state.members) {
+      if (!this.state.isMemberSelectable(member)) continue;
+      const n1 = this.state.getNode(member.startNodeId);
+      const n2 = this.state.getNode(member.endNodeId);
+      if (!n1 || !n2) continue;
+      if (inside(n1.x, n1.y) && inside(n2.x, n2.y)) hitIds.push(member.id);
+    }
+
+    const ids = this._marqueeAdditive
+      ? [...new Set([...this.state.selectedMemberIds, ...hitIds])]
+      : hitIds;
+    this.state.selectMembers(ids);
+    this.onUpdate();
   }
 
   // --- Member Tool ---
@@ -788,6 +903,40 @@ export class ToolManager {
       endY: snapped.y,
       mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
       label: t(this.state.loadDraftType || 'load'),
+    };
+    this.onUpdate();
+  }
+
+  // --- Measure Tool ---
+
+  _measureDown(e) {
+    const snapped = this._getSnappedPos(e);
+    if (!this._measureStart) {
+      this._measureStart = { x: snapped.x, y: snapped.y };
+      this.canvas2d.measure = null;
+      this.onUpdate();
+      return;
+    }
+    this.canvas2d.measure = {
+      x1: this._measureStart.x,
+      y1: this._measureStart.y,
+      x2: snapped.x,
+      y2: snapped.y,
+      done: true,
+    };
+    this._measureStart = null;
+    this.onUpdate();
+  }
+
+  _measureMove(e) {
+    if (!this._measureStart) return;
+    const snapped = this._getSnappedPos(e);
+    this.canvas2d.measure = {
+      x1: this._measureStart.x,
+      y1: this._measureStart.y,
+      x2: snapped.x,
+      y2: snapped.y,
+      done: false,
     };
     this.onUpdate();
   }

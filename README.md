@@ -1,4 +1,4 @@
-# Element Modeler (Ver.1.0.4)
+# Element Modeler (Ver.1.1.0)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -58,6 +58,19 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 壁要素は梁線と重なりにくいよう平面上でオフセット表示
 - 断面変更時に色が更新され、平面図と3D表示の両方へ連動
 - Undo / Redo
+- 通り芯（X/Y方向のグリッド線）の定義・名前/座標編集・2D表示・交点スナップ（通り芯管理モーダル）
+- 複数選択（Shift+クリックで追加/解除、空白ドラッグで矩形範囲選択）と一括編集
+  - 一括断面変更（種別ごと）、一括削除、グループドラッグ移動
+  - ミラーコピー（X=一定 / Y=一定の対称軸を指定）
+  - 回転（選択中心まわりに90/180/270°、その場変換）
+  - 配列複製（dX/dY オフセット × 複製数）
+- 計測ツール（2点間の距離・dX・dYを表示、`D`キー）
+- 節点マージ（許容差内の近接節点を統合）と交差部材の自動分割（交差・T字接合部で梁/水平ブレースを分割し節点共有）
+- 荷重ケース（DL/LL/EQX/EQY/WX/WY）を荷重ごとに設定、荷重組合せ（ケース×係数）を管理
+- DXF下絵インポート（LINE/POLYLINE/CIRCLE/ARC を下絵表示、表示切替・クリア）
+- 軸組図ビュー（通り芯を選んで構面の立面を表示。柱・梁・ブレース・レベル線・直交通り芯）
+- 自動保存とクラッシュ復元（localStorageへ定期保存、起動時に復元確認）
+- サンプルモデル（平屋+切妻屋根 / 2階建フレーム）を設定モーダルからワンクリック読込
 
 ### 3D Viewer
 - 線材を断面寸法（b x h）を反映した直方体として3D表示
@@ -70,6 +83,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 屋根部材の役割色を2D/3D表示で共通化
 - 荷重（面荷重=赤スラブ、線荷重=オレンジ線、点荷重=紫球体）を3D表示
 - 支点を3D表示（固定=コーン+プレート、ローラー/部分拘束=コーン+球体）
+- 3Dビューで部材・面材をクリックすると2Dと共通の選択状態になり、プロパティパネルに反映（選択要素はハイライト表示）
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
 - CDNからThree.jsの読み込みに失敗した場合はユーザーにエラー通知
@@ -108,6 +122,9 @@ CADデータ（図面情報）とユーザー定義（断面・バネ）は**別
   - インポート時、同名の定義が既に存在する場合（CADファイルから読込済みの定義を含む）はスキップされ、件数が通知されます
   - 断面定義・バネ定義にはメモ（説明テキスト）を付与可能
 - **数量CSV/詳細CSV出力**（右パネルの集計）: 集計CSVは階別合計と屋根部材の役割別合計、詳細CSVは面材別・屋根部材別の明細を出力
+- **解析用モデル出力**（ツールバー）: 共有3D節点・要素コネクティビティ・断面・材端条件・支点・荷重ケース別荷重・荷重組合せをソルバー中立のJSON/CSVで出力（単位: mm, N）
+- **図面出力**（ツールバー）: 平面図をDXF（R12系 ENTITIES、部材/面材/通り芯をレイヤー分け）またはPNGで出力
+- **DXF下絵読込**（ツールバー）: DXFのLINE/LWPOLYLINE/POLYLINE/CIRCLE/ARCを下絵として取り込み（CADデータに保存される）
 - 部材IDはアプリ内部管理のみ（JSONには出力しない）
 - schemaVersion による互換性管理
 
@@ -141,9 +158,12 @@ CADデータ（図面情報）とユーザー定義（断面・バネ）は**別
 | `F` | Surface tool - 面材 |
 | `L` | Load tool - 荷重 |
 | `S` | Support tool - 支点 |
+| `D` | Measure tool - 計測 |
+| `Shift + Click` (Element tool) | Add / remove member in multi-selection |
+| `Drag on empty space` (Element tool) | Marquee (rectangle) member selection |
 | `Enter` (Surface Polyline) | Close polyline to polygon |
 | `Esc` | Cancel / Deselect / Close modal |
-| `Delete` | Delete selected element |
+| `Delete` | Delete selected element(s) |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Right Drag` / `Middle Drag` / `Space + Drag` | Pan |

@@ -36,6 +36,6 @@ test('2D/3D/member panel renderers use member color resolver', async () => {
   assert.match(viewer3dSource, /import\s+\{[^}]*resolveMemberColor[^}]*\}\s+from\s+'\.\/element-style\.js';/);
   assert.match(uiSource, /import\s+\{[^}]*resolveMemberColor[^}]*roofRoleLabelKey[^}]*\}\s+from\s+'\.\/element-style\.js';/);
   assert.match(canvas2dSource, /resolveMemberColor\(m\)/);
-  assert.match(viewer3dSource, /resolveMemberColor\(m\)/);
+  assert.match(viewer3dSource, /resolveMemberColor\(member\)/);
   assert.match(uiSource, /resolveMemberColor\(member\)/);
 });

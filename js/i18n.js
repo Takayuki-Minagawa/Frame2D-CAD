@@ -301,6 +301,94 @@ const dict = {
     // Help modal
     helpTitle: '簡易マニュアル',
     helpClose: '閉じる',
+
+    // Measure tool
+    measureTool: '計測',
+    toolMeasure: 'ツール: 計測',
+
+    // Multi-selection / batch edit
+    multiSelectCount: '選択数',
+    multiSectionApply: '一括断面変更（種別ごと）',
+    multiApply: '選択部材に適用',
+    multiMirror: 'ミラーコピー（軸と位置）',
+    multiMirrorRun: 'ミラー実行',
+    mirrorAxisX: 'X=一定（縦軸）',
+    mirrorAxisY: 'Y=一定（横軸）',
+    mirrorCoordHint: '対称軸の座標 (mm)',
+    multiRotate: '回転（選択中心・その場）',
+    multiRotateRun: '回転実行',
+    multiArray: '配列複製（オフセット）',
+    multiArrayCount: '複製数',
+    multiArrayRun: '配列複製実行',
+    multiDelete: '選択部材を削除',
+
+    // Grid axes (通り芯)
+    axesManage: '通り芯管理',
+    showAxes: '通り芯表示',
+    axisDir: '方向',
+    axisName: '名前',
+    axisCoord: '座標 (mm)',
+    axisAddX: 'X通りを追加',
+    axisAddY: 'Y通りを追加',
+    axisDelete: '削除',
+
+    // Load cases / combinations
+    loadCaseLabel: '荷重ケース',
+    loadCaseDL: '固定荷重',
+    loadCaseLL: '積載荷重',
+    loadCaseEQX: '地震X',
+    loadCaseEQY: '地震Y',
+    loadCaseWX: '風X',
+    loadCaseWY: '風Y',
+    comboManage: '荷重組合せ',
+    comboName: '組合せ名',
+    comboAdd: '組合せを追加',
+    comboDelete: '削除',
+
+    // Analysis / drawing export
+    analysisExport: '解析JSON出力',
+    analysisCsvExport: '解析CSV出力',
+    analysisExported: '解析用モデル(JSON)を出力しました。',
+    analysisCsvExported: '解析用モデル(CSV)を出力しました。',
+    dxfExport: '図面DXF出力',
+    dxfExported: '平面図をDXF出力しました。',
+    pngExport: 'PNG出力',
+    pngExported: '平面図をPNG出力しました。',
+
+    // DXF underlay
+    underlayImport: '下絵DXF読込',
+    underlayClear: '下絵クリア',
+    showUnderlay: '下絵表示',
+    underlayImported: '{n}件の下絵要素を読み込みました。',
+    underlayImportFailed: '下絵の読込に失敗しました: ',
+    underlayCleared: '下絵を削除しました。',
+
+    // Model cleanup
+    mergeNodes: '節点マージ',
+    mergeNodesDone: '{n}個の節点を統合しました。',
+    mergeNodesNone: '統合対象の節点はありませんでした。',
+    splitMembers: '交差部材を分割',
+    splitMembersDone: '{n}本の部材を分割し{c}本を再作成しました。',
+    splitMembersNone: '分割対象の交差はありませんでした。',
+
+    // Elevation view
+    elevationOpen: '軸組図',
+    elevationTitle: '軸組図',
+    elevationAxis: '通り芯',
+    elevationNoAxes: '通り芯がありません。通り芯管理で追加してください。',
+    elevationNoMembers: 'この通りに部材がありません。',
+
+    // Autosave
+    autosaveRestorePrompt: '自動保存データがあります（{time}）。復元しますか？',
+    autosaveRestored: '自動保存データを復元しました。',
+    autosaveRestoreFailed: '自動保存データの復元に失敗しました。',
+
+    // Sample models
+    sampleModels: 'サンプルモデル',
+    sampleGable: '平屋+切妻屋根',
+    sampleFrame: '2階建フレーム',
+    sampleLoaded: 'サンプルモデルを読み込みました。',
+    sampleLoadFailed: 'サンプルモデルの読み込みに失敗しました。',
   },
 
   en: {
@@ -603,6 +691,94 @@ const dict = {
     // Help modal
     helpTitle: 'Quick Manual',
     helpClose: 'Close',
+
+    // Measure tool
+    measureTool: 'Measure',
+    toolMeasure: 'Tool: Measure',
+
+    // Multi-selection / batch edit
+    multiSelectCount: 'Selected',
+    multiSectionApply: 'Batch section change (per type)',
+    multiApply: 'Apply to selection',
+    multiMirror: 'Mirror copy (axis and position)',
+    multiMirrorRun: 'Run mirror',
+    mirrorAxisX: 'X = const (vertical)',
+    mirrorAxisY: 'Y = const (horizontal)',
+    mirrorCoordHint: 'Mirror axis coordinate (mm)',
+    multiRotate: 'Rotate (around selection center)',
+    multiRotateRun: 'Run rotate',
+    multiArray: 'Array copy (offset)',
+    multiArrayCount: 'Copies',
+    multiArrayRun: 'Run array copy',
+    multiDelete: 'Delete selected members',
+
+    // Grid axes (通り芯)
+    axesManage: 'Grid Axes',
+    showAxes: 'Show axes',
+    axisDir: 'Dir',
+    axisName: 'Name',
+    axisCoord: 'Coord (mm)',
+    axisAddX: 'Add X axis',
+    axisAddY: 'Add Y axis',
+    axisDelete: 'Delete',
+
+    // Load cases / combinations
+    loadCaseLabel: 'Load case',
+    loadCaseDL: 'Dead load',
+    loadCaseLL: 'Live load',
+    loadCaseEQX: 'Seismic X',
+    loadCaseEQY: 'Seismic Y',
+    loadCaseWX: 'Wind X',
+    loadCaseWY: 'Wind Y',
+    comboManage: 'Load Combinations',
+    comboName: 'Name',
+    comboAdd: 'Add combination',
+    comboDelete: 'Delete',
+
+    // Analysis / drawing export
+    analysisExport: 'Analysis JSON',
+    analysisCsvExport: 'Analysis CSV',
+    analysisExported: 'Analysis model (JSON) exported.',
+    analysisCsvExported: 'Analysis model (CSV) exported.',
+    dxfExport: 'Plan DXF',
+    dxfExported: 'Plan exported as DXF.',
+    pngExport: 'Plan PNG',
+    pngExported: 'Plan exported as PNG.',
+
+    // DXF underlay
+    underlayImport: 'Import DXF underlay',
+    underlayClear: 'Clear underlay',
+    showUnderlay: 'Show underlay',
+    underlayImported: '{n} underlay entities imported.',
+    underlayImportFailed: 'Underlay import failed: ',
+    underlayCleared: 'Underlay cleared.',
+
+    // Model cleanup
+    mergeNodes: 'Merge nodes',
+    mergeNodesDone: '{n} node(s) merged.',
+    mergeNodesNone: 'No nodes to merge.',
+    splitMembers: 'Split crossing members',
+    splitMembersDone: '{n} member(s) split into {c} segments.',
+    splitMembersNone: 'No crossing members found.',
+
+    // Elevation view
+    elevationOpen: 'Elevation',
+    elevationTitle: 'Frame Elevation',
+    elevationAxis: 'Grid axis',
+    elevationNoAxes: 'No grid axes. Add one in Grid Axes management.',
+    elevationNoMembers: 'No members on this frame.',
+
+    // Autosave
+    autosaveRestorePrompt: 'Autosaved data found ({time}). Restore it?',
+    autosaveRestored: 'Autosaved data restored.',
+    autosaveRestoreFailed: 'Failed to restore autosaved data.',
+
+    // Sample models
+    sampleModels: 'Sample models',
+    sampleGable: 'Gable-roof house',
+    sampleFrame: 'Two-story frame',
+    sampleLoaded: 'Sample model loaded.',
+    sampleLoadFailed: 'Failed to load sample model.',
   },
 };
 

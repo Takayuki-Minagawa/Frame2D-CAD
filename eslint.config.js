@@ -20,6 +20,8 @@ export default [
         confirm: "readonly",
         console: "readonly",
         structuredClone: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
       },
     },
     rules: {
