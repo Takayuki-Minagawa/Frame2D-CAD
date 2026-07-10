@@ -235,10 +235,11 @@ function layerToken(value) {
     c => `_${c.codePointAt(0).toString(16).toUpperCase()}_`);
 }
 
-// AutoCAD caps layer names at 255 characters, and escaping quadruples the
-// length of a non-passthrough character, so a 61-character level id already
-// overflows the cap ('MEMBER_BEAM_' + 61 x 4 = 256).
-const MAX_LAYER_NAME_LENGTH = 255;
+// Release 14 and earlier parameters cap layer and other object names at 31
+// characters. Release 12 output therefore uses the same conservative limit.
+// Escaped or imported ids can exceed that quickly, so long names are shortened
+// deterministically below while retaining a hash of the complete name.
+const MAX_LAYER_NAME_LENGTH = 31;
 
 // FNV-1a run with two seeds: 64 bits of uppercase hex, enough to keep the
 // truncated names apart without pulling in a hash dependency.
@@ -254,13 +255,16 @@ function layerHash(text) {
   return hex.toUpperCase();
 }
 
-// Joins the layer name parts and keeps the result within AutoCAD's limit. An
-// over-long name is truncated and suffixed with a hash of the full name, so
-// names that share a prefix stay distinct. The suffix is uppercase hex, so the
-// case-insensitive injectivity of layerToken() carries over.
+// Joins the layer name parts and keeps the result within the R12 limit. A name
+// at the limit or longer is shortened and suffixed with a hash of the full
+// name, so names that share a prefix stay distinct. The suffix is uppercase
+// hex, so the case-insensitive injectivity of layerToken() carries over.
 function layerName(...parts) {
   const name = parts.join('_');
-  if (name.length <= MAX_LAYER_NAME_LENGTH) return name;
+  // Keep unhashed names strictly shorter than the cap. Hashed names are
+  // exactly 31 characters, which gives the two forms disjoint namespaces and
+  // prevents a raw name from reproducing a shortened name plus its suffix.
+  if (name.length < MAX_LAYER_NAME_LENGTH) return name;
   const suffix = `-${layerHash(name)}`;
   return name.slice(0, MAX_LAYER_NAME_LENGTH - suffix.length) + suffix;
 }

@@ -16,9 +16,9 @@ export const ANALYSIS_FORMAT_VERSION = 1;
 export const NODE_MERGE_TOLERANCE = 0.1;
 
 // Node pool that merges points by real Euclidean distance. A spatial hash
-// with cell size = tolerance keeps lookups O(1); a point within tolerance of
-// an existing node is at most one cell away in each axis, so scanning the
-// 3x3x3 neighborhood is sufficient.
+// with cell size = tolerance keeps lookups O(1). Rounded cell indices can put
+// points within tolerance up to two cells apart in an axis, so the lookup
+// scans the full 5x5x5 neighborhood.
 function createNodePool(tolerance) {
   const nodes = [];
   const cells = new Map();

@@ -156,7 +156,7 @@ test('buildDXF layer names stay distinct under case-insensitive comparison', () 
   assert.notEqual(layers[0].toUpperCase(), layers[1].toUpperCase());
 });
 
-test('buildDXF keeps layer names within the 255 character limit', () => {
+test('buildDXF keeps layer names within the R12 31 character limit', () => {
   const state = new AppState();
   const n1 = state.addNode(0, 0);
   const n2 = state.addNode(3000, 0);
@@ -164,17 +164,35 @@ test('buildDXF keeps layer names within the 255 character limit', () => {
   const n3 = state.addNode(0, 1000);
   const n4 = state.addNode(3000, 1000);
   const m2 = state.addMember(n3.id, n4.id, { type: 'beam' });
-  // Each lowercase char escapes to 4 characters, so 61 of them plus the
-  // 'MEMBER_BEAM_' prefix would reach 256 - one over AutoCAD's limit. The two
-  // ids share their first 60 characters, so truncation alone would merge them.
+  // The two ids share a long prefix, so truncation alone would merge them.
   state.getMember(m1.id).levelId = `${'a'.repeat(60)}b`;
   state.getMember(m2.id).levelId = `${'a'.repeat(60)}c`;
 
   const dxf = buildDXF(state);
   const layers = [...dxf.matchAll(/\r\n8\r\n(MEMBER_BEAM\S*)/g)].map(m => m[1]);
   assert.equal(layers.length, 2);
-  assert.ok(layers.every(l => l.length <= 255), 'layer names must fit the limit');
+  assert.ok(layers.every(l => l.length <= 31), 'R12 layer names must fit the limit');
   assert.notEqual(layers[0].toUpperCase(), layers[1].toUpperCase());
+});
+
+test('buildDXF separates raw and hash-shortened layer-name namespaces', () => {
+  const layerFor = levelId => {
+    const state = new AppState();
+    const n1 = state.addNode(0, 0);
+    const n2 = state.addNode(3000, 0);
+    state.addMember(n1.id, n2.id, { type: 'beam', levelId });
+    const dxf = buildDXF(state);
+    return dxf.match(/\r\n8\r\n(MEMBER_BEAM\S*)/)?.[1];
+  };
+
+  const longLayer = layerFor('A'.repeat(100));
+  assert.equal(longLayer.length, 31);
+  // When exact-limit names were left raw, the suffix-bearing portion of a
+  // shortened name could be supplied as a raw id to reproduce it.
+  const rawCandidateId = longLayer.slice('MEMBER_BEAM_'.length);
+  const candidateLayer = layerFor(rawCandidateId);
+  assert.equal(candidateLayer.length, 31);
+  assert.notEqual(candidateLayer.toUpperCase(), longLayer.toUpperCase());
 });
 
 test('buildDXF surface layer names also respect the length limit', () => {
@@ -185,7 +203,7 @@ test('buildDXF surface layer names also respect the length limit', () => {
   const dxf = buildDXF(state);
   const layers = [...dxf.matchAll(/\r\n8\r\n(SURFACE\S*)/g)].map(m => m[1]);
   assert.ok(layers.length > 0);
-  assert.ok(layers.every(l => l.length <= 255));
+  assert.ok(layers.every(l => l.length <= 31));
 });
 
 test('buildDXF neutralizes newlines in axis names', () => {
