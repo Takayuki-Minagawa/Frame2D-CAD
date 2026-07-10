@@ -149,6 +149,20 @@ test('selectDrawn keeps single- and multi-select ids in sync', () => {
   assert.equal(state.selectedSurfaceId, null);
 });
 
+test('selectDrawn clears a stale support selection', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(1000, 0);
+  const support = state.addSupport(0, 0, { dx: true, dy: true, dz: true });
+  state.select('support', support.id);
+
+  const member = state.addMember(n1.id, n2.id, { type: 'beam' });
+  state.selectDrawn('member', member.id);
+  // Delete after drawing must act on the new member, not the old support.
+  assert.equal(state.selectedSupportId, null);
+  assert.equal(state.selectedMemberId, member.id);
+});
+
 test('removing one member from a multi-selection normalizes to single select', () => {
   const state = new AppState();
   const n1 = state.addNode(0, 0);

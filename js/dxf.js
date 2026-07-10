@@ -69,21 +69,23 @@ export function parseDXF(text) {
         entities.push({ type: 'line', x1, y1, x2, y2 });
       }
     } else if (type === 'LWPOLYLINE') {
-      // Vertex order is x (10), y (20), then an optional bulge (42) that
-      // describes the arc from this vertex to the next one.
-      const points = [];
-      let x = null;
+      // Each code 10 starts a new vertex; its y (20) and optional bulge (42,
+      // the arc to the next vertex) may follow in any order — the DXF spec
+      // does not fix group-code order within a vertex.
+      const raw = [];
+      let current = null;
       for (const p of props) {
-        if (p.code === 10) x = Number(p.value);
-        else if (p.code === 20 && x !== null) {
-          const y = Number(p.value);
-          if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y, bulge: 0 });
-          x = null;
-        } else if (p.code === 42 && points.length) {
+        if (p.code === 10) {
+          current = { x: Number(p.value), y: null, bulge: 0 };
+          raw.push(current);
+        } else if (p.code === 20 && current) {
+          current.y = Number(p.value);
+        } else if (p.code === 42 && current) {
           const b = Number(p.value);
-          if (Number.isFinite(b)) points[points.length - 1].bulge = b;
+          if (Number.isFinite(b)) current.bulge = b;
         }
       }
+      const points = raw.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
       const flags = num(70) || 0;
       if (points.length >= 2) {
         const closed = (flags & 1) === 1;
@@ -206,8 +208,13 @@ function circleEntity(out, layer, cx, cy, r) {
 }
 
 function textEntity(out, layer, x, y, height, text) {
+  // DXF is a line-based format: a newline inside the value would end the
+  // group and let the rest of the string inject arbitrary entities. Strip
+  // all control characters from user-supplied text.
+  // eslint-disable-next-line no-control-regex
+  const safe = String(text).replace(/[\u0000-\u001F\u007F]/g, ' ');
   out.push('0', 'TEXT', '8', layer, '10', fmt(x), '20', fmt(y), '30', '0',
-    '40', fmt(height), '1', String(text));
+    '40', fmt(height), '1', safe);
 }
 
 const MEMBER_LAYERS = {
@@ -217,10 +224,12 @@ const MEMBER_LAYERS = {
   vbrace: 'MEMBER_VBRACE',
 };
 
-// DXF layer names allow a restricted character set; ids/names outside it are
-// mapped to '_'.
+// DXF layer names allow a restricted character set. Characters outside it
+// (and '_' itself, which delimits the escapes) are encoded as '_<hex>_' so
+// that distinct inputs can never collapse to the same layer name.
 function layerToken(value) {
-  return String(value).replace(/[^A-Za-z0-9_-]/g, '_');
+  return String(value).replace(/[^A-Za-z0-9-]/g,
+    c => `_${c.codePointAt(0).toString(16).toUpperCase()}_`);
 }
 
 // Builds a DXF document of the plan drawing. options.levelId limits the

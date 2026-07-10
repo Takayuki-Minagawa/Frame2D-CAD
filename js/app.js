@@ -267,7 +267,7 @@ document.getElementById('file-underlay-import')?.addEventListener('change', asyn
   if (!file) return;
   try {
     const { count } = await importDXFUnderlay(file, state);
-    state.settings.showUnderlay = true;
+    state.updateSetting('showUnderlay', true);
     const chk = document.getElementById('chk-show-underlay');
     if (chk) chk.checked = true;
     update();
@@ -286,12 +286,12 @@ document.getElementById('btn-underlay-clear')?.addEventListener('click', () => {
 });
 
 document.getElementById('chk-show-underlay')?.addEventListener('change', (e) => {
-  state.settings.showUnderlay = e.target.checked;
+  state.updateSetting('showUnderlay', e.target.checked);
   update();
 });
 
 document.getElementById('chk-show-axes')?.addEventListener('change', (e) => {
-  state.settings.showAxes = e.target.checked;
+  state.updateSetting('showAxes', e.target.checked);
   update();
 });
 

@@ -101,6 +101,59 @@ test('parseDXF expands LWPOLYLINE bulge segments into arc points', () => {
   assert.deepEqual(poly.points.at(-1), { x: 2000, y: 0 });
 });
 
+test('parseDXF reads bulge regardless of group-code order within a vertex', () => {
+  // Same semicircle as above, but the bulge (42) precedes the y value (20):
+  // the DXF spec does not fix group-code order within a vertex.
+  const dxf = [
+    '0', 'SECTION', '2', 'ENTITIES',
+    '0', 'LWPOLYLINE', '8', 'PLAN', '90', '2', '70', '0',
+    '10', '0', '42', '1', '20', '0', '10', '2000', '20', '0',
+    '0', 'ENDSEC',
+    '0', 'EOF',
+  ].join('\r\n');
+
+  const { entities } = parseDXF(dxf);
+  const poly = entities.find(e => e.type === 'polyline');
+  assert.ok(poly.points.length > 2, 'bulge segment should be tessellated');
+  const apex = poly.points.find(p => Math.abs(p.x - 1000) < 1 && Math.abs(p.y + 1000) < 1);
+  assert.ok(apex, 'expected the semicircle apex among the expanded points');
+});
+
+test('buildDXF layer names cannot collide after sanitizing', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(3000, 0);
+  const m1 = state.addMember(n1.id, n2.id, { type: 'beam' });
+  const n3 = state.addNode(0, 1000);
+  const n4 = state.addNode(3000, 1000);
+  const m2 = state.addMember(n3.id, n4.id, { type: 'beam' });
+  // Level ids that a plain "map to '_'" sanitizer would both turn into L_1.
+  state.getMember(m1.id).levelId = 'L_1';
+  state.getMember(m2.id).levelId = 'L*1';
+
+  const dxf = buildDXF(state);
+  const layers = [...dxf.matchAll(/\r\n8\r\n(MEMBER_BEAM\S*)/g)].map(m => m[1]);
+  assert.equal(layers.length, 2);
+  assert.notEqual(layers[0], layers[1]);
+});
+
+test('buildDXF neutralizes newlines in axis names', () => {
+  const state = new AppState();
+  state.addNode(0, 0);
+  const axis = state.addAxis('x', 'X1', 0);
+  // Simulates a malicious or corrupted file: a newline in the name would
+  // otherwise terminate the TEXT value and inject a new entity.
+  state.getAxis(axis.id).name = 'X1\r\n0\r\nLINE\r\n8\r\nEVIL\r\n10\r\n0\r\n20\r\n0\r\n11\r\n9\r\n21\r\n9';
+
+  const dxf = buildDXF(state);
+  // The whole name must stay on the TEXT value line: no payload token may
+  // start a line of its own (which is what makes it a DXF group).
+  assert.ok(!dxf.includes('\r\nEVIL'), 'payload must not become its own DXF group');
+  const { entities } = parseDXF(dxf);
+  // Only the axis line itself; the injected LINE entity must not appear.
+  assert.equal(entities.filter(e => e.type === 'line').length, 1);
+});
+
 test('buildDXF can limit output to one level', () => {
   const state = new AppState();
   const n1 = state.addNode(0, 0);

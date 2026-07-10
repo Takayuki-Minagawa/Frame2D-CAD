@@ -31,6 +31,21 @@ test('axis-only and underlay-only work is autosaved', () => {
   assert.equal(modelHasContent(withUnderlay.toJSON()), true);
 });
 
+test('settings-only changes are autosaved', () => {
+  const state = new AppState();
+  const before = state.revision;
+  state.updateSetting('snap', false);
+  // The revision bump lets the autosave loop notice the change...
+  assert.ok(state.revision > before);
+  // ...and the snapshot counts as content even without drawn elements.
+  assert.equal(modelHasContent(state.toJSON()), true);
+
+  // Re-assigning the same value is not a change.
+  const rev = state.revision;
+  state.updateSetting('snap', false);
+  assert.equal(state.revision, rev);
+});
+
 test('edited load combinations are autosaved', () => {
   const edited = new AppState();
   edited.updateLoadCombination(edited.loadCombinations[0].id, { factors: { DL: 1.3 } });

@@ -83,6 +83,7 @@ test('cross vertical braces expand into two diagonal elements', () => {
   const n2 = state.addNode(2000, 0);
   const brace = state.addMember(n1.id, n2.id, {
     type: 'vbrace', levelId: gl.id, topLevelId: upper.id, bracePattern: 'cross',
+    endI: { condition: 'rigid' }, endJ: { condition: 'pin' },
   });
 
   const model = buildAnalysisModel(state);
@@ -95,6 +96,12 @@ test('cross vertical braces expand into two diagonal elements', () => {
   // The second diagonal mirrors the first: same node set, opposite pairing.
   assert.equal(d2.nodeI, model.nodes.find(n => n.x === 2000 && n.z === gl.z).id);
   assert.equal(d2.nodeJ, model.nodes.find(n => n.x === 0 && n.z === upper.z).id);
+  // End conditions follow the plan endpoints: the mirrored diagonal starts at
+  // plan point 2, so its end I carries the member's end J condition.
+  assert.equal(d1.endI.condition, 'rigid');
+  assert.equal(d1.endJ.condition, 'pin');
+  assert.equal(d2.endI.condition, 'pin');
+  assert.equal(d2.endJ.condition, 'rigid');
 });
 
 test('nodes merge by real distance even across rounding-cell boundaries', () => {
@@ -108,6 +115,21 @@ test('nodes merge by real distance even across rounding-cell boundaries', () => 
 
   const model = buildAnalysisModel(state);
   // 0.049 and 0.051 are 0.002mm apart -> one shared node (3 total).
+  assert.equal(model.nodes.length, 3);
+});
+
+test('nodes exactly at the merge tolerance still merge', () => {
+  const state = new AppState();
+  // 0.4 - 0.3 overshoots 0.1 by a few ULP in floating point; the pool must
+  // still treat the pair as exactly-at-tolerance and merge it.
+  const a = state.addNode(0.3, 0);
+  const b = state.addNode(1000, 0);
+  state.addMember(a.id, b.id, { type: 'beam' });
+  const c = state.addNode(0.4, 0);
+  const d = state.addNode(1000, 1000);
+  state.addMember(c.id, d.id, { type: 'beam' });
+
+  const model = buildAnalysisModel(state);
   assert.equal(model.nodes.length, 3);
 });
 

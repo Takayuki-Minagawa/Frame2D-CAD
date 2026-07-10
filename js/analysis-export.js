@@ -23,6 +23,11 @@ function createNodePool(tolerance) {
   const nodes = [];
   const cells = new Map();
   const cellIndex = v => Math.round(v / tolerance);
+  // Distances exactly at the tolerance must merge; floating-point subtraction
+  // can overshoot by a few ULP (e.g. 0.4 - 0.3 > 0.1), and at km-scale
+  // coordinates the ULP itself approaches 1e-10 mm. An epsilon of 1e-6 x
+  // tolerance absorbs both while staying far below any real gap.
+  const mergeDistance = tolerance * (1 + 1e-6);
 
   return {
     nodes,
@@ -36,7 +41,7 @@ function createNodePool(tolerance) {
             const bucket = cells.get(`${cx + dx}|${cy + dy}|${cz + dz}`);
             if (!bucket) continue;
             for (const node of bucket) {
-              if (Math.hypot(node.x - x, node.y - y, node.z - z) <= tolerance) {
+              if (Math.hypot(node.x - x, node.y - y, node.z - z) <= mergeDistance) {
                 return node.id;
               }
             }
@@ -97,7 +102,7 @@ export function buildAnalysisModel(state) {
   const pool = createNodePool(NODE_MERGE_TOLERANCE);
 
   const elements = [];
-  const pushElement = (member, id, nodeI, nodeJ) => {
+  const pushElement = (member, id, nodeI, nodeJ, { swapEnds = false } = {}) => {
     if (nodeI === nodeJ) return; // zero-length after 3D resolution
     elements.push({
       id,
@@ -108,8 +113,8 @@ export function buildAnalysisModel(state) {
       material: member.material || 'steel',
       b: member.section?.b ?? null,
       h: member.section?.h ?? null,
-      endI: cloneEnd(member.endI),
-      endJ: cloneEnd(member.endJ),
+      endI: cloneEnd(swapEnds ? member.endJ : member.endI),
+      endJ: cloneEnd(swapEnds ? member.endI : member.endJ),
       levelId: member.levelId,
       roofRole: member.roofRole || null,
       bracePattern: member.type === 'vbrace' ? (member.bracePattern || 'single') : null,
@@ -126,11 +131,13 @@ export function buildAnalysisModel(state) {
       pool.idFor(n1.x, n1.y, startZ),
       pool.idFor(n2.x, n2.y, endZ));
     // A cross (X) brace is one CAD member but two analysis diagonals: the
-    // second one mirrors the plan endpoints between the same two levels.
+    // second one mirrors the plan endpoints between the same two levels, so
+    // its end conditions swap with the endpoints (end I sits on plan point 2).
     if (member.type === 'vbrace' && member.bracePattern === 'cross') {
       pushElement(member, `${member.id}X`,
         pool.idFor(n2.x, n2.y, startZ),
-        pool.idFor(n1.x, n1.y, endZ));
+        pool.idFor(n1.x, n1.y, endZ),
+        { swapEnds: true });
     }
   }
 

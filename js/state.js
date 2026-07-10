@@ -144,6 +144,14 @@ export class AppState {
     this.revision += 1;
   }
 
+  // Settings are persisted with the model, so edits must bump the revision —
+  // otherwise a settings-only change would never reach the autosave snapshot.
+  updateSetting(key, value) {
+    if (this.settings[key] === value) return;
+    this.settings[key] = value;
+    this._touch();
+  }
+
   // Resets selection, tool, and draft state to the initial defaults.
   // activeLevelId / surfaceDraftTopLevelId are intentionally excluded: they
   // are derived from the level list by the constructor and loadJSON.
@@ -200,11 +208,11 @@ export class AppState {
   }
 
   // Selection applied after a draw tool creates an element: the new element
-  // becomes the only member/surface/load selection (single- and multi-select
-  // fields stay in sync). Unlike select(), the support selection is left
-  // untouched — supports are placed through select() directly.
+  // becomes the only selection of any kind (single- and multi-select member
+  // fields stay in sync). Clearing the support selection too keeps Delete
+  // acting on the element the user just drew, never on a stale support.
   selectDrawn(kind, id) {
-    this.selectedNodeId = null;
+    this.clearSelection();
     this.selectedMemberId = kind === 'member' ? id : null;
     this.selectedMemberIds = kind === 'member' ? [id] : [];
     this.selectedSurfaceId = kind === 'surface' ? id : null;

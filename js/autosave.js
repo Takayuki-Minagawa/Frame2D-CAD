@@ -3,6 +3,7 @@
 
 import { LOAD_CASES } from './constants.js';
 import { createDefaultLoadCombinations } from './state.js';
+import { createDefaultSettings, normalizeSettings } from './display-settings.js';
 
 const AUTOSAVE_KEY = 'lineframe-autosave-v1';
 const AUTOSAVE_INTERVAL_MS = 20000;
@@ -18,8 +19,16 @@ function loadCombinationsEdited(list) {
   );
 }
 
+function settingsEdited(raw) {
+  if (!raw) return false;
+  const settings = normalizeSettings(raw);
+  const defaults = createDefaultSettings();
+  return Object.keys(defaults).some(key => settings[key] !== defaults[key]);
+}
+
 // A snapshot is worth keeping when it contains any drawn elements, grid axes,
-// an underlay, or edited load combinations. Exported for tests.
+// an underlay, edited load combinations, or non-default display settings
+// (settings are part of the saved model too). Exported for tests.
 export function modelHasContent(data) {
   if (!data) return false;
   const count =
@@ -30,7 +39,7 @@ export function modelHasContent(data) {
     (data.axes?.length || 0) +
     (data.underlay?.entities?.length || 0);
   if (count > 0) return true;
-  return loadCombinationsEdited(data.loadCombinations);
+  return loadCombinationsEdited(data.loadCombinations) || settingsEdited(data.settings);
 }
 
 export function readAutosave() {

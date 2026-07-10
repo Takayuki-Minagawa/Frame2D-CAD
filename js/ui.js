@@ -41,44 +41,44 @@ export class UI {
 
     // Snap toggle
     document.getElementById('chk-snap').addEventListener('change', e => {
-      this.state.settings.snap = e.target.checked;
+      this.state.updateSetting('snap', e.target.checked);
       this.updateStatusBar();
       this.callbacks.onSnapToggle?.(e.target.checked);
     });
 
     // Show supports toggle
     document.getElementById('chk-show-supports').addEventListener('change', e => {
-      this.state.settings.showSupports = e.target.checked;
+      this.state.updateSetting('showSupports', e.target.checked);
       this.callbacks.onPropertyChange?.();
     });
 
     // Wide pick toggle
     document.getElementById('chk-wide-pick').addEventListener('change', e => {
-      this.state.settings.widePick = e.target.checked;
+      this.state.updateSetting('widePick', e.target.checked);
     });
 
     document.getElementById('sel-plan-layer-display-mode').addEventListener('change', e => {
-      this.state.settings.planLayerDisplayMode = e.target.value;
+      this.state.updateSetting('planLayerDisplayMode', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
 
     document.getElementById('chk-plan-layer-selection-lock').addEventListener('change', e => {
-      this.state.settings.planLayerSelectionLock = e.target.checked;
+      this.state.updateSetting('planLayerSelectionLock', e.target.checked);
       this.callbacks.onPropertyChange?.();
     });
 
     document.getElementById('sel-3d-layer-display-mode').addEventListener('change', e => {
-      this.state.settings.view3dLayerDisplayMode = e.target.value;
+      this.state.updateSetting('view3dLayerDisplayMode', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
 
     document.getElementById('sel-member-3d-render-mode').addEventListener('change', e => {
-      this.state.settings.member3dRenderMode = e.target.value;
+      this.state.updateSetting('member3dRenderMode', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
 
     document.getElementById('sel-beam-3d-section-mode').addEventListener('change', e => {
-      this.state.settings.beam3dSectionMode = e.target.value;
+      this.state.updateSetting('beam3dSectionMode', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
 
@@ -90,7 +90,7 @@ export class UI {
 
     const bindDisplayCheckbox = (id, key) => {
       document.getElementById(id).addEventListener('change', e => {
-        this.state.settings[key] = e.target.checked;
+        this.state.updateSetting(key, e.target.checked);
         this.callbacks.onPropertyChange?.();
       });
     };
@@ -101,11 +101,11 @@ export class UI {
     bindDisplayCheckbox('chk-show-placement-labels', 'showPlacementLabels');
 
     document.getElementById('sel-member-type-filter').addEventListener('change', e => {
-      this.state.settings.memberTypeFilter = e.target.value;
+      this.state.updateSetting('memberTypeFilter', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
     document.getElementById('sel-section-filter').addEventListener('change', e => {
-      this.state.settings.sectionFilter = e.target.value;
+      this.state.updateSetting('sectionFilter', e.target.value);
       this.callbacks.onPropertyChange?.();
     });
 
@@ -124,7 +124,7 @@ export class UI {
     // Grid size (integer mm, clamped to allowed range)
     document.getElementById('sel-grid').addEventListener('change', e => {
       const gridSize = normalizeGridSize(e.target.value);
-      this.state.settings.gridSize = gridSize;
+      this.state.updateSetting('gridSize', gridSize);
       e.target.value = String(gridSize);
       this.callbacks.onGridChange?.(gridSize);
     });
@@ -451,7 +451,7 @@ export class UI {
       ].join('');
       const resolved = memberSections.some(s => s.name === selected) ? selected : 'all';
       sectionFilter.value = resolved;
-      this.state.settings.sectionFilter = resolved;
+      this.state.updateSetting('sectionFilter', resolved);
     }
   }
 
