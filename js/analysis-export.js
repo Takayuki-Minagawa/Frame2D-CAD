@@ -28,6 +28,10 @@ function createNodePool(tolerance) {
   // coordinates the ULP itself approaches 1e-10 mm. An epsilon of 1e-6 x
   // tolerance absorbs both while staying far below any real gap.
   const mergeDistance = tolerance * (1 + 1e-6);
+  // Rounded cell indices of two points one tolerance apart can differ by 2
+  // (e.g. 0.15 -> cell 1 but 0.25 -> cell 3), so the neighborhood scan must
+  // cover +-2 cells per axis, not just the adjacent ones.
+  const CELL_RANGE = 2;
 
   return {
     nodes,
@@ -35,9 +39,9 @@ function createNodePool(tolerance) {
       const cx = cellIndex(x);
       const cy = cellIndex(y);
       const cz = cellIndex(z);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -CELL_RANGE; dx <= CELL_RANGE; dx++) {
+        for (let dy = -CELL_RANGE; dy <= CELL_RANGE; dy++) {
+          for (let dz = -CELL_RANGE; dz <= CELL_RANGE; dz++) {
             const bucket = cells.get(`${cx + dx}|${cy + dy}|${cz + dz}`);
             if (!bucket) continue;
             for (const node of bucket) {

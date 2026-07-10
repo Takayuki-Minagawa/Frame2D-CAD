@@ -211,7 +211,6 @@ function textEntity(out, layer, x, y, height, text) {
   // DXF is a line-based format: a newline inside the value would end the
   // group and let the rest of the string inject arbitrary entities. Strip
   // all control characters from user-supplied text.
-  // eslint-disable-next-line no-control-regex
   const safe = String(text).replace(/[\u0000-\u001F\u007F]/g, ' ');
   out.push('0', 'TEXT', '8', layer, '10', fmt(x), '20', fmt(y), '30', '0',
     '40', fmt(height), '1', safe);
@@ -224,11 +223,15 @@ const MEMBER_LAYERS = {
   vbrace: 'MEMBER_VBRACE',
 };
 
-// DXF layer names allow a restricted character set. Characters outside it
-// (and '_' itself, which delimits the escapes) are encoded as '_<hex>_' so
-// that distinct inputs can never collapse to the same layer name.
+// DXF layer names allow a restricted character set, and AutoCAD compares
+// them case-insensitively. Only uppercase letters, digits and '-' pass
+// through; every other character (lowercase letters included, and '_'
+// itself, which delimits the escapes) is encoded as '_<hex>_'. The output
+// carries no lowercase characters, so distinct inputs can never collapse to
+// the same layer name even under case-insensitive comparison
+// ('L1' -> 'L1', 'l1' -> '_6C_1').
 function layerToken(value) {
-  return String(value).replace(/[^A-Za-z0-9-]/g,
+  return String(value).replace(/[^A-Z0-9-]/g,
     c => `_${c.codePointAt(0).toString(16).toUpperCase()}_`);
 }
 

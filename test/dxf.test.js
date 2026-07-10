@@ -137,6 +137,25 @@ test('buildDXF layer names cannot collide after sanitizing', () => {
   assert.notEqual(layers[0], layers[1]);
 });
 
+test('buildDXF layer names stay distinct under case-insensitive comparison', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(3000, 0);
+  const m1 = state.addMember(n1.id, n2.id, { type: 'beam' });
+  const n3 = state.addNode(0, 1000);
+  const n4 = state.addNode(3000, 1000);
+  const m2 = state.addMember(n3.id, n4.id, { type: 'beam' });
+  // AutoCAD compares layer names case-insensitively, so 'L1' and 'l1' must
+  // not encode to names that differ only in case.
+  state.getMember(m1.id).levelId = 'L1';
+  state.getMember(m2.id).levelId = 'l1';
+
+  const dxf = buildDXF(state);
+  const layers = [...dxf.matchAll(/\r\n8\r\n(MEMBER_BEAM\S*)/g)].map(m => m[1]);
+  assert.equal(layers.length, 2);
+  assert.notEqual(layers[0].toUpperCase(), layers[1].toUpperCase());
+});
+
 test('buildDXF neutralizes newlines in axis names', () => {
   const state = new AppState();
   state.addNode(0, 0);

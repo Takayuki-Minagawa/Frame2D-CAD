@@ -118,6 +118,22 @@ test('nodes merge by real distance even across rounding-cell boundaries', () => 
   assert.equal(model.nodes.length, 3);
 });
 
+test('nodes at the tolerance merge even when hash cells are two apart', () => {
+  const state = new AppState();
+  // 0.15 rounds down to cell 1 while 0.25 rounds up to cell 3: the pair is
+  // exactly one tolerance apart but their rounded cell indices differ by 2,
+  // so the neighborhood scan must reach beyond the adjacent cells.
+  const a = state.addNode(0.15, 0);
+  const b = state.addNode(1000, 0);
+  state.addMember(a.id, b.id, { type: 'beam' });
+  const c = state.addNode(0.25, 0);
+  const d = state.addNode(1000, 1000);
+  state.addMember(c.id, d.id, { type: 'beam' });
+
+  const model = buildAnalysisModel(state);
+  assert.equal(model.nodes.length, 3);
+});
+
 test('nodes exactly at the merge tolerance still merge', () => {
   const state = new AppState();
   // 0.4 - 0.3 overshoots 0.1 by a few ULP in floating point; the pool must
