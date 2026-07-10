@@ -69,27 +69,35 @@ export function parseDXF(text) {
         entities.push({ type: 'line', x1, y1, x2, y2 });
       }
     } else if (type === 'LWPOLYLINE') {
+      // Vertex order is x (10), y (20), then an optional bulge (42) that
+      // describes the arc from this vertex to the next one.
       const points = [];
       let x = null;
       for (const p of props) {
         if (p.code === 10) x = Number(p.value);
         else if (p.code === 20 && x !== null) {
           const y = Number(p.value);
-          if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y });
+          if (Number.isFinite(x) && Number.isFinite(y)) points.push({ x, y, bulge: 0 });
           x = null;
+        } else if (p.code === 42 && points.length) {
+          const b = Number(p.value);
+          if (Number.isFinite(b)) points[points.length - 1].bulge = b;
         }
       }
       const flags = num(70) || 0;
       if (points.length >= 2) {
-        entities.push({ type: 'polyline', points, closed: (flags & 1) === 1 });
+        const closed = (flags & 1) === 1;
+        entities.push({ type: 'polyline', points: expandBulges(points, closed), closed });
       }
     } else if (type === 'POLYLINE') {
       openPolyline = { type: 'polyline', points: [], closed: ((num(70) || 0) & 1) === 1 };
     } else if (type === 'VERTEX' && openPolyline) {
       const x = num(10), y = num(20);
-      if (x !== null && y !== null) openPolyline.points.push({ x, y });
+      if (x !== null && y !== null) {
+        openPolyline.points.push({ x, y, bulge: num(42) || 0 });
+      }
     } else if (type === 'SEQEND' && openPolyline) {
-      if (openPolyline.points.length >= 2) entities.push(openPolyline);
+      finishPolyline(entities, openPolyline);
       openPolyline = null;
     } else if (type === 'CIRCLE') {
       const cx = num(10), cy = num(20), r = num(40);
@@ -106,9 +114,60 @@ export function parseDXF(text) {
     }
     i = j;
   }
-  if (openPolyline && openPolyline.points.length >= 2) entities.push(openPolyline);
+  if (openPolyline) finishPolyline(entities, openPolyline);
 
   return { entities, bounds: computeBounds(entities) };
+}
+
+function finishPolyline(entities, polyline) {
+  if (polyline.points.length < 2) return;
+  entities.push({
+    type: 'polyline',
+    points: expandBulges(polyline.points, polyline.closed),
+    closed: polyline.closed,
+  });
+}
+
+// Replaces bulge (arc) segments with short line segments (15° steps) so the
+// underlay stays a plain point list. bulge = tan(theta/4) with theta the
+// signed included angle (positive = counterclockwise).
+function expandBulges(points, closed) {
+  if (!points.some(p => p.bulge)) {
+    return points.map(p => ({ x: p.x, y: p.y }));
+  }
+  const out = [];
+  const segCount = closed ? points.length : points.length - 1;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    out.push({ x: p1.x, y: p1.y });
+    if (i >= segCount || !p1.bulge) continue;
+    const p2 = points[(i + 1) % points.length];
+    for (const p of bulgeArcPoints(p1, p2, p1.bulge)) out.push(p);
+  }
+  return out;
+}
+
+// Intermediate points of the arc from p1 to p2 (both excluded).
+function bulgeArcPoints(p1, p2, bulge) {
+  const theta = 4 * Math.atan(bulge);
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const chord = Math.hypot(dx, dy);
+  if (!chord || !theta) return [];
+  // Center: offset from the chord midpoint along the right normal by the
+  // (signed) apothem. For a semicircle tan(theta/2) is infinite -> offset 0.
+  const apothem = Math.abs(theta) === Math.PI ? 0 : (chord / 2) / Math.tan(theta / 2);
+  const cx = (p1.x + p2.x) / 2 - (dy / chord) * apothem;
+  const cy = (p1.y + p2.y) / 2 + (dx / chord) * apothem;
+  const r = Math.hypot(p1.x - cx, p1.y - cy);
+  const a1 = Math.atan2(p1.y - cy, p1.x - cx);
+  const steps = Math.max(2, Math.ceil(Math.abs(theta) / (Math.PI / 12)));
+  const arc = [];
+  for (let k = 1; k < steps; k++) {
+    const a = a1 + theta * (k / steps);
+    arc.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+  }
+  return arc;
 }
 
 function computeBounds(entities) {
@@ -158,8 +217,15 @@ const MEMBER_LAYERS = {
   vbrace: 'MEMBER_VBRACE',
 };
 
+// DXF layer names allow a restricted character set; ids/names outside it are
+// mapped to '_'.
+function layerToken(value) {
+  return String(value).replace(/[^A-Za-z0-9_-]/g, '_');
+}
+
 // Builds a DXF document of the plan drawing. options.levelId limits the
-// output to one level ('all' or missing = every level).
+// output to one level ('all' or missing = every level). Layer names carry the
+// level id (e.g. MEMBER_BEAM_L1) so overlapping levels stay distinguishable.
 export function buildDXF(state, options = {}) {
   const levelId = options.levelId || 'all';
   const includeLevel = id => levelId === 'all' || id === levelId;
@@ -170,7 +236,7 @@ export function buildDXF(state, options = {}) {
     const n1 = state.getNode(member.startNodeId);
     const n2 = state.getNode(member.endNodeId);
     if (!n1 || !n2) continue;
-    const layer = MEMBER_LAYERS[member.type] || 'MEMBER';
+    const layer = `${MEMBER_LAYERS[member.type] || 'MEMBER'}_${layerToken(member.levelId)}`;
     if (member.type === 'column') {
       circleEntity(out, layer, n1.x, n1.y, Math.max(20, (member.section?.b || 100) / 2));
     } else {
@@ -180,7 +246,7 @@ export function buildDXF(state, options = {}) {
 
   for (const surface of state.surfaces) {
     if (!includeLevel(surface.levelId)) continue;
-    const layer = `SURFACE_${String(surface.type || 'other').toUpperCase()}`;
+    const layer = `SURFACE_${layerToken(String(surface.type || 'other').toUpperCase())}_${layerToken(surface.levelId)}`;
     if (Array.isArray(surface.points) && surface.points.length >= 2) {
       const pts = surface.points;
       const isClosedShape = surface.shape === 'polygon';

@@ -22,6 +22,7 @@ export default [
         structuredClone: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
+        Option: "readonly",
       },
     },
     rules: {

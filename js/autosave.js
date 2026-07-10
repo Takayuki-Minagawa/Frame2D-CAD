@@ -1,16 +1,36 @@
 // autosave.js - Periodic localStorage snapshots of the model with a
 // restore-on-startup prompt (crash / accidental-close recovery).
 
+import { LOAD_CASES } from './constants.js';
+import { createDefaultLoadCombinations } from './state.js';
+
 const AUTOSAVE_KEY = 'lineframe-autosave-v1';
 const AUTOSAVE_INTERVAL_MS = 20000;
 
-function modelHasContent(data) {
-  return !!data && (
+function loadCombinationsEdited(list) {
+  if (!Array.isArray(list)) return false;
+  const defaults = createDefaultLoadCombinations();
+  if (list.length !== defaults.length) return true;
+  return list.some((combo, i) =>
+    combo?.id !== defaults[i].id ||
+    combo?.name !== defaults[i].name ||
+    LOAD_CASES.some(cs => (combo?.factors?.[cs] || 0) !== (defaults[i].factors[cs] || 0))
+  );
+}
+
+// A snapshot is worth keeping when it contains any drawn elements, grid axes,
+// an underlay, or edited load combinations. Exported for tests.
+export function modelHasContent(data) {
+  if (!data) return false;
+  const count =
     (data.members?.length || 0) +
     (data.surfaces?.length || 0) +
     (data.loads?.length || 0) +
-    (data.supports?.length || 0)
-  ) > 0;
+    (data.supports?.length || 0) +
+    (data.axes?.length || 0) +
+    (data.underlay?.entities?.length || 0);
+  if (count > 0) return true;
+  return loadCombinationsEdited(data.loadCombinations);
 }
 
 export function readAutosave() {

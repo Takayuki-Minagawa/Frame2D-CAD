@@ -20,11 +20,16 @@ export function initElevationModal({ state }) {
     const sorted = [...state.axes].sort((a, b) =>
       a.dir === b.dir ? a.coord - b.coord : (a.dir === 'x' ? -1 : 1)
     );
-    axisSelect.innerHTML = sorted.length
-      ? sorted.map(a =>
-        `<option value="${a.id}">${a.name} (${a.dir === 'x' ? 'X' : 'Y'}=${a.coord})</option>`
-      ).join('')
-      : `<option value="">${t('elevationNoAxes')}</option>`;
+    // Axis names come from user input / loaded files: build the options via
+    // the DOM (textContent) instead of innerHTML.
+    axisSelect.textContent = '';
+    if (sorted.length) {
+      for (const a of sorted) {
+        axisSelect.add(new Option(`${a.name} (${a.dir === 'x' ? 'X' : 'Y'}=${a.coord})`, a.id));
+      }
+    } else {
+      axisSelect.add(new Option(t('elevationNoAxes'), ''));
+    }
   }
 
   // Members projected onto the frame plane of `axis` as segments

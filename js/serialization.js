@@ -165,7 +165,9 @@ export function loadModelJSON(state, data) {
   state.axes = (data.axes || [])
     .map((a, idx) => normalizeAxisEntry(a, `AX${idx + 1}`))
     .filter(Boolean);
-  state.loadCombinations = Array.isArray(data.loadCombinations) && data.loadCombinations.length
+  // A present-but-empty array is a deliberate "no combinations" state and is
+  // preserved; only files without the field (schema < 11) get the defaults.
+  state.loadCombinations = Array.isArray(data.loadCombinations)
     ? data.loadCombinations.map((c, idx) => ({
       id: c.id || `LC${idx + 1}`,
       name: typeof c.name === 'string' && c.name.trim() ? c.name.trim() : `LC${idx + 1}`,

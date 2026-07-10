@@ -113,11 +113,12 @@ const ui = new UI(state, {
       showNotice(t('copyLevelInvalid'), 'error');
       return;
     }
-    history.save();
-    const counts = state.copyLevelElements(sourceLevelId, targetLevelId);
-    const total = counts.members + counts.surfaces + counts.loads + counts.supports;
-    if (!total) {
-      history.undo();
+    let counts;
+    const changed = history.transact(() => {
+      counts = state.copyLevelElements(sourceLevelId, targetLevelId);
+      return counts.members + counts.surfaces + counts.loads + counts.supports > 0;
+    });
+    if (!changed) {
       showNotice(t('copyLevelNoItems'), 'error');
       return;
     }
@@ -226,9 +227,11 @@ document.getElementById('btn-png-export')?.addEventListener('click', () => {
 // --- Model cleanup (node merge / member split) ---
 
 document.getElementById('btn-merge-nodes')?.addEventListener('click', () => {
-  history.save();
-  const result = state.mergeNearbyNodes();
-  if (!result.mergedNodes) history.undo();
+  let result;
+  history.transact(() => {
+    result = state.mergeNearbyNodes();
+    return result.mergedNodes > 0;
+  });
   update();
   showNotice(
     result.mergedNodes
@@ -239,9 +242,11 @@ document.getElementById('btn-merge-nodes')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-split-members')?.addEventListener('click', () => {
-  history.save();
-  const result = state.splitIntersectingMembers();
-  if (!result.splitMembers) history.undo();
+  let result;
+  history.transact(() => {
+    result = state.splitIntersectingMembers();
+    return result.splitMembers > 0;
+  });
   update();
   showNotice(
     result.splitMembers
@@ -294,19 +299,25 @@ document.getElementById('btn-import-trigger').addEventListener('click', () => {
   document.getElementById('file-import').click();
 });
 
+// Re-syncs the toolbar controls with state.settings after any whole-model
+// replacement (file import, autosave restore, sample load).
+function syncSettingsControls() {
+  document.getElementById('chk-snap').checked = state.settings.snap;
+  document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
+  document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
+  document.getElementById('sel-grid').value = String(state.settings.gridSize);
+  const chkAxes = document.getElementById('chk-show-axes');
+  if (chkAxes) chkAxes.checked = state.settings.showAxes !== false;
+  const chkUnderlay = document.getElementById('chk-show-underlay');
+  if (chkUnderlay) chkUnderlay.checked = state.settings.showUnderlay !== false;
+}
+
 document.getElementById('file-import').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   try {
     await importJSON(file, state, history);
-    document.getElementById('chk-snap').checked = state.settings.snap;
-    document.getElementById('chk-show-supports').checked = state.settings.showSupports !== false;
-    document.getElementById('chk-wide-pick').checked = !!state.settings.widePick;
-    document.getElementById('sel-grid').value = String(state.settings.gridSize);
-    const chkAxes = document.getElementById('chk-show-axes');
-    if (chkAxes) chkAxes.checked = state.settings.showAxes !== false;
-    const chkUnderlay = document.getElementById('chk-show-underlay');
-    if (chkUnderlay) chkUnderlay.checked = state.settings.showUnderlay !== false;
+    syncSettingsControls();
     ui.refreshLevelSelectors();
     update();
     showNotice(t('cadImported'), 'success');
@@ -353,6 +364,7 @@ if (autosaveEntry) {
   if (confirm(t('autosaveRestorePrompt', { time: timeLabel }))) {
     try {
       state.loadJSON(autosaveEntry.data);
+      syncSettingsControls();
       ui.refreshLevelSelectors();
       update();
       showNotice(t('autosaveRestored'), 'success');
@@ -374,6 +386,7 @@ function loadSample(sampleId) {
   history.save();
   try {
     state.loadJSON(buildSampleModel(sampleId));
+    syncSettingsControls();
     ui.refreshLevelSelectors();
     hideSettingsModal();
     update();

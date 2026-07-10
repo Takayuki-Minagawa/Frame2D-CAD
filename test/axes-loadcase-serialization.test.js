@@ -64,6 +64,18 @@ test('older files without the new fields load with defaults', () => {
   assert.equal(restored.underlay, null);
 });
 
+test('an explicitly emptied combination list stays empty after reload', () => {
+  const state = new AppState();
+  for (const combo of [...state.loadCombinations]) {
+    state.removeLoadCombination(combo.id);
+  }
+  assert.equal(state.loadCombinations.length, 0);
+
+  const restored = new AppState();
+  restored.loadJSON(state.toJSON());
+  assert.equal(restored.loadCombinations.length, 0);
+});
+
 test('invalid load cases normalize to DL on add/update', () => {
   const state = new AppState();
   const load = state.addLoad('pointLoad', { x1: 0, y1: 0, fz: -1, loadCase: 'NOPE' });
@@ -109,4 +121,44 @@ test('member multi-selection toggles and clears consistently', () => {
 
   state.removeMember(m2.id);
   assert.deepEqual(state.selectedMemberIds, []);
+});
+
+test('selectDrawn keeps single- and multi-select ids in sync', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(1000, 0);
+  const n3 = state.addNode(2000, 0);
+  const m1 = state.addMember(n1.id, n2.id, { type: 'beam' });
+  const m2 = state.addMember(n2.id, n3.id, { type: 'beam' });
+  const m3 = state.addMember(n1.id, n3.id, { type: 'beam' });
+
+  // Drawing a new member replaces a previous multi-selection entirely.
+  state.selectMembers([m1.id, m2.id]);
+  state.selectDrawn('member', m3.id);
+  assert.equal(state.selectedMemberId, m3.id);
+  assert.deepEqual(state.selectedMemberIds, [m3.id]);
+
+  // Drawing a surface or load clears the member selection (both fields).
+  state.selectDrawn('surface', 'S1');
+  assert.equal(state.selectedSurfaceId, 'S1');
+  assert.equal(state.selectedMemberId, null);
+  assert.deepEqual(state.selectedMemberIds, []);
+
+  state.selectDrawn('load', 'LD1');
+  assert.equal(state.selectedLoadId, 'LD1');
+  assert.equal(state.selectedSurfaceId, null);
+});
+
+test('removing one member from a multi-selection normalizes to single select', () => {
+  const state = new AppState();
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(1000, 0);
+  const n3 = state.addNode(2000, 0);
+  const m1 = state.addMember(n1.id, n2.id, { type: 'beam' });
+  const m2 = state.addMember(n2.id, n3.id, { type: 'beam' });
+
+  state.selectMembers([m1.id, m2.id]);
+  state.removeMember(m1.id);
+  assert.deepEqual(state.selectedMemberIds, [m2.id]);
+  assert.equal(state.selectedMemberId, m2.id);
 });

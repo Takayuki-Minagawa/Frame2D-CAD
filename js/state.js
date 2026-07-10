@@ -199,6 +199,18 @@ export class AppState {
     this.selectedSupportId = null;
   }
 
+  // Selection applied after a draw tool creates an element: the new element
+  // becomes the only member/surface/load selection (single- and multi-select
+  // fields stay in sync). Unlike select(), the support selection is left
+  // untouched — supports are placed through select() directly.
+  selectDrawn(kind, id) {
+    this.selectedNodeId = null;
+    this.selectedMemberId = kind === 'member' ? id : null;
+    this.selectedMemberIds = kind === 'member' ? [id] : [];
+    this.selectedSurfaceId = kind === 'surface' ? id : null;
+    this.selectedLoadId = kind === 'load' ? id : null;
+  }
+
   // --- Multi-selection (members) ---
 
   // Replaces the member selection with the given ids (other kinds cleared).
@@ -954,6 +966,11 @@ export class AppState {
       this.selectedMemberId = null;
     }
     this.selectedMemberIds = this.selectedMemberIds.filter(mid => mid !== id);
+    // A multi-selection reduced to one member becomes a normal single
+    // selection so the property panel and Delete stay consistent.
+    if (this.selectedMemberIds.length === 1) {
+      this.selectedMemberId = this.selectedMemberIds[0];
+    }
     this._touch();
   }
 

@@ -566,10 +566,7 @@ export class ToolManager {
       sectionName: this.state.getDraftSectionName('member', memberType),
     });
 
-    // NOTE: draw tools intentionally clear only the previously drawn element
-    // kinds (not load/support selection), unlike state.select().
-    this.state.selectedMemberId = member.id;
-    this.state.selectedSurfaceId = null;
+    this.state.selectDrawn('member', member.id);
     this._memberStart = null;
     this.canvas2d.preview = null;
     this.onUpdate();
@@ -594,8 +591,7 @@ export class ToolManager {
       topLevelId: topLevel.id,
       sectionName: this.state.getDraftSectionName('member', 'column'),
     });
-    this.state.selectedMemberId = member.id;
-    this.state.selectedSurfaceId = null;
+    this.state.selectDrawn('member', member.id);
     this.onUpdate();
   }
 
@@ -734,8 +730,7 @@ export class ToolManager {
         ...roofOptions,
       });
     }
-    this.state.selectedSurfaceId = surface.id;
-    this.state.selectedMemberId = null;
+    this.state.selectDrawn('surface', surface.id);
 
     this._surfaceStart = null;
     this.canvas2d.preview = null;
@@ -834,8 +829,7 @@ export class ToolManager {
       ...this._getRoofOptions(),
     });
     if (surface) {
-      this.state.selectedSurfaceId = surface.id;
-      this.state.selectedMemberId = null;
+      this.state.selectDrawn('surface', surface.id);
     }
     this._surfacePolyline = [];
     this._surfaceStart = null;
@@ -855,9 +849,7 @@ export class ToolManager {
         x1: snapped.x, y1: snapped.y,
         levelId: this.state.activeLevelId || 'L0',
       });
-      this.state.selectedLoadId = load.id;
-      this.state.selectedMemberId = null;
-      this.state.selectedSurfaceId = null;
+      this.state.selectDrawn('load', load.id);
       this.canvas2d.preview = null;
       this.onUpdate();
       return;
@@ -883,9 +875,7 @@ export class ToolManager {
       x1: start.x, y1: start.y, x2: end.x, y2: end.y,
       levelId: this.state.activeLevelId || 'L0',
     });
-    this.state.selectedLoadId = load.id;
-    this.state.selectedMemberId = null;
-    this.state.selectedSurfaceId = null;
+    this.state.selectDrawn('load', load.id);
     this._loadStart = null;
     this.canvas2d.preview = null;
     this.onUpdate();
