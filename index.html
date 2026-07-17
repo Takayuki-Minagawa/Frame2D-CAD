@@ -530,6 +530,26 @@
     </div>
   </div>
 
+  <!-- Join / Split Choice Modal -->
+  <div id="join-section-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-content modal-settings" role="dialog" aria-modal="true" aria-labelledby="join-section-modal-title">
+      <div class="modal-header">
+        <h2 id="join-section-modal-title">選択</h2>
+        <button id="btn-join-section-close" type="button" class="modal-close" data-i18n="choiceCancel">キャンセル</button>
+      </div>
+      <form id="join-section-form" class="modal-body">
+        <div class="settings-group">
+          <label for="join-section-choice" data-i18n="choicePrompt">選択肢</label>
+          <select id="join-section-choice"></select>
+        </div>
+        <div class="support-preset-row">
+          <button id="btn-join-section-cancel" type="button" class="support-preset-btn" data-i18n="choiceCancel">キャンセル</button>
+          <button id="btn-join-section-confirm" type="submit" class="support-preset-btn" data-i18n="choiceConfirm">決定</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Elevation (Frame) Modal -->
   <div id="elevation-modal" class="modal-overlay">
     <div class="modal-content modal-elevation">

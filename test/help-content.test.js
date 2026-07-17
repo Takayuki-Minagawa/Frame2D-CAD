@@ -38,3 +38,12 @@ test('getHelpContent returns the language-specific help HTML', () => {
   assert.match(helpContentJa, /<h3>基本操作<\/h3>/);
   assert.match(helpContentEn, /<h3>Basic Operations<\/h3>/);
 });
+
+test('in-app help explains member join and split workflows', () => {
+  assert.match(helpContentJa, /<b>線材の連結<\/b>/);
+  assert.match(helpContentJa, /断面が異なる場合は連結後の断面を選択/);
+  assert.match(helpContentJa, /梁は部材上の分割点をクリック（Escでキャンセル）、柱は中間レイヤーを選択/);
+  assert.match(helpContentEn, /<b>Join members<\/b>/);
+  assert.match(helpContentEn, /If their sections differ, select the section for the joined member/);
+  assert.match(helpContentEn, /For a beam, click the split point on the member \(Esc cancels\)/);
+});

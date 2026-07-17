@@ -247,7 +247,11 @@ export class UI {
 
   _updateToolUI() {
     const selTool = document.getElementById('sel-tool');
-    if (selTool) selTool.value = this.state.currentTool;
+    // splitPoint is a temporary canvas interaction rather than a toolbar
+    // option; keep the previous visible option instead of blanking the select.
+    if (selTool && this.state.currentTool !== 'splitPoint') {
+      selTool.value = this.state.currentTool;
+    }
 
     const toolStatus = document.getElementById('status-tool');
     if (toolStatus) {
@@ -258,11 +262,19 @@ export class UI {
         load: 'toolLoad',
         support: 'toolSupport',
         measure: 'toolMeasure',
+        splitPoint: 'toolSplitPoint',
       };
       toolStatus.textContent = t(statusKeys[this.state.currentTool] || 'toolSelect');
     }
 
     this._updateToolOptions();
+  }
+
+  // Temporary canvas modes (currently beam split-point selection) are owned
+  // by ToolManager rather than the toolbar, so they use this small public
+  // hook to keep the selector and status text in sync.
+  refreshToolState() {
+    this._updateToolUI();
   }
 
   _updateToolOptions() {
@@ -561,6 +573,9 @@ export class UI {
         <input type="text" value="${members.length} (${escapeHtml(summary)})" disabled>
       </div>
       <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-join-members">${t('joinMembers')}</button>
+      </div>
+      <div class="prop-group">
         <label>${t('multiSectionApply')}</label>
         <div class="prop-row">
           <div class="prop-group">
@@ -630,6 +645,10 @@ export class UI {
       fn();
       this.callbacks.onPropertyChange?.();
     };
+
+    document.getElementById('btn-join-members')?.addEventListener('click', () => {
+      this.callbacks.onJoinMembers?.(selectedIds());
+    });
 
     document.getElementById('btn-batch-apply-section')?.addEventListener('click', () => {
       const type = typeSel.value;
@@ -823,7 +842,16 @@ export class UI {
         <label>${t('propLength')}</label>
         <input type="text" value="${lengthDisplay}" disabled>
       </div>
+      ${(member.type === 'beam' || member.type === 'column') ? `
+      <div class="prop-group">
+        <button type="button" class="support-preset-btn" id="btn-split-member">${t('splitAtPoint')}</button>
+      </div>
+      ` : ''}
     `;
+
+    document.getElementById('btn-split-member')?.addEventListener('click', () => {
+      this.callbacks.onSplitMember?.(member.id);
+    });
 
     const bind = (id, key, transform) => this._bindPropInput(id, val => {
       this.state.updateMember(member.id, { [key]: val });

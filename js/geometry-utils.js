@@ -44,6 +44,20 @@ export function segmentParameter(px, py, ax, ay, bx, by) {
   return ((px - ax) * dx + (py - ay) * dy) / lenSq;
 }
 
+// True when point c lies on the infinite line through a-b within `tolerance`.
+// The normalized cross product is the perpendicular distance in model units,
+// so the tolerance remains meaningful for both short and long members.
+export function areCollinear(a, b, c, tolerance = GEOMETRY_EPS) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= GEOMETRY_EPS) {
+    return Math.hypot(c.x - a.x, c.y - a.y) <= tolerance;
+  }
+  const cross = dx * (c.y - a.y) - dy * (c.x - a.x);
+  return Math.abs(cross) / length <= tolerance;
+}
+
 export function pointsClose(a, b, tolerance = 1) {
   return Math.hypot(a.x - b.x, a.y - b.y) <= tolerance;
 }

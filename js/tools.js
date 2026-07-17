@@ -1,20 +1,60 @@
 // tools.js - Select / Member / Surface tools
 
 import {
+  MEMBER_SPLIT_TOLERANCE_MM,
   PICK_TOLERANCE_PX,
   POLYLINE_CLOSE_TOLERANCE_PX,
   WIDE_PICK_TOLERANCE_PX,
 } from './constants.js';
+import { segmentParameter } from './geometry-utils.js';
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
 import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
+function projectSplitPointTarget(member) {
+  return Boolean(
+    member &&
+    member.type === 'beam' &&
+    member.geometryMode !== 'explicit3d' &&
+    !member.roofRole
+  );
+}
+
+// Projects an already-snapped cursor position onto the selected beam and
+// rejects cuts within the endpoint tolerance. Keeping this calculation here
+// makes the preview and the model operation agree on the point shown to users.
+export function projectSplitPoint(state, member, point, tolerance = MEMBER_SPLIT_TOLERANCE_MM) {
+  if (!member || member.type !== 'beam' || member.geometryMode === 'explicit3d' || member.roofRole) {
+    return null;
+  }
+  const start = state.getNode(member.startNodeId);
+  const end = state.getNode(member.endNodeId);
+  if (!start || !end) return null;
+  const length = Math.hypot(end.x - start.x, end.y - start.y);
+  if (length <= 0) return null;
+  const parameter = segmentParameter(
+    point.x,
+    point.y,
+    start.x,
+    start.y,
+    end.x,
+    end.y
+  );
+  const endpointParameter = Math.max(0, Number(tolerance) || 0) / length;
+  if (parameter <= endpointParameter || parameter >= 1 - endpointParameter) return null;
+  return {
+    x: start.x + parameter * (end.x - start.x),
+    y: start.y + parameter * (end.y - start.y),
+  };
+}
+
 export class ToolManager {
-  constructor(canvas2d, state, history, onUpdate) {
+  constructor(canvas2d, state, history, onUpdate, callbacks = {}) {
     this.canvas2d = canvas2d;
     this.state = state;
     this.history = history;
     this.onUpdate = onUpdate;
+    this.callbacks = callbacks;
 
     // Internal state
     this._isPanning = false;
@@ -27,6 +67,8 @@ export class ToolManager {
     this._surfacePolyline = [];
     this._loadStart = null;
     this._measureStart = null;
+    this._splitPointMemberId = null;
+    this._splitPointPreviousTool = null;
 
     // Select tool drag state
     this._dragTarget = null; // { type: 'node'|'member'|'group', ... }
@@ -36,6 +78,63 @@ export class ToolManager {
     this._marqueeAdditive = false;
 
     this._setupEvents();
+  }
+
+  // Starts the temporary beam split interaction. The selected member is kept
+  // as the target until the user confirms a point, presses Escape, changes
+  // tools, or clears/replaces the selection.
+  startSplitPoint(memberId) {
+    const member = this.state.getMember(memberId);
+    if (!projectSplitPointTarget(member)) return false;
+    if (this._splitPointMemberId === memberId && this.state.currentTool === 'splitPoint') return true;
+
+    this._memberStart = null;
+    this._surfaceStart = null;
+    this._surfacePolyline = [];
+    this._loadStart = null;
+    this._measureStart = null;
+    this.canvas2d.measure = null;
+    this.canvas2d.preview = null;
+    this._splitPointPreviousTool = this.state.currentTool === 'splitPoint'
+      ? (this._splitPointPreviousTool || 'select')
+      : this.state.currentTool;
+    this._splitPointMemberId = memberId;
+    this.state.select('member', memberId);
+    this.state.currentTool = 'splitPoint';
+    this.callbacks.onTemporaryToolChange?.('splitPoint');
+    this.onUpdate();
+    return true;
+  }
+
+  isSplitPointActive() {
+    return Boolean(this._splitPointMemberId && this.state.currentTool === 'splitPoint');
+  }
+
+  // Called by app-level selection paths (for example, 3D picking) before a
+  // render so a stale temporary tool never operates on a deselected member.
+  syncSplitPointSelection() {
+    if (!this._splitPointMemberId) return false;
+    if (this.state.currentTool === 'splitPoint' &&
+        this.state.isMemberSelected(this._splitPointMemberId) &&
+        this.state.getMember(this._splitPointMemberId)) {
+      return true;
+    }
+    this.cancelSplitPoint({ restoreTool: this.state.currentTool === 'splitPoint', update: false });
+    return false;
+  }
+
+  cancelSplitPoint({ restoreTool = true, update = true } = {}) {
+    if (!this._splitPointMemberId && this.state.currentTool !== 'splitPoint') return false;
+    const previousTool = this._splitPointPreviousTool || 'select';
+    this._splitPointMemberId = null;
+    this._splitPointPreviousTool = null;
+    this.canvas2d.preview = null;
+    if (restoreTool && this.state.currentTool === 'splitPoint') {
+      this.state.currentTool = previousTool;
+    }
+    this.callbacks.onTemporaryToolChange?.(this.state.currentTool);
+    if (update) this.onUpdate();
+    return true;
   }
 
   _setupEvents() {
@@ -128,7 +227,9 @@ export class ToolManager {
 
     const tool = this.state.currentTool;
 
-    if (tool === 'select') {
+    if (tool === 'splitPoint') {
+      this._splitPointDown(e);
+    } else if (tool === 'select') {
       this._selectDown(e);
     } else if (tool === 'member') {
       this._memberDown(e);
@@ -156,7 +257,9 @@ export class ToolManager {
 
     const tool = this.state.currentTool;
 
-    if (tool === 'select') {
+    if (tool === 'splitPoint') {
+      this._splitPointMove(e);
+    } else if (tool === 'select') {
       this._selectMove(e);
     } else if (tool === 'member') {
       this._memberMove(e);
@@ -199,7 +302,11 @@ export class ToolManager {
 
     // Esc: cancel or deselect
     if (e.key === 'Escape') {
-      if ((this.state.currentTool === 'member' && this._memberStart) ||
+      if (this.state.currentTool === 'splitPoint' || this._splitPointMemberId) {
+        e.preventDefault();
+        this.cancelSplitPoint();
+        return;
+      } else if ((this.state.currentTool === 'member' && this._memberStart) ||
           (this.state.currentTool === 'surface' && (this._surfaceStart || this._surfacePolyline.length)) ||
           (this.state.currentTool === 'load' && this._loadStart) ||
           (this.state.currentTool === 'measure' && (this._measureStart || this.canvas2d.measure))) {
@@ -508,6 +615,55 @@ export class ToolManager {
       : hitIds;
     this.state.selectMembers(ids);
     this.onUpdate();
+  }
+
+  // --- Split Point Tool ---
+
+  _splitPointMember() {
+    const member = this.state.getMember(this._splitPointMemberId);
+    if (!member || !this.state.isMemberSelected(member.id) || !projectSplitPointTarget(member)) {
+      this.cancelSplitPoint();
+      return null;
+    }
+    return member;
+  }
+
+  _splitPointProjection(e) {
+    const member = this._splitPointMember();
+    if (!member) return null;
+    return projectSplitPoint(this.state, member, this._getSnappedPos(e));
+  }
+
+  _splitPointMove(e) {
+    const point = this._splitPointProjection(e);
+    this.canvas2d.preview = point
+      ? { mode: 'point', x: point.x, y: point.y, label: t('splitAtPointHint') }
+      : null;
+    this.onUpdate();
+  }
+
+  _splitPointDown(e) {
+    const memberId = this._splitPointMemberId;
+    const point = this._splitPointProjection(e);
+    if (!point) {
+      this.callbacks.onSplitPointFailed?.();
+      return;
+    }
+
+    let result = null;
+    const changed = this.history.transact(() => {
+      result = this.state.splitMemberAtPoint(memberId, point);
+      return Boolean(result);
+    });
+    if (!changed || !result) {
+      this.callbacks.onSplitPointFailed?.();
+      return;
+    }
+
+    this.state.selectMembers(result.createdMemberIds);
+    this.cancelSplitPoint({ update: false });
+    this.onUpdate();
+    this.callbacks.onSplitPointComplete?.(result);
   }
 
   // --- Member Tool ---

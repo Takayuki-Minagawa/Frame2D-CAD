@@ -32,6 +32,7 @@ import { initLayerModal } from './layer-modal.js';
 import { initAxesModal } from './axes-modal.js';
 import { initComboModal } from './combo-modal.js';
 import { initElevationModal } from './elevation-modal.js';
+import { initJoinSplitModal } from './join-split-modal.js';
 import { clearAutosave, initAutosave, readAutosave } from './autosave.js';
 import { buildSampleModel } from './samples.js';
 
@@ -44,6 +45,8 @@ const history = new History(state);
 
 const canvasEl = document.getElementById('canvas-2d');
 const canvas2d = new Canvas2D(canvasEl, state);
+const joinSplitModal = initJoinSplitModal();
+let toolManager = null;
 
 const viewerContainer = document.getElementById('viewer-3d');
 
@@ -83,6 +86,7 @@ let activeView = '2d'; // '2d' | '3d'
 // --- Render loop ---
 
 function update() {
+  toolManager?.syncSplitPointSelection();
   if (activeView === '2d') {
     canvas2d.draw();
   } else if (viewer3d) {
@@ -101,13 +105,136 @@ function renderLoop() {
 
 // --- UI ---
 
+const JOIN_REASON_MESSAGE_KEYS = {
+  'insufficient-members': 'joinMembersInsufficient',
+  'missing-member': 'joinMembersMissing',
+  'type-mismatch': 'joinMembersTypeMismatch',
+  'unsupported-type': 'joinMembersUnsupportedType',
+  'unsupported-geometry': 'joinMembersUnsupportedGeometry',
+  'level-mismatch': 'joinMembersLevelMismatch',
+  disconnected: 'joinMembersDisconnected',
+  'non-collinear': 'joinMembersNonCollinear',
+  'column-position-mismatch': 'joinMembersColumnPositionMismatch',
+};
+
+function showJoinFailure(reason) {
+  showNotice(t(JOIN_REASON_MESSAGE_KEYS[reason] || 'joinMembersFailed'), 'error');
+}
+
+function getIntermediateColumnLevels(member) {
+  const bottomZ = state.getLevelZ(member.levelId);
+  const topZ = state.getLevelZ(member.topLevelId);
+  if (!Number.isFinite(bottomZ) || !Number.isFinite(topZ)) return [];
+  const minZ = Math.min(bottomZ, topZ);
+  const maxZ = Math.max(bottomZ, topZ);
+  return state.levels
+    .filter(level => Number(level.z) > minZ && Number(level.z) < maxZ)
+    .sort((a, b) => Number(a.z) - Number(b.z));
+}
+
 const ui = new UI(state, {
-  onToolChange() { update(); },
+  onToolChange() {
+    toolManager?.cancelSplitPoint({ restoreTool: false, update: false });
+    update();
+  },
   onSnapToggle() { update(); },
   onGridChange() { update(); },
   onLayerChange() { update(); },
   onPropertyChange() { update(); },
   onDraftSectionChange() { showNotice(t('applyAsDraftHint'), 'success'); },
+  async onJoinMembers(memberIds) {
+    let validation = state.canJoinMembers(memberIds);
+    if (!validation.ok) {
+      showJoinFailure(validation.reason);
+      return;
+    }
+
+    let sectionName = validation.sections[0];
+    if (validation.sections.length > 1) {
+      sectionName = await joinSplitModal.choose({
+        titleKey: 'joinSelectSection',
+        options: validation.sections,
+        initialValue: validation.sections[0],
+      });
+      if (sectionName === null) return;
+
+      // The dialog is asynchronous; validate the original selection again in
+      // case the model was changed through another input path while it was open.
+      validation = state.canJoinMembers(memberIds);
+      if (!validation.ok) {
+        showJoinFailure(validation.reason);
+        return;
+      }
+    }
+
+    let result = null;
+    const changed = history.transact(() => {
+      result = state.joinMembers(memberIds, { sectionName });
+      return Boolean(result);
+    });
+    if (!changed || !result) {
+      showJoinFailure();
+      return;
+    }
+    state.select('member', result.memberId);
+    update();
+    showNotice(t('joinMembersDone', { n: result.joined }), 'success');
+  },
+  async onSplitMember(memberId) {
+    const member = state.getMember(memberId);
+    if (!member) {
+      showNotice(t('splitMemberFailed'), 'error');
+      return;
+    }
+    if (member.type !== 'beam' && member.type !== 'column') {
+      showNotice(t('splitMemberUnsupported'), 'error');
+      return;
+    }
+    if (member.geometryMode === 'explicit3d' || member.roofRole) {
+      showNotice(t('splitMemberUnsupportedGeometry'), 'error');
+      return;
+    }
+
+    if (member.type === 'beam') {
+      if (!toolManager?.startSplitPoint(member.id)) {
+        showNotice(t('splitMemberFailed'), 'error');
+        return;
+      }
+      showNotice(t('splitAtPointHint'), 'success');
+      return;
+    }
+
+    const intermediateLevels = getIntermediateColumnLevels(member);
+    if (!intermediateLevels.length) {
+      showNotice(t('splitColumnNoIntermediateLevel'), 'error');
+      return;
+    }
+    let levelId = intermediateLevels[0].id;
+    if (intermediateLevels.length > 1) {
+      levelId = await joinSplitModal.choose({
+        titleKey: 'splitColumnSelectLevel',
+        options: intermediateLevels.map(level => ({
+          value: level.id,
+          label: `${level.name} (z=${level.z})`,
+        })),
+        initialValue: levelId,
+      });
+      if (levelId === null) return;
+    }
+
+    let result = null;
+    const changed = history.transact(() => {
+      result = state.splitColumnAtLevel(memberId, { levelId });
+      return Boolean(result);
+    });
+    if (!changed || !result) {
+      showNotice(t('splitMemberFailed'), 'error');
+      return;
+    }
+    state.selectMembers(result.createdMemberIds);
+    update();
+    showNotice(t('splitMemberDone', { n: result.createdMemberIds.length }), 'success');
+  },
   onCopyLevel(sourceLevelId, targetLevelId) {
     if (!sourceLevelId || !targetLevelId || sourceLevelId === targetLevelId) {
       showNotice(t('copyLevelInvalid'), 'error');
@@ -149,7 +276,17 @@ const ui = new UI(state, {
 
 // --- Tools ---
 
-new ToolManager(canvas2d, state, history, update);
+toolManager = new ToolManager(canvas2d, state, history, update, {
+  onTemporaryToolChange() {
+    ui.refreshToolState();
+  },
+  onSplitPointComplete(result) {
+    showNotice(t('splitMemberDone', { n: result.createdMemberIds.length }), 'success');
+  },
+  onSplitPointFailed() {
+    showNotice(t('splitMemberFailed'), 'error');
+  },
+});
 
 // --- Side Panels ---
 

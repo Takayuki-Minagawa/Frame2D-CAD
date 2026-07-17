@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import {
+  areCollinear,
   edgeInwardNormal,
   pointInPolygonInterior,
   pointOnPolygonBoundary,
@@ -11,6 +12,15 @@ import {
   signedArea2,
   uniquePositiveNumbers,
 } from '../js/geometry-utils.js';
+
+test('areCollinear uses perpendicular distance in model units', () => {
+  const start = { x: 0, y: 0 };
+  const end = { x: 10000, y: 10000 };
+
+  assert.equal(areCollinear(start, end, { x: 5000, y: 5000.5 }, 1), true);
+  assert.equal(areCollinear(start, end, { x: 5000, y: 5002 }, 1), false);
+  assert.equal(areCollinear(start, start, { x: 0.5, y: 0 }, 1), true);
+});
 
 test('shared plan geometry helpers cover polygon interior and edge orientation', () => {
   const polygon = [

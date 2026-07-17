@@ -5,10 +5,16 @@
 
 import {
   DEFAULT_ROOF_GROUP_ID,
+  MEMBER_JOIN_TOLERANCE_MM,
   MEMBER_SPLIT_TOLERANCE_MM,
   NODE_MERGE_TOLERANCE_MM,
 } from './constants.js';
-import { positiveNumber } from './geometry-utils.js';
+import {
+  areCollinear,
+  pointsClose,
+  positiveNumber,
+  segmentParameter,
+} from './geometry-utils.js';
 import {
   isRoofSurfaceType,
   isWallSurfaceType,
@@ -260,6 +266,296 @@ export function mergeNearbyNodes(state, options = {}) {
   return { mergedNodes: remap.size };
 }
 
+// --- Member join ------------------------------------------------------------
+
+function joinFailure(reason, sections = []) {
+  return { ok: false, reason, sections, chain: [] };
+}
+
+function uniqueIds(ids) {
+  return [...new Set(Array.isArray(ids) ? ids : [])];
+}
+
+function sectionNames(members) {
+  return [...new Set(members.map(member => member.sectionName))];
+}
+
+function beamJoinChain(state, members) {
+  const endpointMembers = new Map();
+  const addEndpoint = (nodeId, member) => {
+    const connected = endpointMembers.get(nodeId) || [];
+    connected.push(member);
+    endpointMembers.set(nodeId, connected);
+  };
+
+  for (const member of members) {
+    const start = state.getNode(member.startNodeId);
+    const end = state.getNode(member.endNodeId);
+    if (!start || !end) return { reason: 'disconnected' };
+    if (member.startNodeId === member.endNodeId) return { reason: 'non-collinear' };
+    addEndpoint(member.startNodeId, member);
+    addEndpoint(member.endNodeId, member);
+  }
+
+  if ([...endpointMembers.values()].some(connected => connected.length > 2)) {
+    return { reason: 'disconnected' };
+  }
+  const endNodeIds = [...endpointMembers]
+    .filter(([, connected]) => connected.length === 1)
+    .map(([nodeId]) => nodeId)
+    .sort((a, b) => {
+      const numericA = Number(a);
+      const numericB = Number(b);
+      if (Number.isFinite(numericA) && Number.isFinite(numericB)) return numericA - numericB;
+      return String(a).localeCompare(String(b));
+    });
+  if (endNodeIds.length !== 2) return { reason: 'disconnected' };
+
+  let ordered = [];
+  const visited = new Set();
+  let nodeIds = [endNodeIds[0]];
+  let currentNodeId = endNodeIds[0];
+
+  while (ordered.length < members.length) {
+    const nextMembers = (endpointMembers.get(currentNodeId) || [])
+      .filter(member => !visited.has(member.id));
+    if (nextMembers.length !== 1) return { reason: 'disconnected' };
+    const member = nextMembers[0];
+    const nextNodeId = member.startNodeId === currentNodeId
+      ? member.endNodeId
+      : member.startNodeId;
+    ordered.push({ member, fromNodeId: currentNodeId, toNodeId: nextNodeId });
+    visited.add(member.id);
+    nodeIds.push(nextNodeId);
+    currentNodeId = nextNodeId;
+  }
+
+  if (currentNodeId !== endNodeIds[1] || visited.size !== members.length) {
+    return { reason: 'disconnected' };
+  }
+
+  // Keep the direction stable independently of selection order. The oldest
+  // member's stored I->J orientation is the best available canonical hint and
+  // makes split -> join restore the original member orientation as well.
+  const anchor = [...members].sort((a, b) =>
+    String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+  )[0];
+  const anchorEntry = ordered.find(entry => entry.member.id === anchor.id);
+  if (anchorEntry.fromNodeId !== anchor.startNodeId) {
+    ordered = ordered.reverse().map(entry => ({
+      member: entry.member,
+      fromNodeId: entry.toNodeId,
+      toNodeId: entry.fromNodeId,
+    }));
+    nodeIds = nodeIds.reverse();
+  }
+
+  const start = state.getNode(nodeIds[0]);
+  const end = state.getNode(nodeIds[nodeIds.length - 1]);
+  if (!start || !end || Math.hypot(end.x - start.x, end.y - start.y) <= MEMBER_JOIN_TOLERANCE_MM) {
+    return { reason: 'non-collinear' };
+  }
+  const points = nodeIds.map(nodeId => state.getNode(nodeId));
+  if (points.some(point => !point) || points.some(point =>
+    !areCollinear(start, end, point, MEMBER_JOIN_TOLERANCE_MM)
+  )) {
+    return { reason: 'non-collinear' };
+  }
+
+  // A collinear graph can still fold back over itself. Every successive node
+  // must advance toward the opposite chain end for the join to be reversible.
+  let previousT = -Infinity;
+  for (const point of points) {
+    const t = segmentParameter(point.x, point.y, start.x, start.y, end.x, end.y);
+    if (t <= previousT) return { reason: 'disconnected' };
+    previousT = t;
+  }
+
+  return { ordered, nodeIds };
+}
+
+function columnJoinChain(state, members) {
+  const firstStart = state.getNode(members[0].startNodeId);
+  if (!firstStart) return { reason: 'disconnected' };
+
+  const byBottomLevel = new Map();
+  const byTopLevel = new Map();
+  for (const member of members) {
+    const start = state.getNode(member.startNodeId);
+    const end = state.getNode(member.endNodeId);
+    if (!start || !end) return { reason: 'disconnected' };
+    if (!pointsClose(firstStart, start, MEMBER_JOIN_TOLERANCE_MM) ||
+      !pointsClose(firstStart, end, MEMBER_JOIN_TOLERANCE_MM)) {
+      return { reason: 'column-position-mismatch' };
+    }
+    const bottom = state.levels.find(level => level.id === member.levelId);
+    const top = state.levels.find(level => level.id === member.topLevelId);
+    if (!bottom || !top || Number(top.z) <= Number(bottom.z)) {
+      return { reason: 'level-mismatch' };
+    }
+    if (byBottomLevel.has(member.levelId) || byTopLevel.has(member.topLevelId)) {
+      return { reason: 'level-mismatch' };
+    }
+    byBottomLevel.set(member.levelId, member);
+    byTopLevel.set(member.topLevelId, member);
+  }
+
+  const starts = members.filter(member => !byTopLevel.has(member.levelId));
+  if (starts.length !== 1) return { reason: 'disconnected' };
+
+  const ordered = [];
+  const visited = new Set();
+  let current = starts[0];
+  while (current && !visited.has(current.id)) {
+    ordered.push({
+      member: current,
+      fromNodeId: current.startNodeId,
+      toNodeId: current.endNodeId,
+    });
+    visited.add(current.id);
+    current = byBottomLevel.get(current.topLevelId);
+  }
+  if (ordered.length !== members.length || current) return { reason: 'disconnected' };
+
+  return { ordered };
+}
+
+function inspectJoin(state, memberIds) {
+  const ids = uniqueIds(memberIds);
+  if (ids.length < 2) return joinFailure('insufficient-members');
+
+  const members = ids.map(id => state.getMember(id));
+  if (members.some(member => !member)) return joinFailure('missing-member');
+  const sections = sectionNames(members);
+  const type = members[0].type;
+  if (members.some(member => member.type !== type)) {
+    return joinFailure('type-mismatch', sections);
+  }
+  if (type !== 'beam' && type !== 'column') {
+    return joinFailure('unsupported-type', sections);
+  }
+  if (members.some(member => member.roofRole || member.geometryMode === 'explicit3d')) {
+    return joinFailure('unsupported-geometry', sections);
+  }
+
+  let inspection;
+  if (type === 'beam') {
+    if (members.some(member => member.levelId !== members[0].levelId)) {
+      return joinFailure('level-mismatch', sections);
+    }
+    inspection = beamJoinChain(state, members);
+  } else {
+    inspection = columnJoinChain(state, members);
+  }
+  if (inspection.reason) return joinFailure(inspection.reason, sections);
+
+  return {
+    ok: true,
+    sections,
+    chain: inspection.ordered.map(entry => entry.member.id),
+    type,
+    ...inspection,
+  };
+}
+
+// Validates a selected set without mutating the model. `chain` contains the
+// ordered member ids from one outer end to the other.
+export function canJoinMembers(state, memberIds) {
+  const inspection = inspectJoin(state, memberIds);
+  return inspection.ok
+    ? { ok: true, sections: inspection.sections, chain: inspection.chain }
+    : inspection;
+}
+
+function memberEndAt(member, nodeId) {
+  return member.startNodeId === nodeId ? member.endI : member.endJ;
+}
+
+function pointMatchesNode(point, node, tolerance = MEMBER_JOIN_TOLERANCE_MM) {
+  return Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y)) &&
+    Math.hypot(Number(point.x) - node.x, Number(point.y) - node.y) <= tolerance;
+}
+
+function nodeHasAttachmentAtLevels(state, node, levelIds) {
+  const matchesLevel = entry => levelIds.has(entry.levelId);
+  if (state.supports.some(support => matchesLevel(support) && pointMatchesNode(support, node))) {
+    return true;
+  }
+  return state.loads.some(load => {
+    if (!matchesLevel(load)) return false;
+    if (pointMatchesNode({ x: load.x1, y: load.y1 }, node)) return true;
+    return load.type === 'lineLoad' && pointMatchesNode({ x: load.x2, y: load.y2 }, node);
+  });
+}
+
+function nodesToPreserveForJoin(state, inspection, newStartNodeId, newEndNodeId) {
+  const levelsByNode = new Map();
+  const addLevel = (nodeId, levelId) => {
+    if (nodeId === newStartNodeId || nodeId === newEndNodeId) return;
+    const levels = levelsByNode.get(nodeId) || new Set();
+    levels.add(levelId);
+    levelsByNode.set(nodeId, levels);
+  };
+
+  if (inspection.type === 'beam') {
+    for (const nodeId of inspection.nodeIds.slice(1, -1)) {
+      addLevel(nodeId, inspection.ordered[0].member.levelId);
+    }
+  } else {
+    for (const { member } of inspection.ordered) {
+      addLevel(member.startNodeId, member.levelId);
+      addLevel(member.endNodeId, member.topLevelId);
+    }
+  }
+
+  const snapshots = [];
+  for (const [nodeId, levelIds] of levelsByNode) {
+    const node = state.getNode(nodeId);
+    if (node && nodeHasAttachmentAtLevels(state, node, levelIds)) snapshots.push({ ...node });
+  }
+  return snapshots;
+}
+
+// Joins a validated beam/column chain. When sections differ the caller must
+// choose one of the existing names through options.sectionName.
+export function joinMembers(state, memberIds, options = {}) {
+  const inspection = inspectJoin(state, memberIds);
+  if (!inspection.ok) return null;
+
+  const sectionName = inspection.sections.length === 1
+    ? inspection.sections[0]
+    : options.sectionName;
+  if (!inspection.sections.includes(sectionName)) return null;
+
+  const first = inspection.ordered[0];
+  const last = inspection.ordered[inspection.ordered.length - 1];
+  const isColumn = inspection.type === 'column';
+  const startNodeId = first.fromNodeId;
+  // Columns use one plan node for both 3D endpoints; their levels provide z.
+  const endNodeId = isColumn ? startNodeId : last.toNodeId;
+  const preservedNodes = nodesToPreserveForJoin(state, inspection, startNodeId, endNodeId);
+  const joined = state.addMember(startNodeId, endNodeId, {
+    type: inspection.type,
+    sectionName,
+    levelId: first.member.levelId,
+    topLevelId: isColumn ? last.member.topLevelId : first.member.topLevelId,
+    endI: isColumn ? first.member.endI : memberEndAt(first.member, first.fromNodeId),
+    endJ: isColumn ? last.member.endJ : memberEndAt(last.member, last.toNodeId),
+  });
+
+  for (const { member } of inspection.ordered) state.removeMember(member.id);
+
+  let restoredNode = false;
+  for (const snapshot of preservedNodes) {
+    if (state.getNode(snapshot.id)) continue;
+    state.nodes.push(snapshot);
+    restoredNode = true;
+  }
+  if (restoredNode) state._touch();
+
+  return { joined: inspection.ordered.length, memberId: joined.id };
+}
+
 // --- Member split at intersections ------------------------------------------
 
 // Returns the intersection point of segments a1-a2 / b1-b2 when they properly
@@ -291,6 +587,99 @@ function interiorProjection(p, a, b, tolerance) {
   const proj = { x: a.x + t * dx, y: a.y + t * dy };
   if (Math.hypot(proj.x - p.x, proj.y - p.y) > tolerance) return null;
   return proj;
+}
+
+function derivedMemberOptions(member, overrides = {}) {
+  return {
+    type: member.type,
+    sectionName: member.sectionName,
+    levelId: member.levelId,
+    topLevelId: member.topLevelId,
+    geometryMode: member.geometryMode,
+    startZ: member.startZ,
+    endZ: member.endZ,
+    roofRole: member.roofRole,
+    bracePattern: member.bracePattern,
+    ...overrides,
+  };
+}
+
+// Replaces one in-plane member with a node chain. Outer end conditions are
+// inherited; every newly cut internal end is rigid.
+function replaceMemberWithNodeChain(state, member, chain) {
+  if (!member || chain.length < 3 || chain.some(node => !node)) return null;
+  const created = [];
+  for (let index = 0; index < chain.length - 1; index++) {
+    const isFirst = index === 0;
+    const isLast = index === chain.length - 2;
+    const segment = state.addMember(chain[index].id, chain[index + 1].id, derivedMemberOptions(member, {
+      endI: isFirst ? member.endI : { condition: 'rigid', springSymbol: null },
+      endJ: isLast ? member.endJ : { condition: 'rigid', springSymbol: null },
+    }));
+    created.push(segment.id);
+  }
+  state.removeMember(member.id);
+  return created;
+}
+
+// Splits an ordinary in-plane beam at the projection of an arbitrary point.
+export function splitMemberAtPoint(state, memberId, options = {}) {
+  const member = state.getMember(memberId);
+  if (!member || member.type !== 'beam' || member.roofRole || member.geometryMode === 'explicit3d') {
+    return null;
+  }
+  const start = state.getNode(member.startNodeId);
+  const end = state.getNode(member.endNodeId);
+  const x = Number(options.x);
+  const y = Number(options.y);
+  if (!start || !end || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1) return null;
+  const tolerance = positiveNumber(options.tolerance, MEMBER_SPLIT_TOLERANCE_MM);
+  const t = segmentParameter(x, y, start.x, start.y, end.x, end.y);
+  if (t <= tolerance / length || t >= 1 - tolerance / length) return null;
+
+  const splitPoint = { x: start.x + t * dx, y: start.y + t * dy };
+  let splitNode = state.findNodeAt(splitPoint.x, splitPoint.y, Math.max(tolerance, 1));
+  if (!splitNode) splitNode = state.addNode(splitPoint.x, splitPoint.y);
+  const createdMemberIds = replaceMemberWithNodeChain(state, member, [start, splitNode, end]);
+  return createdMemberIds ? { createdMemberIds } : null;
+}
+
+// Columns remain level-based: the cut must be an existing level strictly
+// between the member's bottom and top levels.
+export function splitColumnAtLevel(state, memberId, options = {}) {
+  const member = state.getMember(memberId);
+  if (!member || member.type !== 'column' || member.roofRole || member.geometryMode === 'explicit3d') {
+    return null;
+  }
+  const splitLevel = state.levels.find(level => level.id === options.levelId);
+  const bottomLevel = state.levels.find(level => level.id === member.levelId);
+  const topLevel = state.levels.find(level => level.id === member.topLevelId);
+  if (!splitLevel || !bottomLevel || !topLevel ||
+    Number(splitLevel.z) <= Number(bottomLevel.z) ||
+    Number(splitLevel.z) >= Number(topLevel.z)) {
+    return null;
+  }
+  if (!state.getNode(member.startNodeId) || !state.getNode(member.endNodeId)) return null;
+
+  const lower = state.addMember(member.startNodeId, member.endNodeId, derivedMemberOptions(member, {
+    levelId: member.levelId,
+    topLevelId: splitLevel.id,
+    endI: member.endI,
+    endJ: { condition: 'rigid', springSymbol: null },
+  }));
+  const upper = state.addMember(member.startNodeId, member.endNodeId, derivedMemberOptions(member, {
+    levelId: splitLevel.id,
+    topLevelId: member.topLevelId,
+    endI: { condition: 'rigid', springSymbol: null },
+    endJ: member.endJ,
+  }));
+  state.removeMember(member.id);
+  return { createdMemberIds: [lower.id, upper.id] };
 }
 
 // Splits in-plane beams / horizontal braces at their mutual intersection and
@@ -366,25 +755,10 @@ export function splitIntersectingMembers(state, options = {}) {
     }
     chain.push(state.getNode(member.endNodeId));
 
-    for (let k = 0; k < chain.length - 1; k++) {
-      const isFirst = k === 0;
-      const isLast = k === chain.length - 2;
-      state.addMember(chain[k].id, chain[k + 1].id, {
-        type: member.type,
-        sectionName: member.sectionName,
-        levelId: member.levelId,
-        topLevelId: member.topLevelId,
-        bracePattern: member.bracePattern,
-        // Interior cut ends stay rigid so the split beam reads as continuous.
-        endI: isFirst ? member.endI : { condition: 'rigid', springSymbol: null },
-        endJ: isLast ? member.endJ : { condition: 'rigid', springSymbol: null },
-      });
-      createdMembers++;
-    }
-    state.removeMember(member.id);
+    const created = replaceMemberWithNodeChain(state, member, chain);
+    createdMembers += created?.length || 0;
   }
 
-  state._touch();
   return { splitMembers: splitPoints.size, createdMembers };
 }
 
