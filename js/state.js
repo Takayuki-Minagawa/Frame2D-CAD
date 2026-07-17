@@ -1318,6 +1318,22 @@ export class AppState {
     return modelOps.mergeNearbyNodes(this, options);
   }
 
+  canJoinMembers(ids) {
+    return modelOps.canJoinMembers(this, ids);
+  }
+
+  joinMembers(ids, options = {}) {
+    return modelOps.joinMembers(this, ids, options);
+  }
+
+  splitMemberAtPoint(id, options = {}) {
+    return modelOps.splitMemberAtPoint(this, id, options);
+  }
+
+  splitColumnAtLevel(id, options = {}) {
+    return modelOps.splitColumnAtLevel(this, id, options);
+  }
+
   splitIntersectingMembers(options = {}) {
     return modelOps.splitIntersectingMembers(this, options);
   }

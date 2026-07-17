@@ -43,7 +43,7 @@ export class Canvas2D {
     this._cameraInitialized = false;
 
     // Temporary drawing state
-    this.preview = null; // { ... , mode: 'line'|'rect'|'polyline' }
+    this.preview = null; // { ... , mode: 'line'|'rect'|'polyline'|'point' }
     this.marquee = null; // { x1, y1, x2, y2 } world coords (rect selection)
     this.measure = null; // { x1, y1, x2, y2, done } world coords
 
@@ -355,7 +355,14 @@ export class Canvas2D {
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
-    if (this.preview.mode === 'rect') {
+    if (this.preview.mode === 'point') {
+      const point = this.worldToScreen(this.preview.x, this.preview.y);
+      ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+      ctx.moveTo(point.x - 10, point.y);
+      ctx.lineTo(point.x + 10, point.y);
+      ctx.moveTo(point.x, point.y - 10);
+      ctx.lineTo(point.x, point.y + 10);
+    } else if (this.preview.mode === 'rect') {
       const s1 = this.worldToScreen(this.preview.startX, this.preview.startY);
       const s2 = this.worldToScreen(this.preview.endX, this.preview.endY);
       const x = Math.min(s1.x, s2.x);
@@ -397,6 +404,9 @@ export class Canvas2D {
   }
 
   _previewLabelPoint() {
+    if (this.preview?.mode === 'point') {
+      return this.worldToScreen(this.preview.x, this.preview.y);
+    }
     if (this.preview?.mode === 'polyline' && Array.isArray(this.preview.points) && this.preview.points.length) {
       const last = this.preview.points[this.preview.points.length - 1];
       return this.worldToScreen(last.x, last.y);

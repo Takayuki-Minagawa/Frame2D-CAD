@@ -31,6 +31,7 @@ export const DEFAULT_LOAD_CASE = 'DL';
 
 // Node merge / member split defaults (mm)
 export const NODE_MERGE_TOLERANCE_MM = 1;
+export const MEMBER_JOIN_TOLERANCE_MM = 1;
 export const MEMBER_SPLIT_TOLERANCE_MM = 1;
 
 // Axis (通り芯) rendering
