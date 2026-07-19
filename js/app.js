@@ -30,6 +30,7 @@ import { initSidePanels } from './side-panels.js';
 import { initUserDefModal } from './user-def-modal.js';
 import { initLayerModal } from './layer-modal.js';
 import { initAxesModal } from './axes-modal.js';
+import { initGridFrameModal } from './grid-frame-modal.js';
 import { initComboModal } from './combo-modal.js';
 import { initElevationModal } from './elevation-modal.js';
 import { initJoinSplitModal } from './join-split-modal.js';
@@ -274,6 +275,13 @@ const ui = new UI(state, {
   },
 });
 
+// Whole-model history restores can change levels and display settings. Keep
+// their controls synchronized before ToolManager requests the next render.
+history.setOnRestore(() => {
+  syncSettingsControls();
+  ui.refreshLevelSelectors();
+});
+
 // --- Tools ---
 
 toolManager = new ToolManager(canvas2d, state, history, update, {
@@ -483,6 +491,15 @@ const axesModal = initAxesModal({
   onModelChange: update,
 });
 
+const gridFrameModal = initGridFrameModal({
+  state,
+  history,
+  onModelChange: update,
+  syncSettingsControls,
+  refreshLevelSelectors: () => ui.refreshLevelSelectors(),
+  hideSettingsModal,
+});
+
 const comboModal = initComboModal({
   state,
   onModelChange: update,
@@ -537,6 +554,7 @@ function loadSample(sampleId) {
 
 document.getElementById('btn-sample-gable')?.addEventListener('click', () => loadSample('gableHouse'));
 document.getElementById('btn-sample-frame')?.addEventListener('click', () => loadSample('twoStoryFrame'));
+document.getElementById('btn-grid-frame')?.addEventListener('click', gridFrameModal.show);
 
 document.getElementById('btn-open-combos')?.addEventListener('click', () => {
   hideSettingsModal();
@@ -569,6 +587,7 @@ function applyLang(lang) {
   ui.applyLanguage();
   if (settingsLangSelect) settingsLangSelect.value = lang;
   applyI18nTo(settingsModal);
+  gridFrameModal.applyLanguage();
   userDefModal.applyLanguage();
   layerModal.clearFormError();
 }
@@ -657,6 +676,9 @@ window.addEventListener('keydown', (e) => {
       e.stopPropagation();
     } else if (axesModal.isOpen()) {
       axesModal.hide();
+      e.stopPropagation();
+    } else if (gridFrameModal.isOpen()) {
+      gridFrameModal.hide();
       e.stopPropagation();
     } else if (comboModal.isOpen()) {
       comboModal.hide();

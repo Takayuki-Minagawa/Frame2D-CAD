@@ -416,6 +416,25 @@ const dict = {
     sampleFrame: '2階建フレーム',
     sampleLoaded: 'サンプルモデルを読み込みました。',
     sampleLoadFailed: 'サンプルモデルの読み込みに失敗しました。',
+
+    // Initial grid frame
+    gridFrameOpen: '初期モデル生成…',
+    gridFrameTitle: '初期モデル生成（格子フレーム）',
+    gridFrameStoryHeights: '階高リスト',
+    gridFrameSpansX: 'X方向スパンリスト',
+    gridFrameSpansY: 'Y方向スパンリスト',
+    gridFrameStoryHeightsPlaceholder: '例: 3500, 3000, 3000',
+    gridFrameSpansXPlaceholder: '例: 6000, 6000, 5000',
+    gridFrameSpansYPlaceholder: '例: 6000, 6000',
+    gridFrameGenerate: '生成',
+    gridFrameReplaceConfirm: '現在のモデルを格子フレームで置き換えます。元のモデルは「元に戻す」で復元できます。続行しますか？',
+    gridFrameDone: '格子フレームを生成しました（柱 {columns}本・梁 {beams}本）。',
+    gridFrameEmptyInput: '{field}を入力してください。',
+    gridFrameInvalidInput: '{field}は正の数値をカンマ、読点または空白で区切って入力してください。',
+    gridFrameOutOfRange: '{field}の各値は1〜100,000 mmの範囲で入力してください。',
+    gridFrameTooMany: '{field}の入力個数が上限を超えています。',
+    gridFrameTooLarge: '生成される部材数が上限を超えます。階数またはスパン数を減らしてください。',
+    gridFrameGenerateFailed: '格子フレームの生成に失敗しました。',
   },
 
   en: {
@@ -833,6 +852,25 @@ const dict = {
     sampleFrame: 'Two-story frame',
     sampleLoaded: 'Sample model loaded.',
     sampleLoadFailed: 'Failed to load sample model.',
+
+    // Initial grid frame
+    gridFrameOpen: 'Generate Initial Model…',
+    gridFrameTitle: 'Generate Initial Grid Frame',
+    gridFrameStoryHeights: 'Story height list',
+    gridFrameSpansX: 'X-direction span list',
+    gridFrameSpansY: 'Y-direction span list',
+    gridFrameStoryHeightsPlaceholder: 'e.g. 3500, 3000, 3000',
+    gridFrameSpansXPlaceholder: 'e.g. 6000, 6000, 5000',
+    gridFrameSpansYPlaceholder: 'e.g. 6000, 6000',
+    gridFrameGenerate: 'Generate',
+    gridFrameReplaceConfirm: 'Replace the current model with the grid frame? You can restore the previous model with Undo.',
+    gridFrameDone: 'Grid frame generated (columns: {columns}, beams: {beams}).',
+    gridFrameEmptyInput: 'Enter {field}.',
+    gridFrameInvalidInput: 'Enter {field} as positive numbers separated by commas, Japanese commas, or spaces.',
+    gridFrameOutOfRange: 'Each value in {field} must be between 1 and 100,000 mm.',
+    gridFrameTooMany: '{field} contains more values than allowed.',
+    gridFrameTooLarge: 'The generated model would exceed the member limit. Reduce the number of stories or spans.',
+    gridFrameGenerateFailed: 'Failed to generate the grid frame.',
   },
 };
 
