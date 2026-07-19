@@ -39,6 +39,22 @@ test('getHelpContent returns the language-specific help HTML', () => {
   assert.match(helpContentEn, /<h3>Basic Operations<\/h3>/);
 });
 
+test('in-app help documents the enhanced initial grid frame workflow', () => {
+  assert.match(helpContentJa, /繰り返し記法 <code>N@L<\/code>/);
+  assert.match(helpContentJa, /<code>3@6000, 5000<\/code>/);
+  assert.match(helpContentJa, /現在のモデルの断面カタログから柱断面と梁断面を選びます/);
+  assert.match(helpContentJa, /「床を生成する」は既定で OFF/);
+  assert.match(helpContentJa, /名前付きプリセットは最大20件/);
+  assert.match(helpContentJa, /柱・梁・床の件数/);
+
+  assert.match(helpContentEn, /<code>N@L<\/code> repeat notation/);
+  assert.match(helpContentEn, /<code>3@6000, 5000<\/code>/);
+  assert.match(helpContentEn, /current model's section catalog/);
+  assert.match(helpContentEn, /"Generate floors" is OFF by default/);
+  assert.match(helpContentEn, /up to 20 named presets/);
+  assert.match(helpContentEn, /column, beam, and floor counts/);
+});
+
 test('in-app help explains member join and split workflows', () => {
   assert.match(helpContentJa, /<b>線材の連結<\/b>/);
   assert.match(helpContentJa, /断面が異なる場合は連結後の断面を選択/);

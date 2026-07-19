@@ -31,6 +31,42 @@ test('parseMmList accepts comma, Japanese comma, whitespace, and decimal values'
   });
 });
 
+test('parseMmList expands N@L repeat notation before enforcing the count limit', () => {
+  assert.deepEqual(parseMmList('3@6000, 5000'), {
+    ok: true,
+    values: [6000, 6000, 6000, 5000],
+  });
+  assert.deepEqual(parseMmList('2@2750.5 1@3000'), {
+    ok: true,
+    values: [2750.5, 2750.5, 3000],
+  });
+  assert.deepEqual(parseMmList('2@1000,1000', { maxCount: 2 }), {
+    ok: false,
+    reason: 'count',
+  });
+  assert.deepEqual(parseMmList('3@1000', { maxCount: 2 }), {
+    ok: false,
+    reason: 'count',
+  });
+});
+
+test('parseMmList rejects invalid repeat counts and malformed repeat tokens', () => {
+  for (const value of [
+    '0@6000',
+    '-1@6000',
+    '1.5@6000',
+    '2@@6000',
+    '2@6000@',
+    '@6000',
+    '2@',
+    '9007199254740992@6000',
+  ]) {
+    assert.deepEqual(parseMmList(value), { ok: false, reason: 'invalid' }, value);
+  }
+  assert.deepEqual(parseMmList('2@0'), { ok: false, reason: 'range' });
+  assert.deepEqual(parseMmList('101@6000'), { ok: false, reason: 'count' });
+});
+
 test('parseMmList classifies empty, invalid, range, and count errors', () => {
   assert.deepEqual(parseMmList('  , 、 \n '), { ok: false, reason: 'empty' });
   assert.deepEqual(parseMmList('3000, nope'), { ok: false, reason: 'invalid' });
@@ -217,6 +253,102 @@ test('generated JSON survives an AppState load and serialize round trip', () => 
   );
 });
 
+test('buildGridFrame carries selected custom column and beam sections through serialization', () => {
+  const source = new AppState();
+  source.addSpring({ symbol: 'K-CUSTOM', memo: 'custom column-end spring' });
+  source.addSection({
+    target: 'member', type: 'column', name: 'C400',
+    material: 'concrete', b: 400, h: 400, color: '#334455',
+    defaultEndI: { condition: 'spring', springSymbol: 'K-CUSTOM' },
+  });
+  source.addSection({
+    target: 'member', type: 'beam', name: 'B300x600',
+    material: 'concrete', b: 300, h: 600, color: '#556677',
+  });
+
+  const data = buildGridFrame({
+    storyHeights: [3200, 3000],
+    spansX: [5000],
+    spansY: [4000],
+    columnSection: 'C400',
+    beamSection: 'B300x600',
+    sectionCatalog: source.sectionCatalog,
+    springCatalog: source.springCatalog,
+  });
+  const restored = new AppState();
+  restored.loadJSON(data);
+
+  const columns = restored.members.filter(member => member.type === 'column');
+  const beams = restored.members.filter(member => member.type === 'beam');
+  assert.ok(columns.every(member => member.sectionName === 'C400'));
+  assert.ok(columns.every(member => member.section.b === 400 && member.section.h === 400));
+  assert.ok(columns.every(member => member.endI.condition === 'spring'));
+  assert.ok(columns.every(member => member.endI.springSymbol === 'K-CUSTOM'));
+  assert.ok(beams.every(member => member.sectionName === 'B300x600'));
+  assert.ok(beams.every(member => member.section.b === 300 && member.section.h === 600));
+  assert.equal(restored.getSection('member', 'column', 'C400')?.material, 'concrete');
+  assert.equal(restored.getSection('member', 'beam', 'B300x600')?.color, '#556677');
+  assert.equal(restored.getSpring('K-CUSTOM')?.memo, 'custom column-end spring');
+  assert.deepEqual(restored.toJSON(), data);
+});
+
+test('buildGridFrame falls back to default sections for unknown requested names', () => {
+  const source = new AppState();
+  const { state } = loadGridFrame({
+    storyHeights: [2800],
+    spansX: [4000],
+    spansY: [5000],
+    columnSection: 'UNKNOWN_COLUMN',
+    beamSection: 'UNKNOWN_BEAM',
+    sectionCatalog: source.sectionCatalog,
+  });
+
+  assert.ok(
+    state.members
+      .filter(member => member.type === 'column')
+      .every(member => member.sectionName === source.getDefaultSectionName('member', 'column'))
+  );
+  assert.ok(
+    state.members
+      .filter(member => member.type === 'beam')
+      .every(member => member.sectionName === source.getDefaultSectionName('member', 'beam'))
+  );
+});
+
+test('buildGridFrame optionally creates one floor surface per story and span bay', () => {
+  const { state } = loadGridFrame({
+    storyHeights: [3200, 2800],
+    spansX: [4000, 5000],
+    spansY: [3000, 3500],
+    generateFloors: true,
+  });
+  const sortedLevels = [...state.levels].sort((a, b) => a.z - b.z);
+  const expectedRects = new Set([
+    '0,0,4000,3000',
+    '0,3000,4000,6500',
+    '4000,0,9000,3000',
+    '4000,3000,9000,6500',
+  ]);
+
+  assert.equal(state.surfaces.length, 2 * 2 * 2);
+  assert.equal(state.surfaces.some(surface => surface.levelId === sortedLevels[0].id), false);
+  for (const level of sortedLevels.slice(1)) {
+    const floors = state.surfaces.filter(surface => surface.levelId === level.id);
+    assert.equal(floors.length, expectedRects.size);
+    assert.deepEqual(
+      new Set(floors.map(surface => `${surface.x1},${surface.y1},${surface.x2},${surface.y2}`)),
+      expectedRects
+    );
+    assert.ok(floors.every(surface => surface.type === 'floor'));
+    assert.ok(floors.every(surface => surface.shape === 'rect'));
+    assert.ok(floors.every(surface => surface.topLevelId === level.id));
+  }
+  assert.deepEqual(
+    state.validateModel().filter(issue => issue.severity === 'error'),
+    []
+  );
+});
+
 test('buildGridFrame revalidates input counts, values, and total member cap', () => {
   const valid = {
     storyHeights: [3000],
@@ -260,4 +392,59 @@ test('buildGridFrame revalidates input counts, values, and total member cap', ()
       error.count === projectedMembers &&
       error.max === MAX_GRID_FRAME_MEMBERS
   );
+});
+
+test('buildGridFrame applies the element cap to members and generated floors together', () => {
+  const input = {
+    storyHeights: Array(40).fill(3000),
+    spansX: Array(12).fill(6000),
+    spansY: Array(12).fill(6000),
+  };
+  const columnCount = 40 * 13 * 13;
+  const beamCount = 40 * ((12 * 13) + (12 * 13));
+  const memberCount = columnCount + beamCount;
+  const floorCount = 40 * 12 * 12;
+  const elementCount = memberCount + floorCount;
+
+  assert.ok(memberCount <= MAX_GRID_FRAME_MEMBERS);
+  assert.ok(elementCount > MAX_GRID_FRAME_MEMBERS);
+  assert.doesNotThrow(() => buildGridFrame(input));
+  assert.throws(
+    () => buildGridFrame({ ...input, generateFloors: true }),
+    error => error instanceof RangeError &&
+      error.reason === 'count' &&
+      error.code === 'member-count' &&
+      error.count === elementCount &&
+      error.max === MAX_GRID_FRAME_MEMBERS &&
+      assert.deepEqual(error.counts, {
+        columns: columnCount,
+        beams: beamCount,
+        floors: floorCount,
+        members: memberCount,
+        elements: elementCount,
+      }) === undefined
+  );
+});
+
+test('buildGridFrame accepts a generated model exactly at the element cap', () => {
+  const storyCount = 32;
+  const xSpanCount = 12;
+  const ySpanCount = 12;
+  const input = {
+    storyHeights: Array(storyCount).fill(3000),
+    spansX: Array(xSpanCount).fill(6000),
+    spansY: Array(ySpanCount).fill(6000),
+    generateFloors: true,
+  };
+  const memberCount = storyCount * (
+    (xSpanCount + 1) * (ySpanCount + 1) +
+    xSpanCount * (ySpanCount + 1) +
+    ySpanCount * (xSpanCount + 1)
+  );
+  const floorCount = storyCount * xSpanCount * ySpanCount;
+
+  assert.equal(memberCount + floorCount, MAX_GRID_FRAME_MEMBERS);
+  const data = buildGridFrame(input);
+  assert.equal(data.members.length, memberCount);
+  assert.equal(data.surfaces.length, floorCount);
 });

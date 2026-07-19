@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import { MAX_GRID_FRAME_MEMBERS } from '../js/frame-generator.js';
-import { initGridFrameModal } from '../js/grid-frame-modal.js';
+import {
+  GRID_FRAME_INPUT_STORAGE_KEY,
+  GRID_FRAME_PRESETS_STORAGE_KEY,
+  initGridFrameModal,
+  MAX_GRID_FRAME_PRESETS,
+} from '../js/grid-frame-modal.js';
 import { AppState } from '../js/state.js';
 import { ToolManager } from '../js/tools.js';
 
@@ -38,6 +43,8 @@ class FakeElement extends EventTarget {
     this.textContent = '';
     this.value = '';
     this.placeholder = '';
+    this.checked = false;
+    this.disabled = false;
     this.hidden = false;
     this.isConnected = true;
     this.parentElement = null;
@@ -108,6 +115,12 @@ function createFakeDocument() {
     'grid-frame-story-heights': 'INPUT',
     'grid-frame-spans-x': 'INPUT',
     'grid-frame-spans-y': 'INPUT',
+    'grid-frame-column-section': 'SELECT',
+    'grid-frame-beam-section': 'SELECT',
+    'grid-frame-generate-floors': 'INPUT',
+    'grid-frame-preset': 'SELECT',
+    'btn-grid-frame-preset-save': 'BUTTON',
+    'btn-grid-frame-preset-delete': 'BUTTON',
     'btn-grid-frame-close': 'BUTTON',
     'btn-grid-frame-cancel': 'BUTTON',
     'btn-grid-frame-generate': 'BUTTON',
@@ -120,6 +133,12 @@ function createFakeDocument() {
     'grid-frame-story-heights',
     'grid-frame-spans-x',
     'grid-frame-spans-y',
+    'grid-frame-column-section',
+    'grid-frame-beam-section',
+    'grid-frame-generate-floors',
+    'grid-frame-preset',
+    'btn-grid-frame-preset-save',
+    'btn-grid-frame-preset-delete',
     'btn-grid-frame-close',
     'btn-grid-frame-cancel',
     'btn-grid-frame-generate',
@@ -142,43 +161,73 @@ function createFakeDocument() {
   inputs[2].dataset.i18nPlaceholder = 'gridFrameSpansYPlaceholder';
   const localized = [
     root.getElementById('btn-grid-frame-close'),
+    root.getElementById('btn-grid-frame-preset-save'),
+    root.getElementById('btn-grid-frame-preset-delete'),
     root.getElementById('btn-grid-frame-cancel'),
     root.getElementById('btn-grid-frame-generate'),
   ];
   localized[0].dataset.i18n = 'helpClose';
-  localized[1].dataset.i18n = 'choiceCancel';
-  localized[2].dataset.i18n = 'gridFrameGenerate';
+  localized[1].dataset.i18n = 'gridFramePresetSave';
+  localized[2].dataset.i18n = 'gridFramePresetDelete';
+  localized[3].dataset.i18n = 'choiceCancel';
+  localized[4].dataset.i18n = 'gridFrameGenerate';
   root.queries.set('grid-frame-modal:[data-i18n]', localized);
   root.queries.set('grid-frame-modal:[data-i18n-placeholder]', inputs);
-  root.queries.set('grid-frame-modal:button:not([disabled]), input:not([disabled])', [
+  root.queries.set(
+    'grid-frame-modal:button:not([disabled]), input:not([disabled]), select:not([disabled])', [
     localized[0],
-    ...inputs,
+    root.getElementById('grid-frame-preset'),
     localized[1],
     localized[2],
-  ]);
+    ...inputs,
+    root.getElementById('grid-frame-column-section'),
+    root.getElementById('grid-frame-beam-section'),
+    root.getElementById('grid-frame-generate-floors'),
+    localized[3],
+    localized[4],
+  ]
+  );
   root.body.appendChild(root.getElementById('app-notice-host'));
   root.activeElement = root.getElementById('btn-grid-frame');
 
   let nextTimerId = 1;
   root.defaultView = {
     confirm: () => true,
+    prompt: () => null,
     setTimeout: () => nextTimerId++,
     clearTimeout: () => {},
   };
   return root;
 }
 
-async function withFakeBrowser(callback) {
+function createFakeStorage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+  };
+}
+
+async function withFakeBrowser(callback, { storage = createFakeStorage() } = {}) {
   const originals = {
     document: globalThis.document,
     window: globalThis.window,
     HTMLElement: globalThis.HTMLElement,
     requestAnimationFrame: globalThis.requestAnimationFrame,
+    localStorage: globalThis.localStorage,
   };
   const root = createFakeDocument();
   globalThis.document = root;
   globalThis.window = root.defaultView;
   globalThis.HTMLElement = FakeElement;
+  globalThis.localStorage = storage;
   globalThis.requestAnimationFrame = callback => {
     callback();
     return 1;
@@ -197,6 +246,27 @@ function setValidInputs(root, storyHeights = '2800') {
   root.getElementById('grid-frame-story-heights').value = storyHeights;
   root.getElementById('grid-frame-spans-x').value = '4000';
   root.getElementById('grid-frame-spans-y').value = '5000';
+}
+
+function createCustomSectionState() {
+  const state = new AppState();
+  state.addSpring({ symbol: 'K-Test', memo: 'test column-end spring' });
+  state.addSection({
+    target: 'member',
+    type: 'column',
+    name: 'C-Test',
+    b: 450,
+    h: 450,
+    defaultEndI: { condition: 'spring', springSymbol: 'K-Test' },
+  });
+  state.addSection({
+    target: 'member',
+    type: 'beam',
+    name: 'B-Test',
+    b: 300,
+    h: 650,
+  });
+  return state;
 }
 
 function latestNotice(root) {
@@ -219,6 +289,12 @@ test('initial grid frame modal exposes all inputs and actions', async () => {
     'grid-frame-story-heights',
     'grid-frame-spans-x',
     'grid-frame-spans-y',
+    'grid-frame-column-section',
+    'grid-frame-beam-section',
+    'grid-frame-generate-floors',
+    'grid-frame-preset',
+    'btn-grid-frame-preset-save',
+    'btn-grid-frame-preset-delete',
     'btn-grid-frame-close',
     'btn-grid-frame-cancel',
     'btn-grid-frame-generate',
@@ -307,8 +383,59 @@ test('grid frame modal respects replacement cancellation', () =>
     assert.equal(saveCalls, 0);
     assert.equal(loadCalls, 0);
     assert.equal(controller.isOpen(), true);
+    assert.equal(localStorage.getItem(GRID_FRAME_INPUT_STORAGE_KEY), null);
   })
 );
+
+test('grid frame modal confirms before replacing independent model content', async () => {
+  const contentCases = [
+    { loads: [{ id: 'LD1' }] },
+    { supports: [{ id: 'SUP1' }] },
+    { axes: [{ id: 'AX1' }] },
+    { underlay: { name: 'plan.dxf', entities: [{ type: 'LINE' }] } },
+    {
+      levels: [
+        { id: 'L0', name: 'GL', z: 0 },
+        { id: 'L1', name: '2F', z: 2800 },
+        { id: 'L2', name: 'RF', z: 6000 },
+      ],
+    },
+  ];
+
+  for (const content of contentCases) {
+    await withFakeBrowser(root => {
+      let confirmCalls = 0;
+      let saveCalls = 0;
+      let loadCalls = 0;
+      root.defaultView.confirm = () => {
+        confirmCalls++;
+        return false;
+      };
+      const controller = initGridFrameModal({
+        state: {
+          nodes: [],
+          members: [],
+          surfaces: [],
+          ...content,
+          loadJSON() { loadCalls++; },
+        },
+        history: { save() { saveCalls++; }, undo() {} },
+        onModelChange() {},
+        syncSettingsControls() {},
+        refreshLevelSelectors() {},
+      });
+
+      controller.show();
+      setValidInputs(root);
+      dispatchSubmit(root);
+
+      assert.equal(confirmCalls, 1);
+      assert.equal(saveCalls, 0);
+      assert.equal(loadCalls, 0);
+      assert.equal(controller.isOpen(), true);
+    });
+  }
+});
 
 test('grid frame modal replaces the model and synchronizes the UI', () =>
   withFakeBrowser(root => {
@@ -336,6 +463,198 @@ test('grid frame modal replaces the model and synchronizes the UI', () =>
     assert.equal(latestNotice(root).getAttribute('role'), 'status');
   })
 );
+
+test('grid frame modal applies current-model sections, generates floors, and restores saved input', async () => {
+  const storage = createFakeStorage();
+
+  await withFakeBrowser(root => {
+    const state = createCustomSectionState();
+    const controller = initGridFrameModal({
+      state,
+      history: { save() {}, undo() { return true; } },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+
+    controller.show();
+    assert.ok(
+      root.getElementById('grid-frame-column-section').children
+        .some(option => option.value === 'C-Test')
+    );
+    assert.ok(
+      root.getElementById('grid-frame-beam-section').children
+        .some(option => option.value === 'B-Test')
+    );
+
+    setValidInputs(root, '2800, 3000');
+    root.getElementById('grid-frame-column-section').value = 'C-Test';
+    root.getElementById('grid-frame-beam-section').value = 'B-Test';
+    root.getElementById('grid-frame-generate-floors').checked = true;
+    dispatchSubmit(root);
+
+    assert.equal(
+      state.members.filter(member => member.type === 'column')
+        .every(member => member.sectionName === 'C-Test'),
+      true
+    );
+    assert.equal(
+      state.members.filter(member => member.type === 'column')
+        .every(member => member.endI.springSymbol === 'K-Test'),
+      true
+    );
+    assert.equal(
+      state.members.filter(member => member.type === 'beam')
+        .every(member => member.sectionName === 'B-Test'),
+      true
+    );
+    assert.equal(state.surfaces.filter(surface => surface.type === 'floor').length, 2);
+    assert.match(latestNotice(root).textContent, /床 2枚/);
+
+    assert.deepEqual(JSON.parse(storage.getItem(GRID_FRAME_INPUT_STORAGE_KEY)), {
+      storyHeights: '2800, 3000',
+      spansX: '4000',
+      spansY: '5000',
+      columnSection: 'C-Test',
+      beamSection: 'B-Test',
+      generateFloors: true,
+    });
+  }, { storage });
+
+  await withFakeBrowser(root => {
+    const controller = initGridFrameModal({
+      state: createCustomSectionState(),
+      history: { save() {}, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+    controller.show();
+
+    assert.equal(root.getElementById('grid-frame-story-heights').value, '2800, 3000');
+    assert.equal(root.getElementById('grid-frame-spans-x').value, '4000');
+    assert.equal(root.getElementById('grid-frame-spans-y').value, '5000');
+    assert.equal(root.getElementById('grid-frame-column-section').value, 'C-Test');
+    assert.equal(root.getElementById('grid-frame-beam-section').value, 'B-Test');
+    assert.equal(root.getElementById('grid-frame-generate-floors').checked, true);
+  }, { storage });
+});
+
+test('grid frame modal saves, loads, and deletes named presets', () => {
+  const storage = createFakeStorage();
+  return withFakeBrowser(root => {
+    const controller = initGridFrameModal({
+      state: createCustomSectionState(),
+      history: { save() {}, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+    controller.show();
+    setValidInputs(root, '2@3000');
+    root.getElementById('grid-frame-column-section').value = 'C-Test';
+    root.getElementById('grid-frame-beam-section').value = 'B-Test';
+    root.getElementById('grid-frame-generate-floors').checked = true;
+    root.defaultView.prompt = () => 'Office';
+
+    root.getElementById('btn-grid-frame-preset-save').dispatchEvent(new Event('click'));
+
+    const saved = JSON.parse(storage.getItem(GRID_FRAME_PRESETS_STORAGE_KEY));
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0], {
+      name: 'Office',
+      values: {
+        storyHeights: '2@3000',
+        spansX: '4000',
+        spansY: '5000',
+        columnSection: 'C-Test',
+        beamSection: 'B-Test',
+        generateFloors: true,
+      },
+    });
+    assert.match(latestNotice(root).textContent, /Office/);
+
+    setValidInputs(root, '4200');
+    root.getElementById('grid-frame-generate-floors').checked = false;
+    const presetSelect = root.getElementById('grid-frame-preset');
+    presetSelect.value = 'Office';
+    presetSelect.dispatchEvent(new Event('change'));
+
+    assert.equal(root.getElementById('grid-frame-story-heights').value, '2@3000');
+    assert.equal(root.getElementById('grid-frame-column-section').value, 'C-Test');
+    assert.equal(root.getElementById('grid-frame-beam-section').value, 'B-Test');
+    assert.equal(root.getElementById('grid-frame-generate-floors').checked, true);
+    assert.equal(root.getElementById('btn-grid-frame-preset-delete').disabled, false);
+
+    let confirmMessage = '';
+    root.defaultView.confirm = message => {
+      confirmMessage = message;
+      return true;
+    };
+    root.getElementById('btn-grid-frame-preset-delete').dispatchEvent(new Event('click'));
+
+    assert.match(confirmMessage, /Office/);
+    assert.deepEqual(JSON.parse(storage.getItem(GRID_FRAME_PRESETS_STORAGE_KEY)), []);
+    assert.equal(presetSelect.value, '');
+    assert.equal(root.getElementById('btn-grid-frame-preset-delete').disabled, true);
+    assert.match(latestNotice(root).textContent, /Office/);
+  }, { storage });
+});
+
+test('grid frame modal limits presets and ignores corrupted storage JSON', async () => {
+  const values = {
+    storyHeights: '3000',
+    spansX: '6000',
+    spansY: '6000',
+    columnSection: '',
+    beamSection: '',
+    generateFloors: false,
+  };
+  const presets = Array.from({ length: MAX_GRID_FRAME_PRESETS }, (_, index) => ({
+    name: `Preset ${index + 1}`,
+    values,
+  }));
+  const fullStorage = createFakeStorage({
+    [GRID_FRAME_PRESETS_STORAGE_KEY]: JSON.stringify(presets),
+  });
+
+  await withFakeBrowser(root => {
+    const controller = initGridFrameModal({
+      state: new AppState(),
+      history: { save() {}, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+    controller.show();
+    root.defaultView.prompt = () => 'One too many';
+    root.getElementById('btn-grid-frame-preset-save').dispatchEvent(new Event('click'));
+
+    assert.equal(
+      JSON.parse(fullStorage.getItem(GRID_FRAME_PRESETS_STORAGE_KEY)).length,
+      MAX_GRID_FRAME_PRESETS
+    );
+    assert.match(latestNotice(root).textContent, new RegExp(String(MAX_GRID_FRAME_PRESETS)));
+  }, { storage: fullStorage });
+
+  const corruptedStorage = createFakeStorage({
+    [GRID_FRAME_INPUT_STORAGE_KEY]: '{broken input',
+    [GRID_FRAME_PRESETS_STORAGE_KEY]: '[broken presets',
+  });
+  await withFakeBrowser(root => {
+    const controller = initGridFrameModal({
+      state: new AppState(),
+      history: { save() {}, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+    assert.doesNotThrow(() => controller.show());
+    assert.equal(root.getElementById('grid-frame-story-heights').value, '');
+    assert.equal(root.getElementById('grid-frame-generate-floors').checked, false);
+    assert.equal(root.getElementById('grid-frame-preset').children.length, 1);
+  }, { storage: corruptedStorage });
+});
 
 test('grid frame modal reports projected and maximum member counts before saving', () =>
   withFakeBrowser(root => {
@@ -401,6 +720,7 @@ test('grid frame modal rolls back and resynchronizes after a load failure', () =
     assert.deepEqual(calls, { save: 1, undo: 1, sync: 1, refresh: 1, change: 1 });
     assert.equal(controller.isOpen(), true);
     assert.match(latestNotice(root).textContent, /生成に失敗/);
+    assert.equal(localStorage.getItem(GRID_FRAME_INPUT_STORAGE_KEY), null);
   })
 );
 
@@ -418,10 +738,12 @@ test('in-app help documents generated and excluded model elements', async () => 
 
   assert.match(source, /初期モデル生成（格子フレーム）/);
   assert.match(source, /GLの並進3方向を拘束した支点/);
-  assert.match(source, /床・荷重・ブレースは生成されません/);
+  assert.match(source, /「床を生成する」は既定で OFF/);
+  assert.match(source, /荷重・ブレースは生成されません/);
   assert.match(source, /Initial Model Generation \(Grid Frame\)/);
   assert.match(source, /supports restrained in DX\/DY\/DZ at GL/);
-  assert.match(source, /Floors, loads, and braces are not generated/);
+  assert.match(source, /"Generate floors" is OFF by default/);
+  assert.match(source, /Loads and braces are not generated/);
 });
 
 test('text-field undo and redo remain native while the grid modal is being edited', () => {

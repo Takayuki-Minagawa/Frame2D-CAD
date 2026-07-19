@@ -63,6 +63,40 @@ test('placeholders like {n} match between ja and en for shared keys', async () =
   assert.deepEqual(mismatches, []);
 });
 
+test('grid frame enhancements expose complete Japanese and English copy', async () => {
+  const dict = await loadDict();
+  const keys = [
+    'gridFrameColumnSection',
+    'gridFrameBeamSection',
+    'gridFrameGenerateFloors',
+    'gridFramePreset',
+    'gridFramePresetNone',
+    'gridFramePresetSave',
+    'gridFramePresetDelete',
+    'gridFramePresetNamePrompt',
+    'gridFramePresetNameRequired',
+    'gridFramePresetLimit',
+    'gridFramePresetSaved',
+    'gridFramePresetLoaded',
+    'gridFramePresetDeleted',
+    'gridFramePresetDeleteConfirm',
+    'gridFramePresetSaveFailed',
+    'gridFramePresetDeleteFailed',
+  ];
+
+  for (const key of keys) {
+    assert.ok(key in dict.ja, `ja.${key} should exist`);
+    assert.ok(key in dict.en, `en.${key} should exist`);
+  }
+
+  assert.match(dict.ja.gridFrameSpansXPlaceholder, /3@6000/);
+  assert.match(dict.en.gridFrameSpansXPlaceholder, /3@6000/);
+  assert.match(dict.ja.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}/);
+  assert.match(dict.en.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}/);
+  assert.match(dict.ja.gridFrameTooLarge, /要素数/);
+  assert.match(dict.en.gridFrameTooLarge, /element count/);
+});
+
 test('t() resolves keys in the default language and echoes unknown keys', () => {
   assert.equal(getLang(), 'ja');
   assert.equal(t('tools'), 'ツール');
