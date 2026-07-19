@@ -283,7 +283,7 @@ export function initGridFrameModal({
   }
 
   function errorMessage(error) {
-    if (error?.code === 'member-count' || error?.code === 'element-count') {
+    if (error?.code === 'member-count') {
       return t('gridFrameTooLarge', { count: error.count, max: error.max });
     }
     return t('gridFrameGenerateFailed');
