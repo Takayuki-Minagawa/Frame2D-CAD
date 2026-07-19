@@ -388,6 +388,16 @@
       </div>
       <form id="grid-frame-form" class="modal-body" novalidate>
         <div class="settings-group">
+          <label for="grid-frame-preset" data-i18n="gridFramePreset">プリセット</label>
+          <select id="grid-frame-preset">
+            <option value="" data-i18n="gridFramePresetNone">プリセットを選択</option>
+          </select>
+          <div class="support-preset-row">
+            <button id="btn-grid-frame-preset-save" type="button" class="support-preset-btn" data-i18n="gridFramePresetSave">保存</button>
+            <button id="btn-grid-frame-preset-delete" type="button" class="support-preset-btn" data-i18n="gridFramePresetDelete">削除</button>
+          </div>
+        </div>
+        <div class="settings-group">
           <label for="grid-frame-story-heights"><span data-i18n="gridFrameStoryHeights">階高リスト</span> (mm)</label>
           <input id="grid-frame-story-heights" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
                  data-i18n-placeholder="gridFrameStoryHeightsPlaceholder" placeholder="3500, 3000, 3000">
@@ -401,6 +411,20 @@
           <label for="grid-frame-spans-y"><span data-i18n="gridFrameSpansY">Y方向スパンリスト</span> (mm)</label>
           <input id="grid-frame-spans-y" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
                  data-i18n-placeholder="gridFrameSpansYPlaceholder" placeholder="6000, 6000">
+        </div>
+        <div class="settings-group">
+          <label for="grid-frame-column-section" data-i18n="gridFrameColumnSection">柱断面</label>
+          <select id="grid-frame-column-section"></select>
+        </div>
+        <div class="settings-group">
+          <label for="grid-frame-beam-section" data-i18n="gridFrameBeamSection">梁断面</label>
+          <select id="grid-frame-beam-section"></select>
+        </div>
+        <div class="settings-group">
+          <label class="support-chk-label" for="grid-frame-generate-floors">
+            <input id="grid-frame-generate-floors" type="checkbox">
+            <span data-i18n="gridFrameGenerateFloors">床を生成する</span>
+          </label>
         </div>
         <div class="support-preset-row">
           <button id="btn-grid-frame-cancel" type="button" class="support-preset-btn" data-i18n="choiceCancel">キャンセル</button>
