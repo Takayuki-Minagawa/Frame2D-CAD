@@ -71,6 +71,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 軸組図ビュー（通り芯を選んで構面の立面を表示。柱・梁・ブレース・レベル線・直交通り芯）
 - 自動保存とクラッシュ復元（localStorageへ定期保存、起動時に復元確認）
 - サンプルモデル（平屋+切妻屋根 / 2階建フレーム）を設定モーダルからワンクリック読込
+- 階高・X/Yスパンのリストから、レベル・通り芯・柱・梁・GL支点を持つ初期格子フレームを一括生成
 
 ### 3D Viewer
 - 線材を断面寸法（b x h）を反映した直方体として3D表示
@@ -335,8 +336,12 @@ app.js ─┬─ state.js      Data model (AppState)
 git clone https://github.com/<your-username>/Frame2D-CAD.git
 cd Frame2D-CAD
 
+# Create a Python environment with uv
+uv venv --python 3.13
+source .venv/bin/activate
+
 # Start local server (ES Modules require HTTP)
-python3 -m http.server 8080
+python -m http.server 8080
 
 # Open in browser
 # http://localhost:8080

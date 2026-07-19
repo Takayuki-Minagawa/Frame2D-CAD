@@ -16,6 +16,14 @@ export const helpContentJa = `
   <tr><td><b>削除</b></td><td>要素を選択してDeleteキー（複数選択にも対応）</td></tr>
 </table>
 
+<h3>初期モデル生成（格子フレーム）</h3>
+<ol>
+  <li>設定 →「初期モデル生成…」を開き、階高、X方向スパン、Y方向スパンを mm 単位で入力します。カンマ、読点、空白で複数の値を区切れます。</li>
+  <li>階高は下階から順に、スパンは原点から +X / +Y 方向へ順に指定します。例: 階高 <code>3500, 3000, 3000</code>、Xスパン <code>6000, 6000, 5000</code>。</li>
+  <li>「生成」で GL から RF までのレイヤー、X/Y通り芯、柱、梁、GLの並進3方向を拘束した支点を一括生成します。現在のモデルは置き換えられますが、「元に戻す」で復元できます。</li>
+</ol>
+<p>床・荷重・ブレースは生成されません。柱と梁は既定の断面で生成されるため、生成後に必要な断面へ変更してください。</p>
+
 <h3>通り芯・下絵・軸組図</h3>
 <table>
   <tr><td><b>通り芯</b></td><td>ツールバーの「通り芯管理」でX/Y通りの名前と座標を定義。2Dに一点鎖線で表示され、交点にスナップします</td></tr>
@@ -140,6 +148,14 @@ export const helpContentEn = `
   <tr><td><b>Move</b></td><td>After selecting, drag a node or line element (the whole group moves during multi-selection). Or edit start/end X,Y coordinates in the property panel</td></tr>
   <tr><td><b>Delete</b></td><td>Select element(s) and press Delete key</td></tr>
 </table>
+
+<h3>Initial Model Generation (Grid Frame)</h3>
+<ol>
+  <li>Open Settings → "Generate Initial Model…", then enter story heights, X-direction spans, and Y-direction spans in millimetres. Separate multiple values with commas, Japanese commas, or spaces.</li>
+  <li>List story heights from the bottom story upward, and spans from the origin in the +X / +Y directions. Example: story heights <code>3500, 3000, 3000</code>; X spans <code>6000, 6000, 5000</code>.</li>
+  <li>Click "Generate" to create layers from GL through RF, X/Y grid axes, columns, beams, and supports restrained in DX/DY/DZ at GL. This replaces the current model; use Undo to restore it.</li>
+</ol>
+<p>Floors, loads, and braces are not generated. Columns and beams use the default sections, which you can change after generation.</p>
 
 <h3>Grid Axes, Underlay &amp; Elevation</h3>
 <table>

@@ -21,6 +21,8 @@ export function showNotice(message, kind = 'error', durationMs = 4200) {
 
   const notice = document.createElement('div');
   notice.className = `app-notice app-notice-${kind}`;
+  notice.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  notice.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
   notice.textContent = text;
   host.appendChild(notice);
 

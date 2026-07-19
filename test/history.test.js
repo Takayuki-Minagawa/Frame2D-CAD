@@ -44,6 +44,29 @@ test('undo and redo return false when their stacks are empty', () => {
   assert.equal(history.redo(), false);
 });
 
+test('restore callback runs after successful undo and redo only', () => {
+  const state = new AppState();
+  const history = new History(state);
+  const restoredMemberCounts = [];
+  history.setOnRestore(() => restoredMemberCounts.push(state.members.length));
+
+  assert.equal(history.undo(), false);
+  assert.deepEqual(restoredMemberCounts, []);
+
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(5000, 0);
+  history.save();
+  state.addMember(n1.id, n2.id, { type: 'beam' });
+
+  assert.equal(history.undo(), true);
+  assert.equal(history.redo(), true);
+  assert.deepEqual(restoredMemberCounts, [0, 1]);
+
+  history.setOnRestore(null);
+  assert.equal(history.undo(), true);
+  assert.deepEqual(restoredMemberCounts, [0, 1]);
+});
+
 test('save clears the redo stack', () => {
   const state = new AppState();
   const history = new History(state);

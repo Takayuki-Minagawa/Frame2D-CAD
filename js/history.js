@@ -7,6 +7,11 @@ export class History {
     this.state = state;
     this.undoStack = [];
     this.redoStack = [];
+    this.onRestore = null;
+  }
+
+  setOnRestore(callback) {
+    this.onRestore = typeof callback === 'function' ? callback : null;
   }
 
   save() {
@@ -38,6 +43,7 @@ export class History {
     this.redoStack.push(this.state.snapshot());
     const snap = this.undoStack.pop();
     this.state.restoreSnapshot(snap);
+    this.onRestore?.();
     return true;
   }
 
@@ -46,6 +52,7 @@ export class History {
     this.undoStack.push(this.state.snapshot());
     const snap = this.redoStack.pop();
     this.state.restoreSnapshot(snap);
+    this.onRestore?.();
     return true;
   }
 

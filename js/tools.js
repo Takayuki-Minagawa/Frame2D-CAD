@@ -295,7 +295,11 @@ export class ToolManager {
   }
 
   _onKeyDown(e) {
-    if (e.code === 'Space') {
+    const targetTag = e.target?.tagName;
+    const isEditableTarget = targetTag === 'INPUT' || targetTag === 'SELECT' ||
+      targetTag === 'TEXTAREA' || e.target?.isContentEditable;
+
+    if (e.code === 'Space' && !isEditableTarget) {
       this._spaceDown = true;
       e.preventDefault();
     }
@@ -325,8 +329,7 @@ export class ToolManager {
     }
 
     // Delete (skip when focused on input/select)
-    if ((e.key === 'Delete' || e.key === 'Backspace') &&
-        e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'TEXTAREA') {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditableTarget) {
       if (this.state.selectedSupportId) {
         const support = this.state.getSupport(this.state.selectedSupportId);
         if (!this.state.isSupportSelectable(support)) return;
@@ -359,7 +362,7 @@ export class ToolManager {
     }
 
     // Undo/Redo
-    if (e.ctrlKey || e.metaKey) {
+    if ((e.ctrlKey || e.metaKey) && !isEditableTarget) {
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         if (this.history.undo()) this.onUpdate();
@@ -370,7 +373,8 @@ export class ToolManager {
     }
 
     // Close polyline surface
-    if (this.state.currentTool === 'surface' && this.state.surfaceDraftMode === 'polyline' &&
+    if (!isEditableTarget && this.state.currentTool === 'surface' &&
+        this.state.surfaceDraftMode === 'polyline' &&
         (e.key === 'Enter' || e.key === 'Return')) {
       this._finishSurfacePolyline();
     }
