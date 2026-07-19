@@ -2,7 +2,12 @@
 // Parsing and model construction stay DOM-independent in frame-generator.js;
 // this module owns only modal state and the whole-model replacement flow.
 
-import { buildGridFrame, parseMmList } from './frame-generator.js';
+import {
+  buildGridFrame,
+  MAX_SPAN_COUNT,
+  MAX_STORY_COUNT,
+  parseMmList,
+} from './frame-generator.js';
 import { t } from './i18n.js';
 import { showNotice } from './notice.js';
 
@@ -30,21 +35,21 @@ export function initGridFrameModal({
       key: 'storyHeights',
       input: document.getElementById('grid-frame-story-heights'),
       labelKey: 'gridFrameStoryHeights',
-      maxCount: 50,
+      maxCount: MAX_STORY_COUNT,
       initialValue: '',
     },
     {
       key: 'spansX',
       input: document.getElementById('grid-frame-spans-x'),
       labelKey: 'gridFrameSpansX',
-      maxCount: 100,
+      maxCount: MAX_SPAN_COUNT,
       initialValue: '',
     },
     {
       key: 'spansY',
       input: document.getElementById('grid-frame-spans-y'),
       labelKey: 'gridFrameSpansY',
-      maxCount: 100,
+      maxCount: MAX_SPAN_COUNT,
       initialValue: '',
     },
   ];
@@ -115,7 +120,9 @@ export function initGridFrameModal({
   }
 
   function errorMessage(error) {
-    if (error?.code === 'member-count') return t('gridFrameTooLarge');
+    if (error?.code === 'member-count') {
+      return t('gridFrameTooLarge', { count: error.count, max: error.max });
+    }
     return t('gridFrameGenerateFailed');
   }
 
@@ -157,6 +164,9 @@ export function initGridFrameModal({
     } catch (error) {
       console.error('Grid frame generation failed:', error);
       if (snapshotSaved) history.undo();
+      // The app-level History restore hook normally performs these updates.
+      // Keep an explicit fallback for callers without that hook and for a
+      // history.save()/undo() failure before a snapshot can be restored.
       syncSettingsControls();
       refreshLevelSelectors();
       onModelChange();

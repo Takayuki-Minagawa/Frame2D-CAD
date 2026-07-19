@@ -57,7 +57,12 @@ export function buildGridFrame({ storyHeights, spansX, spansY } = {}) {
     throw validationError(
       RangeError,
       `Grid frame member count ${memberCount} exceeds the limit of ${MAX_GRID_FRAME_MEMBERS}.`,
-      { reason: 'count', code: 'member-count' }
+      {
+        reason: 'count',
+        code: 'member-count',
+        count: memberCount,
+        max: MAX_GRID_FRAME_MEMBERS,
+      }
     );
   }
 
@@ -191,8 +196,6 @@ function configureLevels(state, storyHeights) {
     levels.push(state.addLevel(isRoof ? 'RF' : `${storyIndex + 2}F`, elevation));
   }
 
-  state.activeLevelId = groundLevel.id;
-  state.surfaceDraftTopLevelId = defaultUpperLevel.id;
   return levels;
 }
 

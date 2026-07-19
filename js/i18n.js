@@ -433,7 +433,7 @@ const dict = {
     gridFrameInvalidInput: '{field}は正の数値をカンマ、読点または空白で区切って入力してください。',
     gridFrameOutOfRange: '{field}の各値は1〜100,000 mmの範囲で入力してください。',
     gridFrameTooMany: '{field}の入力個数が上限を超えています。',
-    gridFrameTooLarge: '生成される部材数が上限を超えます。階数またはスパン数を減らしてください。',
+    gridFrameTooLarge: '生成される部材数（{count}）が上限（{max}）を超えます。階数またはスパン数を減らしてください。',
     gridFrameGenerateFailed: '格子フレームの生成に失敗しました。',
   },
 
@@ -869,7 +869,7 @@ const dict = {
     gridFrameInvalidInput: 'Enter {field} as positive numbers separated by commas, Japanese commas, or spaces.',
     gridFrameOutOfRange: 'Each value in {field} must be between 1 and 100,000 mm.',
     gridFrameTooMany: '{field} contains more values than allowed.',
-    gridFrameTooLarge: 'The generated model would exceed the member limit. Reduce the number of stories or spans.',
+    gridFrameTooLarge: 'The generated member count ({count}) exceeds the limit ({max}). Reduce the number of stories or spans.',
     gridFrameGenerateFailed: 'Failed to generate the grid frame.',
   },
 };

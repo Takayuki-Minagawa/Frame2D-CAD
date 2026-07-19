@@ -2,7 +2,212 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
+import { MAX_GRID_FRAME_MEMBERS } from '../js/frame-generator.js';
+import { initGridFrameModal } from '../js/grid-frame-modal.js';
+import { AppState } from '../js/state.js';
 import { ToolManager } from '../js/tools.js';
+
+class FakeClassList {
+  constructor() {
+    this.values = new Set();
+  }
+
+  add(value) {
+    this.values.add(value);
+  }
+
+  remove(value) {
+    this.values.delete(value);
+  }
+
+  contains(value) {
+    return this.values.has(value);
+  }
+}
+
+class FakeElement extends EventTarget {
+  constructor(ownerDocument, id = '', tagName = 'DIV') {
+    super();
+    this.ownerDocument = ownerDocument;
+    this.id = id;
+    this.tagName = tagName;
+    this.classList = new FakeClassList();
+    this.dataset = {};
+    this.children = [];
+    this.attributes = new Map();
+    this.textContent = '';
+    this.value = '';
+    this.placeholder = '';
+    this.hidden = false;
+    this.isConnected = true;
+    this.parentElement = null;
+    this._innerHTML = '';
+  }
+
+  appendChild(child) {
+    child.parentElement = this;
+    this.children.push(child);
+    if (child.id) this.ownerDocument.elements.set(child.id, child);
+    return child;
+  }
+
+  remove() {
+    if (this.parentElement) {
+      this.parentElement.children = this.parentElement.children.filter(child => child !== this);
+    }
+    this.isConnected = false;
+  }
+
+  set innerHTML(value) {
+    this._innerHTML = String(value);
+    if (value === '') this.children = [];
+  }
+
+  get innerHTML() {
+    return this._innerHTML;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  querySelectorAll(selector) {
+    return this.ownerDocument.queries.get(`${this.id}:${selector}`) || [];
+  }
+
+  focus() {
+    this.ownerDocument.activeElement = this;
+  }
+}
+
+function createFakeDocument() {
+  const root = {
+    elements: new Map(),
+    queries: new Map(),
+    activeElement: null,
+    documentElement: {},
+    getElementById(id) {
+      return root.elements.get(id) || null;
+    },
+    createElement(tagName) {
+      return new FakeElement(root, '', tagName.toUpperCase());
+    },
+  };
+  root.body = new FakeElement(root, 'body', 'BODY');
+
+  const elementTypes = {
+    'grid-frame-form': 'FORM',
+    'grid-frame-story-heights': 'INPUT',
+    'grid-frame-spans-x': 'INPUT',
+    'grid-frame-spans-y': 'INPUT',
+    'btn-grid-frame-close': 'BUTTON',
+    'btn-grid-frame-cancel': 'BUTTON',
+    'btn-grid-frame-generate': 'BUTTON',
+    'btn-grid-frame': 'BUTTON',
+    'btn-settings': 'BUTTON',
+  };
+  for (const id of [
+    'grid-frame-modal',
+    'grid-frame-form',
+    'grid-frame-story-heights',
+    'grid-frame-spans-x',
+    'grid-frame-spans-y',
+    'btn-grid-frame-close',
+    'btn-grid-frame-cancel',
+    'btn-grid-frame-generate',
+    'btn-grid-frame',
+    'btn-settings',
+    'settings-modal',
+    'app-notice-host',
+  ]) {
+    root.elements.set(id, new FakeElement(root, id, elementTypes[id] || 'DIV'));
+  }
+
+  const modal = root.getElementById('grid-frame-modal');
+  const inputs = [
+    root.getElementById('grid-frame-story-heights'),
+    root.getElementById('grid-frame-spans-x'),
+    root.getElementById('grid-frame-spans-y'),
+  ];
+  inputs[0].dataset.i18nPlaceholder = 'gridFrameStoryHeightsPlaceholder';
+  inputs[1].dataset.i18nPlaceholder = 'gridFrameSpansXPlaceholder';
+  inputs[2].dataset.i18nPlaceholder = 'gridFrameSpansYPlaceholder';
+  const localized = [
+    root.getElementById('btn-grid-frame-close'),
+    root.getElementById('btn-grid-frame-cancel'),
+    root.getElementById('btn-grid-frame-generate'),
+  ];
+  localized[0].dataset.i18n = 'helpClose';
+  localized[1].dataset.i18n = 'choiceCancel';
+  localized[2].dataset.i18n = 'gridFrameGenerate';
+  root.queries.set('grid-frame-modal:[data-i18n]', localized);
+  root.queries.set('grid-frame-modal:[data-i18n-placeholder]', inputs);
+  root.queries.set('grid-frame-modal:button:not([disabled]), input:not([disabled])', [
+    localized[0],
+    ...inputs,
+    localized[1],
+    localized[2],
+  ]);
+  root.body.appendChild(root.getElementById('app-notice-host'));
+  root.activeElement = root.getElementById('btn-grid-frame');
+
+  let nextTimerId = 1;
+  root.defaultView = {
+    confirm: () => true,
+    setTimeout: () => nextTimerId++,
+    clearTimeout: () => {},
+  };
+  return root;
+}
+
+async function withFakeBrowser(callback) {
+  const originals = {
+    document: globalThis.document,
+    window: globalThis.window,
+    HTMLElement: globalThis.HTMLElement,
+    requestAnimationFrame: globalThis.requestAnimationFrame,
+  };
+  const root = createFakeDocument();
+  globalThis.document = root;
+  globalThis.window = root.defaultView;
+  globalThis.HTMLElement = FakeElement;
+  globalThis.requestAnimationFrame = callback => {
+    callback();
+    return 1;
+  };
+  try {
+    return await callback(root);
+  } finally {
+    for (const [name, value] of Object.entries(originals)) {
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
+    }
+  }
+}
+
+function setValidInputs(root, storyHeights = '2800') {
+  root.getElementById('grid-frame-story-heights').value = storyHeights;
+  root.getElementById('grid-frame-spans-x').value = '4000';
+  root.getElementById('grid-frame-spans-y').value = '5000';
+}
+
+function latestNotice(root) {
+  return root.getElementById('app-notice-host').children.at(-1);
+}
+
+function dispatchSubmit(root) {
+  const event = new Event('submit', { cancelable: true });
+  root.getElementById('grid-frame-form').dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+}
 
 test('initial grid frame modal exposes all inputs and actions', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
@@ -26,38 +231,186 @@ test('initial grid frame modal exposes all inputs and actions', async () => {
   assert.match(html, /data-i18n-placeholder="gridFrameSpansYPlaceholder"/);
 });
 
-test('grid frame modal wires validation, replacement, and rollback flow', async () => {
-  const source = await readFile(new URL('../js/grid-frame-modal.js', import.meta.url), 'utf8');
+test('grid frame modal retains input and restores focus after cancellation', () =>
+  withFakeBrowser(root => {
+    const controller = initGridFrameModal({
+      state: { nodes: [], members: [] },
+      history: { save() {}, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
 
-  assert.match(source, /parseMmList\(field\.input\.value, \{ maxCount: field\.maxCount \}\)/);
-  assert.match(source, /state\.nodes\.length > 0 \|\| state\.members\.length > 0/);
-  assert.match(source, /window\.confirm\(t\('gridFrameReplaceConfirm'\)\)/);
-  assert.match(source, /generatedModel = buildGridFrame\(values\)/);
-  assert.match(source, /history\.save\(\)/);
-  assert.match(source, /state\.loadJSON\(generatedModel\)/);
-  assert.match(source, /syncSettingsControls\(\)/);
-  assert.match(source, /refreshLevelSelectors\(\)/);
-  assert.match(source, /history\.undo\(\)/);
-  assert.match(source, /gridFrameDone/);
-  assert.match(source, /gridFrameTooLarge/);
+    controller.show();
+    setValidInputs(root, '2800 3000');
+    root.getElementById('btn-grid-frame-cancel').dispatchEvent(new Event('click'));
 
-  assert.ok(
-    source.indexOf('generatedModel = buildGridFrame(values)') < source.indexOf('history.save()'),
-    'validation/build must finish before history.save() clears redo'
-  );
-});
+    assert.equal(controller.isOpen(), false);
+    assert.equal(root.getElementById('settings-modal').getAttribute('inert'), null);
+    assert.equal(root.activeElement, root.getElementById('btn-grid-frame'));
 
-test('app wires the grid frame modal and Escape handling', async () => {
+    controller.show();
+    assert.equal(root.getElementById('grid-frame-story-heights').value, '2800 3000');
+    assert.equal(root.getElementById('grid-frame-spans-x').value, '4000');
+    assert.equal(root.getElementById('grid-frame-spans-y').value, '5000');
+  })
+);
+
+test('grid frame modal keeps invalid input open and does not touch history', () =>
+  withFakeBrowser(root => {
+    let saveCalls = 0;
+    let loadCalls = 0;
+    const controller = initGridFrameModal({
+      state: { nodes: [], members: [], loadJSON() { loadCalls++; } },
+      history: { save() { saveCalls++; }, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+
+    controller.show();
+    setValidInputs(root, '0');
+    dispatchSubmit(root);
+
+    const input = root.getElementById('grid-frame-story-heights');
+    assert.equal(controller.isOpen(), true);
+    assert.equal(input.getAttribute('aria-invalid'), 'true');
+    assert.equal(root.activeElement, input);
+    assert.equal(saveCalls, 0);
+    assert.equal(loadCalls, 0);
+    assert.match(latestNotice(root).textContent, /1〜100,000 mm/);
+  })
+);
+
+test('grid frame modal respects replacement cancellation', () =>
+  withFakeBrowser(root => {
+    let confirmCalls = 0;
+    let saveCalls = 0;
+    let loadCalls = 0;
+    root.defaultView.confirm = () => {
+      confirmCalls++;
+      return false;
+    };
+    const controller = initGridFrameModal({
+      state: { nodes: [{ id: 1 }], members: [], loadJSON() { loadCalls++; } },
+      history: { save() { saveCalls++; }, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+
+    controller.show();
+    setValidInputs(root);
+    dispatchSubmit(root);
+
+    assert.equal(confirmCalls, 1);
+    assert.equal(saveCalls, 0);
+    assert.equal(loadCalls, 0);
+    assert.equal(controller.isOpen(), true);
+  })
+);
+
+test('grid frame modal replaces the model and synchronizes the UI', () =>
+  withFakeBrowser(root => {
+    const state = new AppState();
+    const calls = { save: 0, sync: 0, refresh: 0, change: 0, hideSettings: 0 };
+    const controller = initGridFrameModal({
+      state,
+      history: { save() { calls.save++; }, undo() { return true; } },
+      onModelChange() { calls.change++; },
+      syncSettingsControls() { calls.sync++; },
+      refreshLevelSelectors() { calls.refresh++; },
+      hideSettingsModal() { calls.hideSettings++; },
+    });
+
+    controller.show();
+    setValidInputs(root);
+    dispatchSubmit(root);
+
+    assert.deepEqual(calls, { save: 1, sync: 1, refresh: 1, change: 1, hideSettings: 1 });
+    assert.equal(state.members.filter(member => member.type === 'column').length, 4);
+    assert.equal(state.members.filter(member => member.type === 'beam').length, 4);
+    assert.equal(controller.isOpen(), false);
+    assert.equal(root.activeElement, root.getElementById('btn-settings'));
+    assert.match(latestNotice(root).textContent, /柱 4本・梁 4本/);
+    assert.equal(latestNotice(root).getAttribute('role'), 'status');
+  })
+);
+
+test('grid frame modal reports projected and maximum member counts before saving', () =>
+  withFakeBrowser(root => {
+    let saveCalls = 0;
+    const controller = initGridFrameModal({
+      state: { nodes: [], members: [] },
+      history: { save() { saveCalls++; }, undo() {} },
+      onModelChange() {},
+      syncSettingsControls() {},
+      refreshLevelSelectors() {},
+    });
+    const stories = Array(50).fill('3000').join(',');
+    const spans = Array(12).fill('6000').join(',');
+    const projectedMembers = 50 * ((13 * 13) + (12 * 13) + (12 * 13));
+
+    controller.show();
+    setValidInputs(root, stories);
+    root.getElementById('grid-frame-spans-x').value = spans;
+    root.getElementById('grid-frame-spans-y').value = spans;
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      dispatchSubmit(root);
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    assert.equal(saveCalls, 0);
+    assert.equal(controller.isOpen(), true);
+    assert.match(latestNotice(root).textContent, new RegExp(String(projectedMembers)));
+    assert.match(latestNotice(root).textContent, new RegExp(String(MAX_GRID_FRAME_MEMBERS)));
+  })
+);
+
+test('grid frame modal rolls back and resynchronizes after a load failure', () =>
+  withFakeBrowser(root => {
+    const calls = { save: 0, undo: 0, sync: 0, refresh: 0, change: 0 };
+    const controller = initGridFrameModal({
+      state: {
+        nodes: [],
+        members: [],
+        loadJSON() { throw new Error('load failed'); },
+      },
+      history: {
+        save() { calls.save++; },
+        undo() { calls.undo++; return true; },
+      },
+      onModelChange() { calls.change++; },
+      syncSettingsControls() { calls.sync++; },
+      refreshLevelSelectors() { calls.refresh++; },
+    });
+
+    controller.show();
+    setValidInputs(root);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      dispatchSubmit(root);
+    } finally {
+      console.error = originalConsoleError;
+    }
+
+    assert.deepEqual(calls, { save: 1, undo: 1, sync: 1, refresh: 1, change: 1 });
+    assert.equal(controller.isOpen(), true);
+    assert.match(latestNotice(root).textContent, /生成に失敗/);
+  })
+);
+
+test('app wires the grid frame modal and ignores Escape while IME is composing', async () => {
   const source = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
 
   assert.match(source, /import \{ initGridFrameModal \} from '\.\/grid-frame-modal\.js'/);
   assert.match(source, /const gridFrameModal = initGridFrameModal\(\{/);
   assert.match(source, /document\.getElementById\('btn-grid-frame'\).*gridFrameModal\.show/);
-  assert.match(source, /gridFrameModal\.applyLanguage\(\)/);
-  assert.match(source, /gridFrameModal\.isOpen\(\)/);
-  assert.match(source, /gridFrameModal\.hide\(\)/);
-  assert.match(source, /history\.setOnRestore\(\(\) => \{/);
-  assert.match(source, /syncSettingsControls\(\);\s*ui\.refreshLevelSelectors\(\);/);
+  assert.match(source, /if \(e\.isComposing\) return;\s*if \(e\.key === 'Escape'\)/);
 });
 
 test('in-app help documents generated and excluded model elements', async () => {

@@ -254,6 +254,10 @@ test('buildGridFrame revalidates input counts, values, and total member cap', ()
   assert.ok(projectedMembers > MAX_GRID_FRAME_MEMBERS);
   assert.throws(
     () => buildGridFrame(oversized),
-    error => error instanceof RangeError && error.reason === 'count' && error.code === 'member-count'
+    error => error instanceof RangeError &&
+      error.reason === 'count' &&
+      error.code === 'member-count' &&
+      error.count === projectedMembers &&
+      error.max === MAX_GRID_FRAME_MEMBERS
   );
 });

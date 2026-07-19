@@ -665,6 +665,7 @@ helpModal.addEventListener('click', (e) => {
 // them must require an explicit button. When a user-def modal is open, Escape
 // is swallowed so it never falls through and closes another modal underneath.
 window.addEventListener('keydown', (e) => {
+  if (e.isComposing) return;
   if (e.key === 'Escape') {
     if (userDefModal.isOpen()) {
       e.stopPropagation();
