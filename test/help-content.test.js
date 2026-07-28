@@ -42,17 +42,27 @@ test('getHelpContent returns the language-specific help HTML', () => {
 test('in-app help documents the enhanced initial grid frame workflow', () => {
   assert.match(helpContentJa, /繰り返し記法 <code>N@L<\/code>/);
   assert.match(helpContentJa, /<code>3@6000, 5000<\/code>/);
-  assert.match(helpContentJa, /現在のモデルの断面カタログから柱断面と梁断面を選びます/);
-  assert.match(helpContentJa, /「床を生成する」は既定で OFF/);
+  assert.match(helpContentJa, /階数に応じて階別設定テーブルの行が増減します/);
+  assert.match(helpContentJa, /柱断面・梁断面・床断面・外壁断面を現在のモデルの断面カタログから選択/);
+  assert.match(helpContentJa, /「一括」行/);
+  assert.match(helpContentJa, /柱・梁の少なくとも一方を ON/);
+  assert.match(helpContentJa, /外壁は各階の外周に1枚の多角形面材として生成/);
+  assert.match(helpContentJa, /「床」「外壁」チェックは既定で OFF/);
+  assert.match(helpContentJa, /旧形式で保存された入力値・プリセットも自動変換/);
   assert.match(helpContentJa, /名前付きプリセットは最大20件/);
-  assert.match(helpContentJa, /柱・梁・床の件数/);
+  assert.match(helpContentJa, /柱・梁・床・外壁の件数/);
 
   assert.match(helpContentEn, /<code>N@L<\/code> repeat notation/);
   assert.match(helpContentEn, /<code>3@6000, 5000<\/code>/);
+  assert.match(helpContentEn, /set the number of stories/);
   assert.match(helpContentEn, /current model's section catalog/);
-  assert.match(helpContentEn, /"Generate floors" is OFF by default/);
+  assert.match(helpContentEn, /The "All" row at the top/);
+  assert.match(helpContentEn, /At least one of columns or beams must be enabled/);
+  assert.match(helpContentEn, /one perimeter polygon surface per story/);
+  assert.match(helpContentEn, /The "Floors" and "Exterior walls" checkboxes are OFF by default/);
+  assert.match(helpContentEn, /converted automatically/);
   assert.match(helpContentEn, /up to 20 named presets/);
-  assert.match(helpContentEn, /column, beam, and floor counts/);
+  assert.match(helpContentEn, /column, beam, floor, and exterior wall counts/);
 });
 
 test('in-app help explains member join and split workflows', () => {

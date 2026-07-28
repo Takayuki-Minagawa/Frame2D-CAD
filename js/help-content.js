@@ -18,14 +18,15 @@ export const helpContentJa = `
 
 <h3>初期モデル生成（格子フレーム）</h3>
 <ol>
-  <li>設定 →「初期モデル生成…」を開き、階高、X方向スパン、Y方向スパンを mm 単位で入力します。カンマ、読点、空白で複数の値を区切れます。</li>
-  <li>繰り返し記法 <code>N@L</code> で、長さ <code>L</code> を <code>N</code> 回繰り返せます。例: <code>3@6000, 5000</code> は <code>6000, 6000, 6000, 5000</code> と同じです。階高は下階から順に、スパンは原点から +X / +Y 方向へ順に指定します。</li>
-  <li>現在のモデルの断面カタログから柱断面と梁断面を選びます。選択した断面は、生成されるすべての柱・梁に一括適用されます。</li>
-  <li>必要な場合は「床を生成する」を ON にします。GL を除く各レベルの各スパン区画に床面材が生成されます。</li>
-  <li>入力値、断面選択、床の設定は生成成功時に保存され、次回開いたときやリロード後に復元されます。名前付きプリセットは最大20件まで保存・呼出・削除でき、同名保存で上書きできます。</li>
-  <li>「生成」で GL から RF までのレイヤー、X/Y通り芯、柱、梁、GLの並進3方向を拘束した支点、選択時は床を一括生成します。現在のモデルは置き換えられますが、「元に戻す」で復元できます。</li>
+  <li>設定 →「初期モデル生成…」を開き、階数を設定します。階数に応じて階別設定テーブルの行が増減します。増加時は最上階の行が複製され、減少時は上の階から削除されます（下層階の入力は保持されます）。</li>
+  <li>各階の行で階高（mm）と、柱断面・梁断面・床断面・外壁断面を現在のモデルの断面カタログから選択します。最上部の「一括」行に入力・選択すると、その列の全階へ反映されます。</li>
+  <li>「生成する要素」の柱・梁・床・外壁チェックで生成対象を選びます。OFF の要素に対応する断面列は無効表示になります（値は保持）。柱・梁の少なくとも一方を ON にする必要があります。</li>
+  <li>X方向・Y方向スパンは mm 単位で、カンマ、読点、空白区切りで入力します。繰り返し記法 <code>N@L</code>（例: <code>3@6000, 5000</code> は <code>6000, 6000, 6000, 5000</code> と同じ）が使えます。</li>
+  <li>床は GL を除く各レベルの各スパン区画に生成されます。外壁は各階の外周に1枚の多角形面材として生成されます。</li>
+  <li>入力値・断面選択・チェック状態は生成成功時に保存され、次回開いたときやリロード後に復元されます。旧形式で保存された入力値・プリセットも自動変換されます。名前付きプリセットは最大20件まで保存・呼出・削除でき、同名保存で上書きできます。</li>
+  <li>「生成」で GL から RF までのレイヤー、X/Y通り芯、チェックした要素（柱・梁・床・外壁）、柱の生成時は GLの並進3方向を拘束した支点を一括生成します。現在のモデルは置き換えられますが、「元に戻す」で復元できます。</li>
 </ol>
-<p>「床を生成する」は既定で OFF です。荷重・ブレースは生成されません。生成完了時の通知に柱・梁・床の件数が表示されます。</p>
+<p>「床」「外壁」チェックは既定で OFF です。荷重・ブレースは生成されません。生成完了時の通知に柱・梁・床・外壁の件数が表示されます。</p>
 
 <h3>通り芯・下絵・軸組図</h3>
 <table>
@@ -154,14 +155,15 @@ export const helpContentEn = `
 
 <h3>Initial Model Generation (Grid Frame)</h3>
 <ol>
-  <li>Open Settings → "Generate Initial Model…", then enter story heights, X-direction spans, and Y-direction spans in millimetres. Separate multiple values with commas, Japanese commas, or spaces.</li>
-  <li>Use the <code>N@L</code> repeat notation to repeat length <code>L</code> <code>N</code> times. For example, <code>3@6000, 5000</code> is equivalent to <code>6000, 6000, 6000, 5000</code>. List story heights from the bottom story upward, and spans from the origin in the +X / +Y directions.</li>
-  <li>Select the column and beam sections from the current model's section catalog. The selected sections are applied to all generated columns and beams.</li>
-  <li>Enable "Generate floors" when needed. A floor surface is generated in every span bay on each level above GL.</li>
-  <li>Inputs, section selections, and the floor option are saved after successful generation and restored the next time the dialog opens, including after a reload. You can save, load, and delete up to 20 named presets; saving with the same name overwrites that preset.</li>
-  <li>Click "Generate" to create layers from GL through RF, X/Y grid axes, columns, beams, supports restrained in DX/DY/DZ at GL, and optional floors. This replaces the current model; use Undo to restore it.</li>
+  <li>Open Settings → "Generate Initial Model…" and set the number of stories. The per-story table grows or shrinks accordingly: added rows duplicate the current top story, and removed rows are taken from the top, so lower-story input is preserved.</li>
+  <li>In each story row, enter the story height (mm) and select the column, beam, floor, and exterior wall sections from the current model's section catalog. The "All" row at the top applies its value to every story in that column.</li>
+  <li>Use the "Elements to generate" checkboxes to choose columns, beams, floors, and exterior walls. Section columns for unchecked elements are shown disabled (their values are kept). At least one of columns or beams must be enabled.</li>
+  <li>Enter X-direction and Y-direction spans in millimetres, separated by commas, Japanese commas, or spaces. The <code>N@L</code> repeat notation is supported (for example, <code>3@6000, 5000</code> equals <code>6000, 6000, 6000, 5000</code>).</li>
+  <li>Floors are generated in every span bay on each level above GL. Exterior walls are generated as one perimeter polygon surface per story.</li>
+  <li>Inputs, section selections, and checkbox states are saved after successful generation and restored the next time the dialog opens, including after a reload. Values and presets saved in the old format are converted automatically. You can save, load, and delete up to 20 named presets; saving with the same name overwrites that preset.</li>
+  <li>Click "Generate" to create layers from GL through RF, X/Y grid axes, the checked elements (columns, beams, floors, exterior walls), and — when columns are generated — supports restrained in DX/DY/DZ at GL. This replaces the current model; use Undo to restore it.</li>
 </ol>
-<p>"Generate floors" is OFF by default. Loads and braces are not generated. The completion notice reports the column, beam, and floor counts.</p>
+<p>The "Floors" and "Exterior walls" checkboxes are OFF by default. Loads and braces are not generated. The completion notice reports the column, beam, floor, and exterior wall counts.</p>
 
 <h3>Grid Axes, Underlay &amp; Elevation</h3>
 <table>

@@ -420,6 +420,7 @@ test('buildGridFrame applies the element cap to members and generated floors tog
         columns: columnCount,
         beams: beamCount,
         floors: floorCount,
+        walls: 0,
         members: memberCount,
         elements: elementCount,
       }) === undefined
@@ -447,4 +448,180 @@ test('buildGridFrame accepts a generated model exactly at the element cap', () =
   const data = buildGridFrame(input);
   assert.equal(data.members.length, memberCount);
   assert.equal(data.surfaces.length, floorCount);
+});
+
+test('buildGridFrame applies per-story sections to columns, beams, and floors', () => {
+  const source = new AppState();
+  source.addSection({ target: 'member', type: 'column', name: 'C1', b: 400, h: 400 });
+  source.addSection({ target: 'member', type: 'column', name: 'C2', b: 500, h: 500 });
+  source.addSection({ target: 'member', type: 'beam', name: 'G1', b: 300, h: 600 });
+  source.addSection({ target: 'member', type: 'beam', name: 'G2', b: 350, h: 700 });
+  source.addSection({ target: 'surface', type: 'floor', name: 'S1' });
+  source.addSection({ target: 'surface', type: 'floor', name: 'S2' });
+
+  const { state } = loadGridFrame({
+    stories: [
+      { height: 3500, columnSection: 'C1', beamSection: 'G1', floorSection: 'S1' },
+      { height: 3000, columnSection: 'C2', beamSection: 'G2', floorSection: 'S2' },
+    ],
+    spansX: [6000],
+    spansY: [5000],
+    generate: { columns: true, beams: true, floors: true },
+    sectionCatalog: source.sectionCatalog,
+  });
+
+  const sortedLevels = [...state.levels].sort((a, b) => a.z - b.z);
+  const columnSectionByLevel = new Map(
+    state.members
+      .filter(member => member.type === 'column')
+      .map(member => [member.levelId, member.sectionName])
+  );
+  assert.equal(columnSectionByLevel.get(sortedLevels[0].id), 'C1');
+  assert.equal(columnSectionByLevel.get(sortedLevels[1].id), 'C2');
+  const beamSectionByLevel = new Map(
+    state.members
+      .filter(member => member.type === 'beam')
+      .map(member => [member.levelId, member.sectionName])
+  );
+  assert.equal(beamSectionByLevel.get(sortedLevels[1].id), 'G1');
+  assert.equal(beamSectionByLevel.get(sortedLevels[2].id), 'G2');
+  const floorSectionByLevel = new Map(
+    state.surfaces
+      .filter(surface => surface.type === 'floor')
+      .map(surface => [surface.levelId, surface.sectionName])
+  );
+  assert.equal(floorSectionByLevel.get(sortedLevels[1].id), 'S1');
+  assert.equal(floorSectionByLevel.get(sortedLevels[2].id), 'S2');
+  assert.deepEqual(
+    state.validateModel().filter(issue => issue.severity === 'error'),
+    []
+  );
+});
+
+test('buildGridFrame skips columns or beams when their generate flag is off', () => {
+  const input = {
+    stories: [{ height: 3000 }, { height: 3000 }],
+    spansX: [4000, 5000],
+    spansY: [6000],
+  };
+
+  const withoutColumns = loadGridFrame({
+    ...input,
+    generate: { columns: false, beams: true },
+  }).state;
+  assert.equal(withoutColumns.members.filter(member => member.type === 'column').length, 0);
+  assert.equal(
+    withoutColumns.members.filter(member => member.type === 'beam').length,
+    (2 * 2 + 1 * 3) * 2
+  );
+  assert.equal(withoutColumns.supports.length, 0);
+
+  const withoutBeams = loadGridFrame({
+    ...input,
+    generate: { columns: true, beams: false },
+  }).state;
+  assert.equal(withoutBeams.members.filter(member => member.type === 'beam').length, 0);
+  assert.equal(
+    withoutBeams.members.filter(member => member.type === 'column').length,
+    3 * 2 * 2
+  );
+  assert.equal(withoutBeams.supports.length, 3 * 2);
+
+  assert.throws(
+    () => buildGridFrame({ ...input, generate: { columns: false, beams: false } }),
+    error => error instanceof TypeError && error.code === 'no-members'
+  );
+});
+
+test('buildGridFrame optionally creates one perimeter exterior wall per story', () => {
+  const source = new AppState();
+  source.addSection({ target: 'surface', type: 'exteriorWall', name: 'OW1' });
+
+  const { state } = loadGridFrame({
+    stories: [
+      { height: 3500, wallSection: 'OW1' },
+      { height: 3000, wallSection: 'OW1' },
+    ],
+    spansX: [6000, 5000],
+    spansY: [4000],
+    generate: { columns: true, beams: true, exteriorWalls: true },
+    sectionCatalog: source.sectionCatalog,
+  });
+
+  const sortedLevels = [...state.levels].sort((a, b) => a.z - b.z);
+  const walls = state.surfaces.filter(surface => surface.type === 'exteriorWall');
+  assert.equal(walls.length, 2);
+  for (const [storyIndex, wall] of walls.entries()) {
+    assert.equal(wall.shape, 'polygon');
+    assert.equal(wall.levelId, sortedLevels[storyIndex].id);
+    assert.equal(wall.topLevelId, sortedLevels[storyIndex + 1].id);
+    assert.equal(wall.sectionName, 'OW1');
+    assert.equal(wall.includeWind, true);
+    assert.deepEqual(wall.points, [
+      { x: 0, y: 0 },
+      { x: 11000, y: 0 },
+      { x: 11000, y: 4000 },
+      { x: 0, y: 4000 },
+    ]);
+  }
+  assert.deepEqual(
+    state.validateModel().filter(issue => issue.severity === 'error'),
+    []
+  );
+});
+
+test('buildGridFrame counts exterior walls against the element cap', () => {
+  const storyCount = 32;
+  const spans = Array(12).fill(6000);
+  const input = {
+    storyHeights: Array(storyCount).fill(3000),
+    spansX: spans,
+    spansY: spans,
+    generate: { columns: true, beams: true, floors: true, exteriorWalls: true },
+  };
+  const memberCount = storyCount * (13 * 13 + 12 * 13 + 12 * 13);
+  const floorCount = storyCount * 12 * 12;
+
+  assert.equal(memberCount + floorCount, MAX_GRID_FRAME_MEMBERS);
+  assert.throws(
+    () => buildGridFrame(input),
+    error => error instanceof RangeError &&
+      error.code === 'member-count' &&
+      error.count === MAX_GRID_FRAME_MEMBERS + storyCount &&
+      error.counts.walls === storyCount
+  );
+});
+
+test('buildGridFrame validates the stories array like the legacy height list', () => {
+  const valid = { spansX: [6000], spansY: [6000] };
+
+  assert.throws(
+    () => buildGridFrame({ ...valid, stories: [] }),
+    error => error instanceof TypeError && error.code === 'invalid-input' && error.field === 'stories'
+  );
+  assert.throws(
+    () => buildGridFrame({ ...valid, stories: [{ height: '3000' }] }),
+    error => error instanceof TypeError && error.code === 'invalid-input' && error.field === 'stories'
+  );
+  assert.throws(
+    () => buildGridFrame({ ...valid, stories: [{ height: 0 }] }),
+    error => error instanceof RangeError && error.code === 'value-range' && error.field === 'stories'
+  );
+  assert.throws(
+    () => buildGridFrame({ ...valid, stories: Array.from({ length: 51 }, () => ({ height: 3000 })) }),
+    error => error instanceof RangeError && error.code === 'value-count' && error.field === 'stories'
+  );
+
+  const data = buildGridFrame({
+    ...valid,
+    stories: [{ height: 2800, columnSection: 123, beamSection: '' }],
+  });
+  const restored = new AppState();
+  restored.loadJSON(data);
+  const defaults = new AppState();
+  assert.ok(
+    restored.members
+      .filter(member => member.type === 'column')
+      .every(member => member.sectionName === defaults.getDefaultSectionName('member', 'column'))
+  );
 });

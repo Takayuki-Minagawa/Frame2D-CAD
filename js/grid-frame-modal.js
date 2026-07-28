@@ -4,8 +4,10 @@
 
 import {
   buildGridFrame,
+  MAX_GRID_DIMENSION_MM,
   MAX_SPAN_COUNT,
   MAX_STORY_COUNT,
+  MIN_GRID_DIMENSION_MM,
   parseMmList,
 } from './frame-generator.js';
 import { modelHasContent } from './autosave.js';
@@ -22,26 +24,98 @@ const PARSE_ERROR_KEYS = {
 
 export const GRID_FRAME_INPUT_STORAGE_KEY = 'lineframe-grid-frame-input';
 export const GRID_FRAME_PRESETS_STORAGE_KEY = 'lineframe-grid-frame-presets';
+export const GRID_FRAME_INPUT_VERSION = 2;
 export const MAX_GRID_FRAME_PRESETS = 20;
+export const DEFAULT_STORY_HEIGHT = '3000';
 
-const DEFAULT_INPUT_VALUES = Object.freeze({
-  storyHeights: '',
-  spansX: '',
-  spansY: '',
-  columnSection: '',
-  beamSection: '',
-  generateFloors: false,
-});
+// One entry per story-table section column; generateKey links each column to
+// the checkbox that enables the corresponding generated elements.
+const SECTION_COLUMNS = [
+  { key: 'columnSection', target: 'member', type: 'column', generateKey: 'columns' },
+  { key: 'beamSection', target: 'member', type: 'beam', generateKey: 'beams' },
+  { key: 'floorSection', target: 'surface', type: 'floor', generateKey: 'floors' },
+  { key: 'wallSection', target: 'surface', type: 'exteriorWall', generateKey: 'exteriorWalls' },
+];
+const GENERATE_KEYS = ['columns', 'beams', 'floors', 'exteriorWalls'];
 
-function normalizeStoredInput(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+function defaultStory() {
   return {
-    storyHeights: typeof value.storyHeights === 'string' ? value.storyHeights : '',
+    height: DEFAULT_STORY_HEIGHT,
+    columnSection: '',
+    beamSection: '',
+    floorSection: '',
+    wallSection: '',
+  };
+}
+
+function defaultInputValues() {
+  return {
+    version: GRID_FRAME_INPUT_VERSION,
+    stories: [defaultStory()],
+    spansX: '',
+    spansY: '',
+    generate: { columns: true, beams: true, floors: false, exteriorWalls: false },
+  };
+}
+
+function normalizeStory(story) {
+  if (!story || typeof story !== 'object') return defaultStory();
+  return {
+    height: typeof story.height === 'string' ? story.height : DEFAULT_STORY_HEIGHT,
+    columnSection: typeof story.columnSection === 'string' ? story.columnSection : '',
+    beamSection: typeof story.beamSection === 'string' ? story.beamSection : '',
+    floorSection: typeof story.floorSection === 'string' ? story.floorSection : '',
+    wallSection: typeof story.wallSection === 'string' ? story.wallSection : '',
+  };
+}
+
+// Accepts both the current (v2, per-story) and the legacy (v1, flat) stored
+// shapes. The v1 shape is migrated: its height list is expanded to one story
+// per value and its model-wide sections are copied onto every story.
+export function normalizeStoredInput(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (Array.isArray(value.stories)) {
+    const stories = value.stories.slice(0, MAX_STORY_COUNT).map(normalizeStory);
+    if (stories.length === 0) stories.push(defaultStory());
+    const generate = value.generate && typeof value.generate === 'object' ? value.generate : {};
+    return {
+      version: GRID_FRAME_INPUT_VERSION,
+      stories,
+      spansX: typeof value.spansX === 'string' ? value.spansX : '',
+      spansY: typeof value.spansY === 'string' ? value.spansY : '',
+      generate: {
+        columns: generate.columns !== false,
+        beams: generate.beams !== false,
+        floors: generate.floors === true,
+        exteriorWalls: generate.exteriorWalls === true,
+      },
+    };
+  }
+
+  const columnSection = typeof value.columnSection === 'string' ? value.columnSection : '';
+  const beamSection = typeof value.beamSection === 'string' ? value.beamSection : '';
+  const parsed = parseMmList(
+    typeof value.storyHeights === 'string' ? value.storyHeights : '',
+    { maxCount: MAX_STORY_COUNT }
+  );
+  const heights = parsed.ok ? parsed.values.map(String) : [DEFAULT_STORY_HEIGHT];
+  return {
+    version: GRID_FRAME_INPUT_VERSION,
+    stories: heights.map(height => ({
+      height,
+      columnSection,
+      beamSection,
+      floorSection: '',
+      wallSection: '',
+    })),
     spansX: typeof value.spansX === 'string' ? value.spansX : '',
     spansY: typeof value.spansY === 'string' ? value.spansY : '',
-    columnSection: typeof value.columnSection === 'string' ? value.columnSection : '',
-    beamSection: typeof value.beamSection === 'string' ? value.beamSection : '',
-    generateFloors: value.generateFloors === true,
+    generate: {
+      columns: true,
+      beams: true,
+      floors: value.generateFloors === true,
+      exteriorWalls: false,
+    },
   };
 }
 
@@ -108,18 +182,17 @@ export function initGridFrameModal({
   const settingsModal = document.getElementById('settings-modal');
   const presetSelect = document.getElementById('grid-frame-preset');
   const presetDeleteButton = document.getElementById('btn-grid-frame-preset-delete');
-  const columnSectionSelect = document.getElementById('grid-frame-column-section');
-  const beamSectionSelect = document.getElementById('grid-frame-beam-section');
-  const generateFloorsInput = document.getElementById('grid-frame-generate-floors');
+  const storyCountInput = document.getElementById('grid-frame-story-count');
+  const storyBody = document.getElementById('grid-frame-story-body');
+  const generateInputs = {
+    columns: document.getElementById('grid-frame-generate-columns'),
+    beams: document.getElementById('grid-frame-generate-beams'),
+    floors: document.getElementById('grid-frame-generate-floors'),
+    exteriorWalls: document.getElementById('grid-frame-generate-walls'),
+  };
   let returnFocusElement = null;
   let presets = readPresets();
-  const fields = [
-    {
-      key: 'storyHeights',
-      input: document.getElementById('grid-frame-story-heights'),
-      labelKey: 'gridFrameStoryHeights',
-      maxCount: MAX_STORY_COUNT,
-    },
+  const spanFields = [
     {
       key: 'spansX',
       input: document.getElementById('grid-frame-spans-x'),
@@ -133,47 +206,28 @@ export function initGridFrameModal({
       maxCount: MAX_SPAN_COUNT,
     },
   ];
-  let retainedValues = readStoredInput() || { ...DEFAULT_INPUT_VALUES };
+  // Bottom story first, matching the generator's stories order. The table
+  // renders in reverse so the top story appears first, as on drawings.
+  let stories = [];
+  let renderedRows = [];
+  let bulkControls = null;
+  let retainedValues = readStoredInput() || defaultInputValues();
 
-  function applyLanguage() {
-    modal.querySelectorAll('[data-i18n]').forEach(el => {
-      el.textContent = t(el.dataset.i18n);
-    });
-    modal.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-      el.placeholder = t(el.dataset.i18nPlaceholder);
-    });
-  }
-
-  function captureInputValues() {
-    return {
-      storyHeights: fields[0].input.value,
-      spansX: fields[1].input.value,
-      spansY: fields[2].input.value,
-      columnSection: columnSectionSelect.value,
-      beamSection: beamSectionSelect.value,
-      generateFloors: generateFloorsInput.checked,
-    };
-  }
-
-  function retainInputValues() {
-    retainedValues = captureInputValues();
-  }
-
-  function listSections(type) {
+  function listSections(target, type) {
     if (typeof state.listSections === 'function') {
-      return state.listSections('member', type);
+      return state.listSections(target, type);
     }
     if (!Array.isArray(state.sectionCatalog)) return [];
     return state.sectionCatalog
-      .filter(section => section?.target === 'member' && section.type === type)
+      .filter(section => section?.target === target && section.type === type)
       .sort((a, b) => {
         if (!!a.isDefault !== !!b.isDefault) return a.isDefault ? -1 : 1;
         return String(a.name).localeCompare(String(b.name));
       });
   }
 
-  function populateSectionSelect(select, type, preferredName) {
-    const sections = listSections(type);
+  function populateSectionSelect(select, column, preferredName) {
+    const sections = listSections(column.target, column.type);
     select.innerHTML = '';
     for (const section of sections) {
       const option = document.createElement('option');
@@ -184,7 +238,7 @@ export function initGridFrameModal({
 
     const names = new Set(sections.map(section => section.name));
     const defaultName = typeof state.getDefaultSectionName === 'function'
-      ? state.getDefaultSectionName('member', type)
+      ? state.getDefaultSectionName(column.target, column.type)
       : sections.find(section => section.isDefault)?.name;
     const selectedName = names.has(preferredName)
       ? preferredName
@@ -195,21 +249,186 @@ export function initGridFrameModal({
     return selectedName;
   }
 
+  function storyLabel(storyIndex) {
+    return `${storyIndex + 1}F`;
+  }
+
+  function markInputError(input) {
+    input.classList.add('input-error');
+    input.setAttribute('aria-invalid', 'true');
+  }
+
+  function clearOneInputError(input) {
+    input.classList.remove('input-error');
+    input.removeAttribute('aria-invalid');
+  }
+
+  function createStoryCell(child) {
+    const cell = document.createElement('td');
+    cell.appendChild(child);
+    return cell;
+  }
+
+  function createBulkRow() {
+    const row = document.createElement('tr');
+    row.classList.add('grid-frame-bulk-row');
+    const label = document.createElement('th');
+    label.textContent = t('gridFrameBulkRow');
+    label.setAttribute('scope', 'row');
+    row.appendChild(label);
+
+    const heightInput = document.createElement('input');
+    heightInput.type = 'text';
+    heightInput.setAttribute('inputmode', 'decimal');
+    heightInput.setAttribute('autocomplete', 'off');
+    heightInput.setAttribute('spellcheck', 'false');
+    heightInput.setAttribute('aria-label', t('gridFrameBulkRow'));
+    heightInput.addEventListener('change', () => {
+      const value = heightInput.value.trim();
+      if (!value) return;
+      for (const [storyIndex, story] of stories.entries()) {
+        story.height = value;
+        const rendered = renderedRows[storyIndex];
+        if (rendered) {
+          rendered.heightInput.value = value;
+          clearOneInputError(rendered.heightInput);
+        }
+      }
+    });
+    row.appendChild(createStoryCell(heightInput));
+
+    const selects = {};
+    for (const column of SECTION_COLUMNS) {
+      const select = document.createElement('select');
+      populateSectionSelect(select, column, '');
+      select.addEventListener('change', () => {
+        for (const [storyIndex, story] of stories.entries()) {
+          story[column.key] = select.value;
+          const rendered = renderedRows[storyIndex];
+          if (rendered) rendered.selects[column.key].value = select.value;
+        }
+      });
+      selects[column.key] = select;
+      row.appendChild(createStoryCell(select));
+    }
+
+    storyBody.appendChild(row);
+    return { heightInput, selects };
+  }
+
+  function createStoryRow(storyIndex) {
+    const story = stories[storyIndex];
+    const row = document.createElement('tr');
+    const label = document.createElement('th');
+    label.textContent = storyLabel(storyIndex);
+    label.setAttribute('scope', 'row');
+    row.appendChild(label);
+
+    const heightInput = document.createElement('input');
+    heightInput.type = 'text';
+    heightInput.setAttribute('inputmode', 'decimal');
+    heightInput.setAttribute('autocomplete', 'off');
+    heightInput.setAttribute('spellcheck', 'false');
+    heightInput.setAttribute('aria-label', storyLabel(storyIndex));
+    heightInput.value = story.height;
+    heightInput.addEventListener('input', () => {
+      story.height = heightInput.value;
+      clearOneInputError(heightInput);
+    });
+    row.appendChild(createStoryCell(heightInput));
+
+    const selects = {};
+    for (const column of SECTION_COLUMNS) {
+      const select = document.createElement('select');
+      story[column.key] = populateSectionSelect(select, column, story[column.key]);
+      select.addEventListener('change', () => {
+        story[column.key] = select.value;
+      });
+      selects[column.key] = select;
+      row.appendChild(createStoryCell(select));
+    }
+
+    renderedRows[storyIndex] = { heightInput, selects };
+    return row;
+  }
+
+  function renderStoryTable() {
+    storyBody.innerHTML = '';
+    renderedRows = [];
+    bulkControls = createBulkRow();
+    for (let storyIndex = stories.length - 1; storyIndex >= 0; storyIndex--) {
+      storyBody.appendChild(createStoryRow(storyIndex));
+    }
+    updateSectionColumnState();
+  }
+
+  function updateSectionColumnState() {
+    for (const column of SECTION_COLUMNS) {
+      const enabled = generateInputs[column.generateKey].checked;
+      if (bulkControls) bulkControls.selects[column.key].disabled = !enabled;
+      for (const rendered of renderedRows) {
+        if (rendered) rendered.selects[column.key].disabled = !enabled;
+      }
+    }
+  }
+
+  function clampStoryCount(value) {
+    const count = Number.parseInt(value, 10);
+    if (!Number.isSafeInteger(count)) return stories.length || 1;
+    return Math.min(MAX_STORY_COUNT, Math.max(1, count));
+  }
+
+  // Growing duplicates the current top story; shrinking removes stories from
+  // the top so lower-story input is never lost by a miskeyed count.
+  function setStoryCount(value) {
+    const count = clampStoryCount(value);
+    storyCountInput.value = String(count);
+    if (count === stories.length) return;
+    while (stories.length < count) {
+      stories.push({ ...stories[stories.length - 1] });
+    }
+    stories.length = count;
+    renderStoryTable();
+  }
+
+  function applyLanguage() {
+    modal.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = t(el.dataset.i18n);
+    });
+    modal.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      el.placeholder = t(el.dataset.i18nPlaceholder);
+    });
+    if (stories.length) renderStoryTable();
+  }
+
+  function captureInputValues() {
+    return {
+      version: GRID_FRAME_INPUT_VERSION,
+      stories: stories.map(story => ({ ...story })),
+      spansX: spanFields[0].input.value,
+      spansY: spanFields[1].input.value,
+      generate: {
+        columns: generateInputs.columns.checked,
+        beams: generateInputs.beams.checked,
+        floors: generateInputs.floors.checked,
+        exteriorWalls: generateInputs.exteriorWalls.checked,
+      },
+    };
+  }
+
+  function retainInputValues() {
+    if (stories.length) retainedValues = captureInputValues();
+  }
+
   function applyInputValues(values) {
-    const normalized = normalizeStoredInput(values) || { ...DEFAULT_INPUT_VALUES };
-    for (const field of fields) field.input.value = normalized[field.key];
-    generateFloorsInput.checked = normalized.generateFloors;
-    normalized.columnSection = populateSectionSelect(
-      columnSectionSelect,
-      'column',
-      normalized.columnSection
-    );
-    normalized.beamSection = populateSectionSelect(
-      beamSectionSelect,
-      'beam',
-      normalized.beamSection
-    );
-    retainedValues = normalized;
+    const normalized = normalizeStoredInput(values) || defaultInputValues();
+    stories = normalized.stories.map(story => ({ ...story }));
+    storyCountInput.value = String(stories.length);
+    for (const field of spanFields) field.input.value = normalized[field.key];
+    for (const key of GENERATE_KEYS) generateInputs[key].checked = normalized.generate[key];
+    renderStoryTable();
+    // Capture back so retained/saved values hold the resolved section names.
+    retainedValues = captureInputValues();
   }
 
   function refreshPresetSelect(preferredName = presetSelect.value) {
@@ -233,9 +452,9 @@ export function initGridFrameModal({
   }
 
   function clearInputErrors() {
-    for (const field of fields) {
-      field.input.classList.remove('input-error');
-      field.input.removeAttribute('aria-invalid');
+    for (const field of spanFields) clearOneInputError(field.input);
+    for (const rendered of renderedRows) {
+      if (rendered) clearOneInputError(rendered.heightInput);
     }
   }
 
@@ -244,13 +463,13 @@ export function initGridFrameModal({
       ? document.activeElement
       : null;
     applyLanguage();
-    clearInputErrors();
     refreshPresetSelect();
     applyInputValues(retainedValues);
+    clearInputErrors();
     settingsModal?.setAttribute('inert', '');
     modal.classList.add('visible');
     modal.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => fields[0].input.focus());
+    requestAnimationFrame(() => storyCountInput.focus());
   }
 
   function hide({ restoreFocus = true } = {}) {
@@ -264,14 +483,48 @@ export function initGridFrameModal({
     }
   }
 
+  function parseStoryHeight(rawValue) {
+    const raw = String(rawValue ?? '').trim();
+    if (!raw) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    if (value < MIN_GRID_DIMENSION_MM || value > MAX_GRID_DIMENSION_MM) return null;
+    return value;
+  }
+
   function parseInputs() {
     clearInputErrors();
-    const parsed = {};
-    for (const field of fields) {
+    if (!generateInputs.columns.checked && !generateInputs.beams.checked) {
+      showNotice(t('gridFrameNoMembers'), 'error');
+      return null;
+    }
+
+    const parsedStories = [];
+    for (const [storyIndex, story] of stories.entries()) {
+      const height = parseStoryHeight(story.height);
+      if (height === null) {
+        const rendered = renderedRows[storyIndex];
+        if (rendered) {
+          markInputError(rendered.heightInput);
+          rendered.heightInput.focus();
+        }
+        showNotice(t('gridFrameStoryHeightInvalid', { story: storyLabel(storyIndex) }), 'error');
+        return null;
+      }
+      parsedStories.push({
+        height,
+        columnSection: story.columnSection,
+        beamSection: story.beamSection,
+        floorSection: story.floorSection,
+        wallSection: story.wallSection,
+      });
+    }
+
+    const parsed = { stories: parsedStories };
+    for (const field of spanFields) {
       const result = parseMmList(field.input.value, { maxCount: field.maxCount });
       if (!result.ok) {
-        field.input.classList.add('input-error');
-        field.input.setAttribute('aria-invalid', 'true');
+        markInputError(field.input);
         field.input.focus();
         const messageKey = PARSE_ERROR_KEYS[result.reason] || 'gridFrameInvalidInput';
         showNotice(t(messageKey, { field: t(field.labelKey) }), 'error');
@@ -302,9 +555,7 @@ export function initGridFrameModal({
     try {
       generatedModel = buildGridFrame({
         ...values,
-        columnSection: inputValues.columnSection,
-        beamSection: inputValues.beamSection,
-        generateFloors: inputValues.generateFloors,
+        generate: inputValues.generate,
         sectionCatalog: state.sectionCatalog,
         springCatalog: state.springCatalog,
       });
@@ -338,7 +589,8 @@ export function initGridFrameModal({
       const columns = state.members.filter(member => member.type === 'column').length;
       const beams = state.members.filter(member => member.type === 'beam').length;
       const floors = state.surfaces?.filter(surface => surface.type === 'floor').length || 0;
-      showNotice(t('gridFrameDone', { columns, beams, floors }), 'success');
+      const walls = state.surfaces?.filter(surface => surface.type === 'exteriorWall').length || 0;
+      showNotice(t('gridFrameDone', { columns, beams, floors, walls }), 'success');
     } catch (error) {
       console.error('Grid frame generation failed:', error);
       if (snapshotSaved) history.undo();
@@ -368,7 +620,7 @@ export function initGridFrameModal({
       return;
     }
 
-    const nextPreset = { name, values: { ...retainedValues } };
+    const nextPreset = { name, values: normalizeStoredInput(retainedValues) };
     const nextPresets = [...presets];
     if (existingIndex >= 0) nextPresets[existingIndex] = nextPreset;
     else nextPresets.push(nextPreset);
@@ -412,6 +664,10 @@ export function initGridFrameModal({
   presetDeleteButton.addEventListener('click', deletePreset);
   document.getElementById('btn-grid-frame-close').addEventListener('click', hide);
   document.getElementById('btn-grid-frame-cancel').addEventListener('click', hide);
+  storyCountInput.addEventListener('change', () => setStoryCount(storyCountInput.value));
+  for (const key of GENERATE_KEYS) {
+    generateInputs[key].addEventListener('change', updateSectionColumnState);
+  }
   modal.addEventListener('click', event => {
     if (event.target === modal) hide();
   });
@@ -434,11 +690,8 @@ export function initGridFrameModal({
       first.focus();
     }
   });
-  for (const field of fields) {
-    field.input.addEventListener('input', () => {
-      field.input.classList.remove('input-error');
-      field.input.removeAttribute('aria-invalid');
-    });
+  for (const field of spanFields) {
+    field.input.addEventListener('input', () => clearOneInputError(field.input));
   }
 
   return {
