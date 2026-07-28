@@ -463,6 +463,63 @@ test('bulk row applies its height and section choices to every story', () =>
     assert.equal(storyRow(root, 1).columnSection.value, 'C-Test');
     assert.equal(storyRow(root, 0).wallSection.value, 'OW-Test');
     assert.equal(storyRow(root, 1).wallSection.value, 'OW-Test');
+
+    // Bulk fields are one-shot applicators and clear themselves afterwards.
+    assert.equal(bulk.height.value, '');
+    assert.equal(bulk.columnSection.value, '');
+    assert.equal(bulk.wallSection.value, '');
+  })
+);
+
+test('bulk row can re-apply the same value after a story was changed', () =>
+  withFakeBrowser(root => {
+    const state = createCustomSectionState();
+    const controller = initModal(root, { state });
+    controller.show();
+    setStoryHeights(root, ['3000', '3000']);
+
+    const bulk = bulkRow(root);
+    bulk.height.value = '4200';
+    bulk.height.dispatchEvent(new Event('change'));
+    bulk.columnSection.value = 'C-Test';
+    bulk.columnSection.dispatchEvent(new Event('change'));
+
+    // Edit 1F away from the bulk values, then push the same values again.
+    const firstStory = storyRow(root, 0);
+    firstStory.height.value = '2500';
+    firstStory.height.dispatchEvent(new Event('input'));
+    firstStory.columnSection.value = '_C';
+    firstStory.columnSection.dispatchEvent(new Event('change'));
+
+    bulk.height.value = '4200';
+    bulk.height.dispatchEvent(new Event('change'));
+    bulk.columnSection.value = 'C-Test';
+    bulk.columnSection.dispatchEvent(new Event('change'));
+
+    assert.equal(storyRow(root, 0).height.value, '4200');
+    assert.equal(storyRow(root, 1).height.value, '4200');
+    assert.equal(storyRow(root, 0).columnSection.value, 'C-Test');
+    assert.equal(storyRow(root, 1).columnSection.value, 'C-Test');
+  })
+);
+
+test('bulk row ignores its empty sentinel value', () =>
+  withFakeBrowser(root => {
+    const controller = initModal(root, { state: createCustomSectionState() });
+    controller.show();
+    setStoryHeights(root, ['3000', '3200']);
+
+    const bulk = bulkRow(root);
+    assert.equal(bulk.height.value, '');
+    assert.equal(bulk.columnSection.value, '');
+    const before = storyRow(root, 0).columnSection.value;
+
+    bulk.height.dispatchEvent(new Event('change'));
+    bulk.columnSection.dispatchEvent(new Event('change'));
+
+    assert.equal(storyRow(root, 0).height.value, '3000');
+    assert.equal(storyRow(root, 1).height.value, '3200');
+    assert.equal(storyRow(root, 0).columnSection.value, before);
   })
 );
 

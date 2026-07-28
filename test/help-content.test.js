@@ -45,6 +45,7 @@ test('in-app help documents the enhanced initial grid frame workflow', () => {
   assert.match(helpContentJa, /階数に応じて階別設定テーブルの行が増減します/);
   assert.match(helpContentJa, /柱断面・梁断面・床断面・外壁断面を現在のモデルの断面カタログから選択/);
   assert.match(helpContentJa, /「一括」行/);
+  assert.match(helpContentJa, /一括欄は反映後に空欄へ戻る/);
   assert.match(helpContentJa, /柱・梁の少なくとも一方を ON/);
   assert.match(helpContentJa, /外壁は各階の外周に1枚の多角形面材として生成/);
   assert.match(helpContentJa, /「床」「外壁」チェックは既定で OFF/);
@@ -57,6 +58,7 @@ test('in-app help documents the enhanced initial grid frame workflow', () => {
   assert.match(helpContentEn, /set the number of stories/);
   assert.match(helpContentEn, /current model's section catalog/);
   assert.match(helpContentEn, /The "All" row at the top/);
+  assert.match(helpContentEn, /clears itself after applying/);
   assert.match(helpContentEn, /At least one of columns or beams must be enabled/);
   assert.match(helpContentEn, /one perimeter polygon surface per story/);
   assert.match(helpContentEn, /The "Floors" and "Exterior walls" checkboxes are OFF by default/);

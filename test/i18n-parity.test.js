@@ -75,6 +75,7 @@ test('grid frame enhancements expose complete Japanese and English copy', async 
     'gridFrameStory',
     'gridFrameStoryHeight',
     'gridFrameBulkRow',
+    'gridFrameBulkApply',
     'gridFrameColumnSection',
     'gridFrameBeamSection',
     'gridFrameFloorSection',

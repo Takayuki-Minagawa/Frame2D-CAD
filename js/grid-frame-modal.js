@@ -249,6 +249,25 @@ export function initGridFrameModal({
     return selectedName;
   }
 
+  // The bulk controls are one-shot applicators, not a mirror of the story
+  // values: they reset to an empty sentinel after each apply so the same value
+  // can be pushed again after individual rows were edited away from it.
+  function populateBulkSectionSelect(select, column) {
+    const sections = listSections(column.target, column.type);
+    select.innerHTML = '';
+    const sentinel = document.createElement('option');
+    sentinel.value = '';
+    sentinel.textContent = t('gridFrameBulkApply');
+    select.appendChild(sentinel);
+    for (const section of sections) {
+      const option = document.createElement('option');
+      option.value = section.name;
+      option.textContent = section.name;
+      select.appendChild(option);
+    }
+    select.value = '';
+  }
+
   function storyLabel(storyIndex) {
     return `${storyIndex + 1}F`;
   }
@@ -283,6 +302,7 @@ export function initGridFrameModal({
     heightInput.setAttribute('autocomplete', 'off');
     heightInput.setAttribute('spellcheck', 'false');
     heightInput.setAttribute('aria-label', t('gridFrameBulkRow'));
+    heightInput.placeholder = t('gridFrameBulkApply');
     heightInput.addEventListener('change', () => {
       const value = heightInput.value.trim();
       if (!value) return;
@@ -294,19 +314,23 @@ export function initGridFrameModal({
           clearOneInputError(rendered.heightInput);
         }
       }
+      heightInput.value = '';
     });
     row.appendChild(createStoryCell(heightInput));
 
     const selects = {};
     for (const column of SECTION_COLUMNS) {
       const select = document.createElement('select');
-      populateSectionSelect(select, column, '');
+      populateBulkSectionSelect(select, column);
       select.addEventListener('change', () => {
+        const value = select.value;
+        if (!value) return;
         for (const [storyIndex, story] of stories.entries()) {
-          story[column.key] = select.value;
+          story[column.key] = value;
           const rendered = renderedRows[storyIndex];
-          if (rendered) rendered.selects[column.key].value = select.value;
+          if (rendered) rendered.selects[column.key].value = value;
         }
+        select.value = '';
       });
       selects[column.key] = select;
       row.appendChild(createStoryCell(select));

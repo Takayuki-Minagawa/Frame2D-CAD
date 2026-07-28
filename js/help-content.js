@@ -19,7 +19,7 @@ export const helpContentJa = `
 <h3>初期モデル生成（格子フレーム）</h3>
 <ol>
   <li>設定 →「初期モデル生成…」を開き、階数を設定します。階数に応じて階別設定テーブルの行が増減します。増加時は最上階の行が複製され、減少時は上の階から削除されます（下層階の入力は保持されます）。</li>
-  <li>各階の行で階高（mm）と、柱断面・梁断面・床断面・外壁断面を現在のモデルの断面カタログから選択します。最上部の「一括」行に入力・選択すると、その列の全階へ反映されます。</li>
+  <li>各階の行で階高（mm）と、柱断面・梁断面・床断面・外壁断面を現在のモデルの断面カタログから選択します。最上部の「一括」行に入力・選択すると、その列の全階へ反映されます。一括欄は反映後に空欄へ戻るため、個別の階を変更した後でも同じ値をもう一度適用できます。</li>
   <li>「生成する要素」の柱・梁・床・外壁チェックで生成対象を選びます。OFF の要素に対応する断面列は無効表示になります（値は保持）。柱・梁の少なくとも一方を ON にする必要があります。</li>
   <li>X方向・Y方向スパンは mm 単位で、カンマ、読点、空白区切りで入力します。繰り返し記法 <code>N@L</code>（例: <code>3@6000, 5000</code> は <code>6000, 6000, 6000, 5000</code> と同じ）が使えます。</li>
   <li>床は GL を除く各レベルの各スパン区画に生成されます。外壁は各階の外周に1枚の多角形面材として生成されます。</li>
@@ -156,7 +156,7 @@ export const helpContentEn = `
 <h3>Initial Model Generation (Grid Frame)</h3>
 <ol>
   <li>Open Settings → "Generate Initial Model…" and set the number of stories. The per-story table grows or shrinks accordingly: added rows duplicate the current top story, and removed rows are taken from the top, so lower-story input is preserved.</li>
-  <li>In each story row, enter the story height (mm) and select the column, beam, floor, and exterior wall sections from the current model's section catalog. The "All" row at the top applies its value to every story in that column.</li>
+  <li>In each story row, enter the story height (mm) and select the column, beam, floor, and exterior wall sections from the current model's section catalog. The "All" row at the top applies its value to every story in that column. Each bulk field clears itself after applying, so you can re-apply the same value after editing individual stories.</li>
   <li>Use the "Elements to generate" checkboxes to choose columns, beams, floors, and exterior walls. Section columns for unchecked elements are shown disabled (their values are kept). At least one of columns or beams must be enabled.</li>
   <li>Enter X-direction and Y-direction spans in millimetres, separated by commas, Japanese commas, or spaces. The <code>N@L</code> repeat notation is supported (for example, <code>3@6000, 5000</code> equals <code>6000, 6000, 6000, 5000</code>).</li>
   <li>Floors are generated in every span bay on each level above GL. Exterior walls are generated as one perimeter polygon surface per story.</li>
