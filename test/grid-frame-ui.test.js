@@ -4,8 +4,10 @@ import { readFile } from 'node:fs/promises';
 
 import { MAX_GRID_FRAME_MEMBERS } from '../js/frame-generator.js';
 import {
+  DEFAULT_FOUNDATION_DEPTH,
   DEFAULT_STORY_HEIGHT,
   GRID_FRAME_INPUT_STORAGE_KEY,
+  GRID_FRAME_INPUT_VERSION,
   GRID_FRAME_PRESETS_STORAGE_KEY,
   initGridFrameModal,
   MAX_GRID_FRAME_PRESETS,
@@ -122,6 +124,10 @@ function createFakeDocument() {
     'grid-frame-generate-beams': 'INPUT',
     'grid-frame-generate-floors': 'INPUT',
     'grid-frame-generate-walls': 'INPUT',
+    'grid-frame-generate-foundation': 'INPUT',
+    'grid-frame-foundation-depth': 'INPUT',
+    'grid-frame-foundation-column-section': 'SELECT',
+    'grid-frame-foundation-beam-section': 'SELECT',
     'grid-frame-preset': 'SELECT',
     'btn-grid-frame-preset-save': 'BUTTON',
     'btn-grid-frame-preset-delete': 'BUTTON',
@@ -142,6 +148,10 @@ function createFakeDocument() {
     'grid-frame-generate-beams',
     'grid-frame-generate-floors',
     'grid-frame-generate-walls',
+    'grid-frame-generate-foundation',
+    'grid-frame-foundation-depth',
+    'grid-frame-foundation-column-section',
+    'grid-frame-foundation-beam-section',
     'grid-frame-preset',
     'btn-grid-frame-preset-save',
     'btn-grid-frame-preset-delete',
@@ -366,6 +376,10 @@ test('initial grid frame modal exposes all inputs and actions', async () => {
     'grid-frame-generate-beams',
     'grid-frame-generate-floors',
     'grid-frame-generate-walls',
+    'grid-frame-generate-foundation',
+    'grid-frame-foundation-depth',
+    'grid-frame-foundation-column-section',
+    'grid-frame-foundation-beam-section',
     'grid-frame-preset',
     'btn-grid-frame-preset-save',
     'btn-grid-frame-preset-delete',
@@ -388,6 +402,11 @@ test('initial grid frame modal exposes all inputs and actions', async () => {
     'gridFrameBeamSection',
     'gridFrameFloorSection',
     'gridFrameWallSection',
+    'gridFrameGenerateFoundation',
+    'gridFrameFoundation',
+    'gridFrameFoundationDepth',
+    'gridFrameFoundationColumnSection',
+    'gridFrameFoundationBeamSection',
   ]) {
     assert.match(html, new RegExp(`data-i18n="${key}"`));
   }
@@ -790,7 +809,7 @@ test('grid frame modal applies per-story sections, generates surfaces, and resto
     assert.match(latestNotice(root).textContent, /外壁 2枚/);
 
     assert.deepEqual(JSON.parse(storage.getItem(GRID_FRAME_INPUT_STORAGE_KEY)), {
-      version: 2,
+      version: GRID_FRAME_INPUT_VERSION,
       stories: [
         {
           height: '2800',
@@ -809,7 +828,14 @@ test('grid frame modal applies per-story sections, generates surfaces, and resto
       ],
       spansX: '4000',
       spansY: '5000',
-      generate: { columns: true, beams: true, floors: true, exteriorWalls: true },
+      generate: {
+        columns: true,
+        beams: true,
+        floors: true,
+        exteriorWalls: true,
+        foundation: false,
+      },
+      foundation: { depth: DEFAULT_FOUNDATION_DEPTH, columnSection: '_C', beamSection: '_G' },
     });
   }, { storage });
 
@@ -877,14 +903,21 @@ test('normalizeStoredInput migrates v1 shapes and rejects non-objects', () => {
     generateFloors: true,
   });
   assert.deepEqual(migrated, {
-    version: 2,
+    version: 3,
     stories: [
       { height: '3500', columnSection: 'C1', beamSection: 'G1', floorSection: '', wallSection: '' },
       { height: '3000', columnSection: 'C1', beamSection: 'G1', floorSection: '', wallSection: '' },
     ],
     spansX: '6000',
     spansY: '5000',
-    generate: { columns: true, beams: true, floors: true, exteriorWalls: false },
+    generate: {
+      columns: true,
+      beams: true,
+      floors: true,
+      exteriorWalls: false,
+      foundation: false,
+    },
+    foundation: { depth: DEFAULT_FOUNDATION_DEPTH, columnSection: '', beamSection: '' },
   });
 
   const fallback = normalizeStoredInput({ storyHeights: 'broken' });
@@ -912,7 +945,7 @@ test('grid frame modal saves, loads, and deletes named presets', () => {
     const saved = JSON.parse(storage.getItem(GRID_FRAME_PRESETS_STORAGE_KEY));
     assert.equal(saved.length, 1);
     assert.equal(saved[0].name, 'Office');
-    assert.equal(saved[0].values.version, 2);
+    assert.equal(saved[0].values.version, GRID_FRAME_INPUT_VERSION);
     assert.equal(saved[0].values.stories.length, 2);
     assert.equal(saved[0].values.stories[0].columnSection, 'C-Test');
     assert.equal(saved[0].values.generate.floors, true);
@@ -1065,13 +1098,13 @@ test('in-app help documents generated and excluded model elements', async () => 
   const source = await readFile(new URL('../js/help-content.js', import.meta.url), 'utf8');
 
   assert.match(source, /初期モデル生成（格子フレーム）/);
-  assert.match(source, /GLの並進3方向を拘束した支点/);
-  assert.match(source, /「床」「外壁」チェックは既定で OFF/);
+  assert.match(source, /最下レベルの並進3方向を拘束した支点/);
+  assert.match(source, /「床」「外壁」「基礎」チェックは既定で OFF/);
   assert.match(source, /「一括」行/);
   assert.match(source, /荷重・ブレースは生成されません/);
   assert.match(source, /Initial Model Generation \(Grid Frame\)/);
-  assert.match(source, /supports restrained in DX\/DY\/DZ at GL/);
-  assert.match(source, /The "Floors" and "Exterior walls" checkboxes are OFF by default/);
+  assert.match(source, /supports restrained in DX\/DY\/DZ on the lowest level/);
+  assert.match(source, /The "Floors", "Exterior walls", and "Foundation" checkboxes are OFF by default/);
   assert.match(source, /Loads and braces are not generated/);
 });
 
@@ -1161,4 +1194,167 @@ test('text-field spaces and Enter are not captured by canvas shortcuts', () => {
   assert.equal(manager._spaceDown, true);
   assert.equal(finishPolylineCalls, 1);
   assert.equal(preventDefaultCalls, 1);
+});
+
+function foundationControls(root) {
+  return {
+    checkbox: root.getElementById('grid-frame-generate-foundation'),
+    depth: root.getElementById('grid-frame-foundation-depth'),
+    columnSection: root.getElementById('grid-frame-foundation-column-section'),
+    beamSection: root.getElementById('grid-frame-foundation-beam-section'),
+  };
+}
+
+test('foundation controls start disabled and follow their checkbox', () =>
+  withFakeBrowser(root => {
+    const controller = initModal(root, { state: createCustomSectionState() });
+    controller.show();
+
+    const foundation = foundationControls(root);
+    assert.equal(foundation.checkbox.checked, false);
+    assert.equal(foundation.depth.value, DEFAULT_FOUNDATION_DEPTH);
+    for (const control of [foundation.depth, foundation.columnSection, foundation.beamSection]) {
+      assert.equal(control.disabled, true);
+    }
+    // The section selects are filled from the model catalog either way.
+    assert.ok(foundation.columnSection.children.some(option => option.value === 'C-Test'));
+    assert.ok(foundation.beamSection.children.some(option => option.value === 'B-Test'));
+
+    setCheckbox(root, 'grid-frame-generate-foundation', true);
+    for (const control of [foundation.depth, foundation.columnSection, foundation.beamSection]) {
+      assert.equal(control.disabled, false);
+    }
+
+    setCheckbox(root, 'grid-frame-generate-foundation', false);
+    assert.equal(foundation.depth.disabled, true);
+  })
+);
+
+test('grid frame modal generates the foundation and reports its counts', () =>
+  withFakeBrowser(root => {
+    const state = createCustomSectionState();
+    const controller = initModal(root, {
+      state,
+      history: { save() {}, undo() { return true; } },
+    });
+    controller.show();
+
+    setValidInputs(root, ['3000', '3000']);
+    setCheckbox(root, 'grid-frame-generate-foundation', true);
+    const foundation = foundationControls(root);
+    foundation.depth.value = '1800';
+    foundation.depth.dispatchEvent(new Event('input'));
+    foundation.columnSection.value = 'C-Test';
+    foundation.columnSection.dispatchEvent(new Event('change'));
+    foundation.beamSection.value = 'B-Test';
+    foundation.beamSection.dispatchEvent(new Event('change'));
+    dispatchSubmit(root);
+
+    const foundationLevel = state.levels.find(level => level.name === 'FDN');
+    assert.ok(foundationLevel);
+    assert.equal(foundationLevel.z, -1800);
+    const foundationMembers = state.members.filter(
+      member => member.levelId === foundationLevel.id
+    );
+    assert.equal(foundationMembers.filter(member => member.type === 'column').length, 4);
+    assert.equal(foundationMembers.filter(member => member.type === 'beam').length, 4);
+    assert.ok(foundationMembers.every(member => ['C-Test', 'B-Test'].includes(member.sectionName)));
+    assert.ok(state.supports.every(support => support.levelId === foundationLevel.id));
+
+    // Foundation members are reported apart from the frame above GL.
+    const notice = latestNotice(root).textContent;
+    assert.match(notice, /柱 8本/);
+    assert.match(notice, /梁 8本/);
+    assert.match(notice, /基礎柱 4本/);
+    assert.match(notice, /地中梁 4本/);
+  })
+);
+
+test('an invalid foundation depth blocks generation and is ignored while off', () =>
+  withFakeBrowser(root => {
+    let generated = 0;
+    const state = createCustomSectionState();
+    const controller = initModal(root, {
+      state,
+      history: { save() { generated++; }, undo() { return true; } },
+    });
+    controller.show();
+
+    setValidInputs(root, ['3000']);
+    setCheckbox(root, 'grid-frame-generate-foundation', true);
+    const foundation = foundationControls(root);
+    foundation.depth.value = '0';
+    foundation.depth.dispatchEvent(new Event('input'));
+    dispatchSubmit(root);
+
+    assert.equal(generated, 0);
+    assert.equal(foundation.depth.getAttribute('aria-invalid'), 'true');
+    assert.match(latestNotice(root).textContent, /根入れ深さ/);
+
+    // Turning the foundation off must not keep the bad value blocking the form.
+    setCheckbox(root, 'grid-frame-generate-foundation', false);
+    assert.equal(foundation.depth.getAttribute('aria-invalid'), null);
+    dispatchSubmit(root);
+    assert.equal(generated, 1);
+    assert.equal(state.levels.some(level => level.name === 'FDN'), false);
+  })
+);
+
+test('foundation input round-trips through storage and presets', async () => {
+  const storage = createFakeStorage();
+
+  await withFakeBrowser(root => {
+    const controller = initModal(root, {
+      state: createCustomSectionState(),
+      history: { save() {}, undo() { return true; } },
+    });
+    controller.show();
+    setValidInputs(root, ['3000']);
+    setCheckbox(root, 'grid-frame-generate-foundation', true);
+    const foundation = foundationControls(root);
+    foundation.depth.value = '2100';
+    foundation.depth.dispatchEvent(new Event('input'));
+    foundation.beamSection.value = 'B-Test';
+    foundation.beamSection.dispatchEvent(new Event('change'));
+    dispatchSubmit(root);
+
+    const saved = JSON.parse(storage.getItem(GRID_FRAME_INPUT_STORAGE_KEY));
+    assert.equal(saved.version, GRID_FRAME_INPUT_VERSION);
+    assert.equal(saved.generate.foundation, true);
+    assert.deepEqual(saved.foundation, {
+      depth: '2100',
+      columnSection: '_C',
+      beamSection: 'B-Test',
+    });
+  }, { storage });
+
+  await withFakeBrowser(root => {
+    const controller = initModal(root, { state: createCustomSectionState() });
+    controller.show();
+
+    const foundation = foundationControls(root);
+    assert.equal(foundation.checkbox.checked, true);
+    assert.equal(foundation.depth.value, '2100');
+    assert.equal(foundation.beamSection.value, 'B-Test');
+    assert.equal(foundation.depth.disabled, false);
+  }, { storage });
+});
+
+test('v2 stored input gains the foundation defaults', () => {
+  const migrated = normalizeStoredInput({
+    version: 2,
+    stories: [{ height: '3000', columnSection: 'C1', beamSection: 'G1' }],
+    spansX: '6000',
+    spansY: '5000',
+    generate: { columns: true, beams: true, floors: true, exteriorWalls: true },
+  });
+
+  assert.equal(migrated.version, GRID_FRAME_INPUT_VERSION);
+  assert.equal(migrated.generate.foundation, false);
+  assert.deepEqual(migrated.foundation, {
+    depth: DEFAULT_FOUNDATION_DEPTH,
+    columnSection: '',
+    beamSection: '',
+  });
+  assert.deepEqual(normalizeStoredInput(migrated), migrated);
 });

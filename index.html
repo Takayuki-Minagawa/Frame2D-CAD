@@ -420,6 +420,26 @@
               <input id="grid-frame-generate-walls" type="checkbox">
               <span data-i18n="gridFrameGenerateWalls">外壁</span>
             </label>
+            <label class="support-chk-label" for="grid-frame-generate-foundation">
+              <input id="grid-frame-generate-foundation" type="checkbox">
+              <span data-i18n="gridFrameGenerateFoundation">基礎</span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-group">
+          <span class="grid-frame-group-label" data-i18n="gridFrameFoundation">基礎設定</span>
+          <div class="grid-frame-foundation-group">
+            <label for="grid-frame-foundation-depth">
+              <span data-i18n="gridFrameFoundationDepth">根入れ深さ</span> (mm)
+            </label>
+            <input id="grid-frame-foundation-depth" type="text" inputmode="decimal" autocomplete="off"
+                   spellcheck="false" disabled>
+            <label for="grid-frame-foundation-column-section"
+                   data-i18n="gridFrameFoundationColumnSection">基礎柱断面</label>
+            <select id="grid-frame-foundation-column-section" disabled></select>
+            <label for="grid-frame-foundation-beam-section"
+                   data-i18n="gridFrameFoundationBeamSection">地中梁断面</label>
+            <select id="grid-frame-foundation-beam-section" disabled></select>
           </div>
         </div>
         <div class="settings-group">

@@ -61,6 +61,10 @@ export function parseMmList(text, { maxCount = MAX_SPAN_COUNT } = {}) {
  * story height plus per-story section names) and `generate` (which element
  * kinds to create). The legacy `storyHeights` + model-wide section names +
  * `generateFloors` form is still accepted and normalized to the same shape.
+ *
+ * `generate.foundation` additionally creates a level below GL holding the
+ * foundation beams and the column stubs that carry the frame down to it;
+ * `foundation` supplies its embedment depth and section names.
  */
 export function buildGridFrame({
   stories,
@@ -73,6 +77,7 @@ export function buildGridFrame({
   springCatalog,
   generate,
   generateFloors = false,
+  foundation,
 } = {}) {
   const normalizedStories = normalizeStories({ stories, storyHeights, columnSection, beamSection });
   const heights = normalizedStories.map(story => story.height);
@@ -83,6 +88,7 @@ export function buildGridFrame({
     beams: generate?.beams !== false,
     floors: generate ? generate.floors === true : generateFloors === true,
     exteriorWalls: generate?.exteriorWalls === true,
+    foundation: generate?.foundation === true,
   };
   if (!generated.columns && !generated.beams) {
     throw validationError(TypeError, 'At least one of columns or beams must be generated.', {
@@ -90,15 +96,20 @@ export function buildGridFrame({
       code: 'no-members',
     });
   }
+  // The foundation is an add-on to the frame above, so its settings are only
+  // read (and validated) when it is actually requested.
+  const foundationConfig = generated.foundation ? normalizeFoundation(foundation) : null;
 
   const storyCount = heights.length;
   const xGridCount = xSpans.length + 1;
   const yGridCount = ySpans.length + 1;
+  // Beams laid on one level of the grid; every framed level repeats the set.
+  const gridBeamCount = xSpans.length * yGridCount + ySpans.length * xGridCount;
   const columnCount = generated.columns ? xGridCount * yGridCount * storyCount : 0;
-  const beamCount = generated.beams
-    ? (xSpans.length * yGridCount + ySpans.length * xGridCount) * storyCount
-    : 0;
-  const memberCount = columnCount + beamCount;
+  const beamCount = generated.beams ? gridBeamCount * storyCount : 0;
+  const foundationBeamCount = foundationConfig ? gridBeamCount : 0;
+  const foundationColumnCount = foundationConfig ? xGridCount * yGridCount : 0;
+  const memberCount = columnCount + beamCount + foundationColumnCount + foundationBeamCount;
   const floorCount = generated.floors
     ? xSpans.length * ySpans.length * storyCount
     : 0;
@@ -121,6 +132,8 @@ export function buildGridFrame({
           beams: beamCount,
           floors: floorCount,
           walls: wallCount,
+          foundationColumns: foundationColumnCount,
+          foundationBeams: foundationBeamCount,
           members: memberCount,
           elements: elementCount,
         },
@@ -142,6 +155,12 @@ export function buildGridFrame({
 
   const levels = configureLevels(state, heights);
   const groundLevel = levels[0];
+  // Appended after the above-ground levels so a loaded model still activates
+  // GL (serialization takes levels[0]); every consumer orders levels by z.
+  const foundationLevel = foundationConfig
+    ? state.addLevel('FDN', -foundationConfig.depth)
+    : null;
+  const baseLevel = foundationLevel || groundLevel;
   const planNodes = new Map();
 
   xCoords.forEach((coord, index) => state.addAxis('x', `X${index + 1}`, coord));
@@ -164,15 +183,23 @@ export function buildGridFrame({
             topLevelId: topLevel.id,
             sectionName: normalizedStories[storyIndex].columnSection,
           });
-          if (storyIndex === 0) {
-            state.addSupport(x, y, {
-              levelId: groundLevel.id,
-              dx: true,
-              dy: true,
-              dz: true,
-            });
-          }
         }
+      }
+    }
+  }
+
+  // Supports sit on the lowest generated level: the foundation when there is
+  // one, GL otherwise. Foundation column stubs need them even when the
+  // above-ground columns are switched off.
+  if (generated.columns || foundationConfig) {
+    for (const x of xCoords) {
+      for (const y of yCoords) {
+        state.addSupport(x, y, {
+          levelId: baseLevel.id,
+          dx: true,
+          dy: true,
+          dz: true,
+        });
       }
     }
   }
@@ -189,24 +216,48 @@ export function buildGridFrame({
     });
   };
 
+  // Lays the full grid of beams on one level, as used for every framed floor
+  // and for the foundation beams below GL.
+  const addGridBeams = (levelId, sectionName) => {
+    for (const y of yCoords) {
+      for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
+        addBeam(levelId, sectionName, xCoords[xIndex], y, xCoords[xIndex + 1], y);
+      }
+    }
+    for (const x of xCoords) {
+      for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
+        addBeam(levelId, sectionName, x, yCoords[yIndex], x, yCoords[yIndex + 1]);
+      }
+    }
+  };
+
+  // Foundation: column stubs from FDN up to GL plus the foundation beams that
+  // tie their feet together. Built bottom-up, before the framing above GL.
+  if (foundationConfig) {
+    for (const x of xCoords) {
+      for (const y of yCoords) {
+        const node = state.addNode(x, y);
+        // With the above-ground columns switched off these are the only plan
+        // nodes, so register them for the beams to reuse.
+        if (!planNodes.has(planNodeKey(x, y))) planNodes.set(planNodeKey(x, y), node);
+        state.addMember(node.id, node.id, {
+          type: 'column',
+          levelId: foundationLevel.id,
+          topLevelId: groundLevel.id,
+          sectionName: foundationConfig.columnSection,
+        });
+      }
+    }
+    addGridBeams(foundationLevel.id, foundationConfig.beamSection);
+  }
+
   // Generate beams, floors, and exterior walls at every floor above GL.
   const xMax = xCoords[xCoords.length - 1];
   const yMax = yCoords[yCoords.length - 1];
   for (let levelIndex = 1; levelIndex < levels.length; levelIndex++) {
     const story = normalizedStories[levelIndex - 1];
     const levelId = levels[levelIndex].id;
-    if (generated.beams) {
-      for (const y of yCoords) {
-        for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
-          addBeam(levelId, story.beamSection, xCoords[xIndex], y, xCoords[xIndex + 1], y);
-        }
-      }
-      for (const x of xCoords) {
-        for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
-          addBeam(levelId, story.beamSection, x, yCoords[yIndex], x, yCoords[yIndex + 1]);
-        }
-      }
-    }
+    if (generated.beams) addGridBeams(levelId, story.beamSection);
     if (generated.floors) {
       for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
         for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
@@ -266,6 +317,31 @@ function normalizeStories({ stories, storyHeights, columnSection, beamSection })
     floorSection: sectionNameOrUndefined(story.floorSection),
     wallSection: sectionNameOrUndefined(story.wallSection),
   }));
+}
+
+// The embedment depth must be positive: a foundation beam is by definition
+// below GL, and a zero-depth stub would be a zero-length column.
+function normalizeFoundation(foundation) {
+  const depth = foundation?.depth;
+  if (typeof depth !== 'number' || !Number.isFinite(depth)) {
+    throw validationError(TypeError, 'foundation.depth must be a finite number.', {
+      reason: 'invalid',
+      code: 'foundation-depth',
+      field: 'foundation.depth',
+    });
+  }
+  if (depth < MIN_GRID_DIMENSION_MM || depth > MAX_GRID_DIMENSION_MM) {
+    throw validationError(
+      RangeError,
+      `foundation.depth must be between ${MIN_GRID_DIMENSION_MM} and ${MAX_GRID_DIMENSION_MM} mm.`,
+      { reason: 'range', code: 'foundation-depth', field: 'foundation.depth' }
+    );
+  }
+  return {
+    depth,
+    beamSection: sectionNameOrUndefined(foundation.beamSection),
+    columnSection: sectionNameOrUndefined(foundation.columnSection),
+  };
 }
 
 function sectionNameOrUndefined(value) {
