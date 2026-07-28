@@ -66,8 +66,22 @@ test('placeholders like {n} match between ja and en for shared keys', async () =
 test('grid frame enhancements expose complete Japanese and English copy', async () => {
   const dict = await loadDict();
   const keys = [
+    'gridFrameStoryCount',
+    'gridFrameGenerateItems',
+    'gridFrameGenerateColumns',
+    'gridFrameGenerateBeams',
+    'gridFrameGenerateWalls',
+    'gridFrameStoryTable',
+    'gridFrameStory',
+    'gridFrameStoryHeight',
+    'gridFrameBulkRow',
+    'gridFrameBulkApply',
     'gridFrameColumnSection',
     'gridFrameBeamSection',
+    'gridFrameFloorSection',
+    'gridFrameWallSection',
+    'gridFrameStoryHeightInvalid',
+    'gridFrameNoMembers',
     'gridFrameGenerateFloors',
     'gridFramePreset',
     'gridFramePresetNone',
@@ -91,8 +105,10 @@ test('grid frame enhancements expose complete Japanese and English copy', async 
 
   assert.match(dict.ja.gridFrameSpansXPlaceholder, /3@6000/);
   assert.match(dict.en.gridFrameSpansXPlaceholder, /3@6000/);
-  assert.match(dict.ja.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}/);
-  assert.match(dict.en.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}/);
+  assert.match(dict.ja.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}.*\{walls\}/);
+  assert.match(dict.en.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}.*\{walls\}/);
+  assert.match(dict.ja.gridFrameStoryHeightInvalid, /\{story\}/);
+  assert.match(dict.en.gridFrameStoryHeightInvalid, /\{story\}/);
   assert.match(dict.ja.gridFrameTooLarge, /要素数/);
   assert.match(dict.en.gridFrameTooLarge, /element count/);
 });

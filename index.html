@@ -381,7 +381,7 @@
 
   <!-- Initial Grid Frame Modal -->
   <div id="grid-frame-modal" class="modal-overlay" aria-hidden="true">
-    <div class="modal-content modal-settings" role="dialog" aria-modal="true" aria-labelledby="grid-frame-modal-title">
+    <div class="modal-content modal-settings modal-grid-frame" role="dialog" aria-modal="true" aria-labelledby="grid-frame-modal-title">
       <div class="modal-header">
         <h2 id="grid-frame-modal-title" data-i18n="gridFrameTitle">初期格子フレーム生成</h2>
         <button id="btn-grid-frame-close" type="button" class="modal-close" data-i18n="helpClose">閉じる</button>
@@ -398,9 +398,47 @@
           </div>
         </div>
         <div class="settings-group">
-          <label for="grid-frame-story-heights"><span data-i18n="gridFrameStoryHeights">階高リスト</span> (mm)</label>
-          <input id="grid-frame-story-heights" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
-                 data-i18n-placeholder="gridFrameStoryHeightsPlaceholder" placeholder="3500, 3000, 3000">
+          <label for="grid-frame-story-count" data-i18n="gridFrameStoryCount">階数</label>
+          <input id="grid-frame-story-count" type="number" min="1" max="50" step="1" inputmode="numeric" autocomplete="off">
+        </div>
+        <div class="settings-group">
+          <span class="grid-frame-group-label" data-i18n="gridFrameGenerateItems">生成する要素</span>
+          <div class="grid-frame-generate-group">
+            <label class="support-chk-label" for="grid-frame-generate-columns">
+              <input id="grid-frame-generate-columns" type="checkbox" checked>
+              <span data-i18n="gridFrameGenerateColumns">柱</span>
+            </label>
+            <label class="support-chk-label" for="grid-frame-generate-beams">
+              <input id="grid-frame-generate-beams" type="checkbox" checked>
+              <span data-i18n="gridFrameGenerateBeams">梁</span>
+            </label>
+            <label class="support-chk-label" for="grid-frame-generate-floors">
+              <input id="grid-frame-generate-floors" type="checkbox">
+              <span data-i18n="gridFrameGenerateFloors">床</span>
+            </label>
+            <label class="support-chk-label" for="grid-frame-generate-walls">
+              <input id="grid-frame-generate-walls" type="checkbox">
+              <span data-i18n="gridFrameGenerateWalls">外壁</span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-group">
+          <span class="grid-frame-group-label" data-i18n="gridFrameStoryTable">階別設定</span>
+          <div class="grid-frame-story-table-wrap">
+            <table class="grid-frame-story-table">
+              <thead>
+                <tr>
+                  <th data-i18n="gridFrameStory">階</th>
+                  <th><span data-i18n="gridFrameStoryHeight">階高</span> (mm)</th>
+                  <th data-i18n="gridFrameColumnSection">柱断面</th>
+                  <th data-i18n="gridFrameBeamSection">梁断面</th>
+                  <th data-i18n="gridFrameFloorSection">床断面</th>
+                  <th data-i18n="gridFrameWallSection">外壁断面</th>
+                </tr>
+              </thead>
+              <tbody id="grid-frame-story-body"></tbody>
+            </table>
+          </div>
         </div>
         <div class="settings-group">
           <label for="grid-frame-spans-x"><span data-i18n="gridFrameSpansX">X方向スパンリスト</span> (mm)</label>
@@ -411,20 +449,6 @@
           <label for="grid-frame-spans-y"><span data-i18n="gridFrameSpansY">Y方向スパンリスト</span> (mm)</label>
           <input id="grid-frame-spans-y" type="text" inputmode="decimal" autocomplete="off" spellcheck="false"
                  data-i18n-placeholder="gridFrameSpansYPlaceholder" placeholder="6000, 6000">
-        </div>
-        <div class="settings-group">
-          <label for="grid-frame-column-section" data-i18n="gridFrameColumnSection">柱断面</label>
-          <select id="grid-frame-column-section"></select>
-        </div>
-        <div class="settings-group">
-          <label for="grid-frame-beam-section" data-i18n="gridFrameBeamSection">梁断面</label>
-          <select id="grid-frame-beam-section"></select>
-        </div>
-        <div class="settings-group">
-          <label class="support-chk-label" for="grid-frame-generate-floors">
-            <input id="grid-frame-generate-floors" type="checkbox">
-            <span data-i18n="gridFrameGenerateFloors">床を生成する</span>
-          </label>
         </div>
         <div class="support-preset-row">
           <button id="btn-grid-frame-cancel" type="button" class="support-preset-btn" data-i18n="choiceCancel">キャンセル</button>

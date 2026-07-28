@@ -56,8 +56,14 @@ export function parseMmList(text, { maxCount = MAX_SPAN_COUNT } = {}) {
 /**
  * Builds a fresh grid-frame model and returns its serialized JSON data.
  * Input dimensions are millimetres.
+ *
+ * Preferred input is `stories` (bottom story first, each entry holding the
+ * story height plus per-story section names) and `generate` (which element
+ * kinds to create). The legacy `storyHeights` + model-wide section names +
+ * `generateFloors` form is still accepted and normalized to the same shape.
  */
 export function buildGridFrame({
+  stories,
   storyHeights,
   spansX,
   spansY,
@@ -65,25 +71,39 @@ export function buildGridFrame({
   beamSection,
   sectionCatalog,
   springCatalog,
+  generate,
   generateFloors = false,
 } = {}) {
-  const heights = validateMmValues(storyHeights, 'storyHeights', MAX_STORY_COUNT);
+  const normalizedStories = normalizeStories({ stories, storyHeights, columnSection, beamSection });
+  const heights = normalizedStories.map(story => story.height);
   const xSpans = validateMmValues(spansX, 'spansX', MAX_SPAN_COUNT);
   const ySpans = validateMmValues(spansY, 'spansY', MAX_SPAN_COUNT);
+  const generated = {
+    columns: generate?.columns !== false,
+    beams: generate?.beams !== false,
+    floors: generate ? generate.floors === true : generateFloors === true,
+    exteriorWalls: generate?.exteriorWalls === true,
+  };
+  if (!generated.columns && !generated.beams) {
+    throw validationError(TypeError, 'At least one of columns or beams must be generated.', {
+      reason: 'invalid',
+      code: 'no-members',
+    });
+  }
 
   const storyCount = heights.length;
   const xGridCount = xSpans.length + 1;
   const yGridCount = ySpans.length + 1;
-  const columnCount = xGridCount * yGridCount * storyCount;
-  const beamCount = (
-    xSpans.length * yGridCount +
-    ySpans.length * xGridCount
-  ) * storyCount;
+  const columnCount = generated.columns ? xGridCount * yGridCount * storyCount : 0;
+  const beamCount = generated.beams
+    ? (xSpans.length * yGridCount + ySpans.length * xGridCount) * storyCount
+    : 0;
   const memberCount = columnCount + beamCount;
-  const floorCount = generateFloors
+  const floorCount = generated.floors
     ? xSpans.length * ySpans.length * storyCount
     : 0;
-  const elementCount = memberCount + floorCount;
+  const wallCount = generated.exteriorWalls ? storyCount : 0;
+  const elementCount = memberCount + floorCount + wallCount;
 
   if (elementCount > MAX_GRID_FRAME_MEMBERS) {
     throw validationError(
@@ -100,6 +120,7 @@ export function buildGridFrame({
           columns: columnCount,
           beams: beamCount,
           floors: floorCount,
+          walls: wallCount,
           members: memberCount,
           elements: elementCount,
         },
@@ -129,32 +150,34 @@ export function buildGridFrame({
   // A node stores plan coordinates; member level metadata supplies elevation.
   // Keep one column node per grid point and story, matching the existing sample
   // model convention. Beams below reuse one of those nodes via findNodeAt().
-  for (let storyIndex = 0; storyIndex < storyCount; storyIndex++) {
-    const bottomLevel = levels[storyIndex];
-    const topLevel = levels[storyIndex + 1];
-    for (const x of xCoords) {
-      for (const y of yCoords) {
-        const node = state.addNode(x, y);
-        if (storyIndex === 0) planNodes.set(planNodeKey(x, y), node);
-        state.addMember(node.id, node.id, {
-          type: 'column',
-          levelId: bottomLevel.id,
-          topLevelId: topLevel.id,
-          sectionName: columnSection,
-        });
-        if (storyIndex === 0) {
-          state.addSupport(x, y, {
-            levelId: groundLevel.id,
-            dx: true,
-            dy: true,
-            dz: true,
+  if (generated.columns) {
+    for (let storyIndex = 0; storyIndex < storyCount; storyIndex++) {
+      const bottomLevel = levels[storyIndex];
+      const topLevel = levels[storyIndex + 1];
+      for (const x of xCoords) {
+        for (const y of yCoords) {
+          const node = state.addNode(x, y);
+          if (storyIndex === 0) planNodes.set(planNodeKey(x, y), node);
+          state.addMember(node.id, node.id, {
+            type: 'column',
+            levelId: bottomLevel.id,
+            topLevelId: topLevel.id,
+            sectionName: normalizedStories[storyIndex].columnSection,
           });
+          if (storyIndex === 0) {
+            state.addSupport(x, y, {
+              levelId: groundLevel.id,
+              dx: true,
+              dy: true,
+              dz: true,
+            });
+          }
         }
       }
     }
   }
 
-  const addBeam = (levelId, x1, y1, x2, y2) => {
+  const addBeam = (levelId, sectionName, x1, y1, x2, y2) => {
     let startNode = planNodes.get(planNodeKey(x1, y1)) || state.findNodeAt(x1, y1, 1);
     if (!startNode) startNode = state.addNode(x1, y1);
     let endNode = planNodes.get(planNodeKey(x2, y2)) || state.findNodeAt(x2, y2, 1);
@@ -162,24 +185,29 @@ export function buildGridFrame({
     state.addMember(startNode.id, endNode.id, {
       type: 'beam',
       levelId,
-      sectionName: beamSection,
+      sectionName,
     });
   };
 
-  // Generate beams at every floor above GL, in both grid directions.
+  // Generate beams, floors, and exterior walls at every floor above GL.
+  const xMax = xCoords[xCoords.length - 1];
+  const yMax = yCoords[yCoords.length - 1];
   for (let levelIndex = 1; levelIndex < levels.length; levelIndex++) {
+    const story = normalizedStories[levelIndex - 1];
     const levelId = levels[levelIndex].id;
-    for (const y of yCoords) {
-      for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
-        addBeam(levelId, xCoords[xIndex], y, xCoords[xIndex + 1], y);
+    if (generated.beams) {
+      for (const y of yCoords) {
+        for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
+          addBeam(levelId, story.beamSection, xCoords[xIndex], y, xCoords[xIndex + 1], y);
+        }
+      }
+      for (const x of xCoords) {
+        for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
+          addBeam(levelId, story.beamSection, x, yCoords[yIndex], x, yCoords[yIndex + 1]);
+        }
       }
     }
-    for (const x of xCoords) {
-      for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
-        addBeam(levelId, x, yCoords[yIndex], x, yCoords[yIndex + 1]);
-      }
-    }
-    if (generateFloors) {
+    if (generated.floors) {
       for (let xIndex = 0; xIndex < xCoords.length - 1; xIndex++) {
         for (let yIndex = 0; yIndex < yCoords.length - 1; yIndex++) {
           state.addSurfaceRect(
@@ -187,14 +215,61 @@ export function buildGridFrame({
             yCoords[yIndex],
             xCoords[xIndex + 1],
             yCoords[yIndex + 1],
-            { type: 'floor', levelId, topLevelId: levelId }
+            { type: 'floor', levelId, topLevelId: levelId, sectionName: story.floorSection }
           );
         }
       }
     }
+    if (generated.exteriorWalls) {
+      // One perimeter wall polygon per story, spanning from the story's bottom
+      // level to its top level (same convention as the sample model and the
+      // one-exterior-wall-per-level rule enforced by the drawing tools).
+      state.addSurfacePolygon(
+        [{ x: 0, y: 0 }, { x: xMax, y: 0 }, { x: xMax, y: yMax }, { x: 0, y: yMax }],
+        {
+          type: 'exteriorWall',
+          levelId: levels[levelIndex - 1].id,
+          topLevelId: levels[levelIndex].id,
+          sectionName: story.wallSection,
+        }
+      );
+    }
   }
 
   return state.toJSON();
+}
+
+function normalizeStories({ stories, storyHeights, columnSection, beamSection }) {
+  if (stories === undefined) {
+    const heights = validateMmValues(storyHeights, 'storyHeights', MAX_STORY_COUNT);
+    return heights.map(height => ({
+      height,
+      columnSection,
+      beamSection,
+      floorSection: undefined,
+      wallSection: undefined,
+    }));
+  }
+
+  if (!Array.isArray(stories) || stories.length === 0) {
+    throw validationError(TypeError, 'stories must be a non-empty array.', {
+      reason: 'invalid',
+      code: 'invalid-input',
+      field: 'stories',
+    });
+  }
+  const heights = validateMmValues(stories.map(story => story?.height), 'stories', MAX_STORY_COUNT);
+  return stories.map((story, index) => ({
+    height: heights[index],
+    columnSection: sectionNameOrUndefined(story.columnSection),
+    beamSection: sectionNameOrUndefined(story.beamSection),
+    floorSection: sectionNameOrUndefined(story.floorSection),
+    wallSection: sectionNameOrUndefined(story.wallSection),
+  }));
+}
+
+function sectionNameOrUndefined(value) {
+  return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 function validateMmValues(values, field, maxCount) {

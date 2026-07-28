@@ -714,6 +714,69 @@ body.property-collapsed #property-panel > * {
   margin-top: 8px;
 }
 
+/* Grid frame generation modal */
+.modal-grid-frame {
+  width: min(640px, 96vw);
+}
+.grid-frame-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.grid-frame-generate-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.grid-frame-story-table-wrap {
+  max-height: 38vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.grid-frame-story-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.grid-frame-story-table th,
+.grid-frame-story-table td {
+  padding: 3px 4px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text);
+}
+.grid-frame-story-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.grid-frame-story-table tbody th {
+  font-weight: 600;
+}
+.grid-frame-story-table input,
+.grid-frame-story-table select {
+  width: 100%;
+  min-width: 72px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.grid-frame-story-table select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.grid-frame-bulk-row th,
+.grid-frame-bulk-row td {
+  border-bottom: 1px solid var(--border);
+}
+
 /* Layer selector layout */
 .layer-label {
   font-size: 12px;
