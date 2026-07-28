@@ -37,6 +37,36 @@ test('removeLevel refuses a level that still has only a load', () => {
   assert.ok(state.levels.some(l => l.id === base.id));
 });
 
+// Mirrors a generated grid frame with a foundation: the FDN level sits below GL
+// but is appended to the end of the levels array.
+function foundationState() {
+  const state = new AppState();
+  const [ground, second] = state.levels;
+  const roof = state.addLevel('RF', second.z + 3000);
+  const foundation = state.addLevel('FDN', ground.z - 1500);
+  state.activeLevelId = ground.id;
+  state.surfaceDraftTopLevelId = second.id;
+  return { state, ground, second, roof, foundation };
+}
+
+test('removeLevel replaces the surface draft top level by elevation, not array order', () => {
+  const { state, second, roof, foundation } = foundationState();
+
+  assert.equal(state.removeLevel(second.id), true);
+  assert.equal(state.surfaceDraftTopLevelId, roof.id);
+  assert.notEqual(state.surfaceDraftTopLevelId, foundation.id);
+});
+
+test('removeLevel falls back to the highest level when the active level is on top', () => {
+  const { state, ground, second, roof } = foundationState();
+  state.activeLevelId = roof.id;
+  state.surfaceDraftTopLevelId = second.id;
+
+  assert.equal(state.removeLevel(second.id), true);
+  assert.equal(state.surfaceDraftTopLevelId, roof.id);
+  assert.equal(state.getLevelZ(state.surfaceDraftTopLevelId) > state.getLevelZ(ground.id), true);
+});
+
 test('removeLevel succeeds once supports and loads are cleared', () => {
   const { state, extra } = twoLevelState();
   const support = state.addSupport(0, 0, { levelId: extra.id });

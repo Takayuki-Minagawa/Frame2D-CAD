@@ -421,6 +421,8 @@ test('buildGridFrame applies the element cap to members and generated floors tog
         beams: beamCount,
         floors: floorCount,
         walls: 0,
+        foundationColumns: 0,
+        foundationBeams: 0,
         members: memberCount,
         elements: elementCount,
       }) === undefined
@@ -623,5 +625,150 @@ test('buildGridFrame validates the stories array like the legacy height list', (
     restored.members
       .filter(member => member.type === 'column')
       .every(member => member.sectionName === defaults.getDefaultSectionName('member', 'column'))
+  );
+});
+
+test('buildGridFrame generates a foundation level with beams, column stubs, and supports', () => {
+  const source = new AppState();
+  source.addSection({ target: 'member', type: 'beam', name: 'FG1' });
+  source.addSection({ target: 'member', type: 'column', name: 'FC1' });
+
+  const { state } = loadGridFrame({
+    stories: [{ height: 3000 }, { height: 3000 }],
+    spansX: [6000, 5000],
+    spansY: [4000],
+    generate: { columns: true, beams: true, foundation: true },
+    foundation: { depth: 1500, beamSection: 'FG1', columnSection: 'FC1' },
+    sectionCatalog: source.sectionCatalog,
+  });
+
+  const foundationLevel = state.levels.find(level => level.name === 'FDN');
+  const groundLevel = state.levels.find(level => level.name === 'GL');
+  assert.ok(foundationLevel);
+  assert.equal(foundationLevel.z, -1500);
+  assert.equal(state.levels.filter(level => level.z < 0).length, 1);
+  // GL must stay the first entry so a loaded model activates it, not FDN.
+  assert.equal(state.levels[0].id, groundLevel.id);
+
+  const foundationBeams = state.members.filter(
+    member => member.type === 'beam' && member.levelId === foundationLevel.id
+  );
+  const foundationColumns = state.members.filter(
+    member => member.type === 'column' && member.levelId === foundationLevel.id
+  );
+  // Same grid as a framed floor: 2 X-bays * 2 Y-lines + 1 Y-bay * 3 X-lines.
+  assert.equal(foundationBeams.length, 7);
+  assert.equal(foundationColumns.length, 6);
+  assert.ok(foundationBeams.every(member => member.sectionName === 'FG1'));
+  assert.ok(foundationColumns.every(member => member.sectionName === 'FC1'));
+  assert.ok(foundationColumns.every(member => member.topLevelId === groundLevel.id));
+  assert.ok(foundationColumns.every(member => member.startNodeId === member.endNodeId));
+
+  // The frame above GL is untouched by the foundation.
+  assert.equal(
+    state.members.filter(m => m.type === 'column' && m.levelId !== foundationLevel.id).length,
+    12
+  );
+  assert.equal(
+    state.members.filter(m => m.type === 'beam' && m.levelId !== foundationLevel.id).length,
+    14
+  );
+
+  assert.equal(state.supports.length, 6);
+  assert.ok(state.supports.every(support => support.levelId === foundationLevel.id));
+  assert.deepEqual(
+    state.validateModel().filter(issue => issue.severity === 'error'),
+    []
+  );
+});
+
+test('buildGridFrame supports a foundation without the above-ground columns', () => {
+  const { state } = loadGridFrame({
+    stories: [{ height: 3000 }],
+    spansX: [6000],
+    spansY: [6000],
+    generate: { columns: false, beams: true, foundation: true },
+    foundation: { depth: 1200 },
+  });
+
+  const foundationLevel = state.levels.find(level => level.name === 'FDN');
+  const columns = state.members.filter(member => member.type === 'column');
+  assert.equal(columns.length, 4);
+  assert.ok(columns.every(member => member.levelId === foundationLevel.id));
+  // Column stubs would otherwise have no restrained feet.
+  assert.equal(state.supports.length, 4);
+  assert.ok(state.supports.every(support => support.levelId === foundationLevel.id));
+});
+
+test('buildGridFrame leaves the model unchanged when the foundation is off', () => {
+  const input = {
+    stories: [{ height: 3000 }, { height: 3200 }],
+    spansX: [6000, 5000],
+    spansY: [4000],
+  };
+  const plain = loadGridFrame(input).state;
+  const explicitlyOff = loadGridFrame({
+    ...input,
+    generate: { columns: true, beams: true, foundation: false },
+    // Ignored while the foundation is off, including an invalid depth.
+    foundation: { depth: 0 },
+  }).state;
+
+  for (const state of [plain, explicitlyOff]) {
+    assert.equal(state.levels.length, 3);
+    assert.ok(state.levels.every(level => level.z >= 0));
+    assert.equal(state.members.filter(member => member.type === 'column').length, 12);
+    assert.equal(state.members.filter(member => member.type === 'beam').length, 14);
+    const groundLevel = state.levels.find(level => level.name === 'GL');
+    assert.ok(state.supports.every(support => support.levelId === groundLevel.id));
+  }
+});
+
+test('buildGridFrame validates the foundation embedment depth', () => {
+  const valid = {
+    stories: [{ height: 3000 }],
+    spansX: [6000],
+    spansY: [6000],
+    generate: { columns: true, beams: true, foundation: true },
+  };
+
+  for (const foundation of [undefined, {}, { depth: '1500' }, { depth: Number.NaN }]) {
+    assert.throws(
+      () => buildGridFrame({ ...valid, foundation }),
+      error => error instanceof TypeError &&
+        error.reason === 'invalid' &&
+        error.code === 'foundation-depth'
+    );
+  }
+  for (const depth of [0, -1500, 100_001]) {
+    assert.throws(
+      () => buildGridFrame({ ...valid, foundation: { depth } }),
+      error => error instanceof RangeError &&
+        error.reason === 'range' &&
+        error.code === 'foundation-depth'
+    );
+  }
+});
+
+test('buildGridFrame counts foundation members against the element cap', () => {
+  const storyCount = 32;
+  const spans = Array(12).fill(6000);
+  const input = {
+    storyHeights: Array(storyCount).fill(3000),
+    spansX: spans,
+    spansY: spans,
+    generate: { columns: true, beams: true, floors: true, foundation: true },
+    foundation: { depth: 1500 },
+  };
+  const foundationColumnCount = 13 * 13;
+  const foundationBeamCount = 12 * 13 + 12 * 13;
+
+  assert.throws(
+    () => buildGridFrame(input),
+    error => error instanceof RangeError &&
+      error.code === 'member-count' &&
+      error.count === MAX_GRID_FRAME_MEMBERS + foundationColumnCount + foundationBeamCount &&
+      error.counts.foundationColumns === foundationColumnCount &&
+      error.counts.foundationBeams === foundationBeamCount
   );
 });

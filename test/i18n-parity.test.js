@@ -80,6 +80,12 @@ test('grid frame enhancements expose complete Japanese and English copy', async 
     'gridFrameBeamSection',
     'gridFrameFloorSection',
     'gridFrameWallSection',
+    'gridFrameGenerateFoundation',
+    'gridFrameFoundation',
+    'gridFrameFoundationDepth',
+    'gridFrameFoundationColumnSection',
+    'gridFrameFoundationBeamSection',
+    'gridFrameFoundationDepthInvalid',
     'gridFrameStoryHeightInvalid',
     'gridFrameNoMembers',
     'gridFrameGenerateFloors',
@@ -105,8 +111,9 @@ test('grid frame enhancements expose complete Japanese and English copy', async 
 
   assert.match(dict.ja.gridFrameSpansXPlaceholder, /3@6000/);
   assert.match(dict.en.gridFrameSpansXPlaceholder, /3@6000/);
-  assert.match(dict.ja.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}.*\{walls\}/);
-  assert.match(dict.en.gridFrameDone, /\{columns\}.*\{beams\}.*\{floors\}.*\{walls\}/);
+  const doneParams = /\{columns\}.*\{beams\}.*\{floors\}.*\{walls\}.*\{foundationColumns\}.*\{foundationBeams\}/;
+  assert.match(dict.ja.gridFrameDone, doneParams);
+  assert.match(dict.en.gridFrameDone, doneParams);
   assert.match(dict.ja.gridFrameStoryHeightInvalid, /\{story\}/);
   assert.match(dict.en.gridFrameStoryHeightInvalid, /\{story\}/);
   assert.match(dict.ja.gridFrameTooLarge, /要素数/);

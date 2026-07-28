@@ -24,9 +24,10 @@ const PARSE_ERROR_KEYS = {
 
 export const GRID_FRAME_INPUT_STORAGE_KEY = 'lineframe-grid-frame-input';
 export const GRID_FRAME_PRESETS_STORAGE_KEY = 'lineframe-grid-frame-presets';
-export const GRID_FRAME_INPUT_VERSION = 2;
+export const GRID_FRAME_INPUT_VERSION = 3;
 export const MAX_GRID_FRAME_PRESETS = 20;
 export const DEFAULT_STORY_HEIGHT = '3000';
+export const DEFAULT_FOUNDATION_DEPTH = '1500';
 
 // One entry per story-table section column; generateKey links each column to
 // the checkbox that enables the corresponding generated elements.
@@ -36,7 +37,26 @@ const SECTION_COLUMNS = [
   { key: 'floorSection', target: 'surface', type: 'floor', generateKey: 'floors' },
   { key: 'wallSection', target: 'surface', type: 'exteriorWall', generateKey: 'exteriorWalls' },
 ];
-const GENERATE_KEYS = ['columns', 'beams', 'floors', 'exteriorWalls'];
+const GENERATE_KEYS = ['columns', 'beams', 'floors', 'exteriorWalls', 'foundation'];
+// The foundation is a single level, so its sections live outside the per-story
+// table in their own row.
+const FOUNDATION_SECTION_FIELDS = [
+  { key: 'columnSection', target: 'member', type: 'column', id: 'grid-frame-foundation-column-section' },
+  { key: 'beamSection', target: 'member', type: 'beam', id: 'grid-frame-foundation-beam-section' },
+];
+
+function defaultFoundation() {
+  return { depth: DEFAULT_FOUNDATION_DEPTH, columnSection: '', beamSection: '' };
+}
+
+function normalizeFoundation(foundation) {
+  if (!foundation || typeof foundation !== 'object') return defaultFoundation();
+  return {
+    depth: typeof foundation.depth === 'string' ? foundation.depth : DEFAULT_FOUNDATION_DEPTH,
+    columnSection: typeof foundation.columnSection === 'string' ? foundation.columnSection : '',
+    beamSection: typeof foundation.beamSection === 'string' ? foundation.beamSection : '',
+  };
+}
 
 function defaultStory() {
   return {
@@ -54,7 +74,14 @@ function defaultInputValues() {
     stories: [defaultStory()],
     spansX: '',
     spansY: '',
-    generate: { columns: true, beams: true, floors: false, exteriorWalls: false },
+    generate: {
+      columns: true,
+      beams: true,
+      floors: false,
+      exteriorWalls: false,
+      foundation: false,
+    },
+    foundation: defaultFoundation(),
   };
 }
 
@@ -69,9 +96,10 @@ function normalizeStory(story) {
   };
 }
 
-// Accepts both the current (v2, per-story) and the legacy (v1, flat) stored
-// shapes. The v1 shape is migrated: its height list is expanded to one story
-// per value and its model-wide sections are copied onto every story.
+// Accepts the current (v3, per-story plus foundation) shape as well as the
+// legacy v2 (per-story) and v1 (flat) ones. v1 is migrated by expanding its
+// height list into one story per value and copying its model-wide sections
+// onto every story; v2 simply gains the foundation defaults (disabled).
 export function normalizeStoredInput(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (Array.isArray(value.stories)) {
@@ -88,7 +116,9 @@ export function normalizeStoredInput(value) {
         beams: generate.beams !== false,
         floors: generate.floors === true,
         exteriorWalls: generate.exteriorWalls === true,
+        foundation: generate.foundation === true,
       },
+      foundation: normalizeFoundation(value.foundation),
     };
   }
 
@@ -115,7 +145,9 @@ export function normalizeStoredInput(value) {
       beams: true,
       floors: value.generateFloors === true,
       exteriorWalls: false,
+      foundation: false,
     },
+    foundation: defaultFoundation(),
   };
 }
 
@@ -189,7 +221,12 @@ export function initGridFrameModal({
     beams: document.getElementById('grid-frame-generate-beams'),
     floors: document.getElementById('grid-frame-generate-floors'),
     exteriorWalls: document.getElementById('grid-frame-generate-walls'),
+    foundation: document.getElementById('grid-frame-generate-foundation'),
   };
+  const foundationDepthInput = document.getElementById('grid-frame-foundation-depth');
+  const foundationSelects = Object.fromEntries(
+    FOUNDATION_SECTION_FIELDS.map(field => [field.key, document.getElementById(field.id)])
+  );
   let returnFocusElement = null;
   let presets = readPresets();
   const spanFields = [
@@ -209,6 +246,7 @@ export function initGridFrameModal({
   // Bottom story first, matching the generator's stories order. The table
   // renders in reverse so the top story appears first, as on drawings.
   let stories = [];
+  let foundation = defaultFoundation();
   let renderedRows = [];
   let bulkControls = null;
   let retainedValues = readStoredInput() || defaultInputValues();
@@ -396,6 +434,27 @@ export function initGridFrameModal({
     }
   }
 
+  function updateFoundationState() {
+    const enabled = generateInputs.foundation.checked;
+    foundationDepthInput.disabled = !enabled;
+    for (const field of FOUNDATION_SECTION_FIELDS) {
+      foundationSelects[field.key].disabled = !enabled;
+    }
+    if (!enabled) clearOneInputError(foundationDepthInput);
+  }
+
+  function renderFoundationRow() {
+    foundationDepthInput.value = foundation.depth;
+    for (const field of FOUNDATION_SECTION_FIELDS) {
+      foundation[field.key] = populateSectionSelect(
+        foundationSelects[field.key],
+        field,
+        foundation[field.key]
+      );
+    }
+    updateFoundationState();
+  }
+
   function clampStoryCount(value) {
     const count = Number.parseInt(value, 10);
     if (!Number.isSafeInteger(count)) return stories.length || 1;
@@ -431,12 +490,10 @@ export function initGridFrameModal({
       stories: stories.map(story => ({ ...story })),
       spansX: spanFields[0].input.value,
       spansY: spanFields[1].input.value,
-      generate: {
-        columns: generateInputs.columns.checked,
-        beams: generateInputs.beams.checked,
-        floors: generateInputs.floors.checked,
-        exteriorWalls: generateInputs.exteriorWalls.checked,
-      },
+      generate: Object.fromEntries(
+        GENERATE_KEYS.map(key => [key, generateInputs[key].checked])
+      ),
+      foundation: { ...foundation },
     };
   }
 
@@ -447,10 +504,12 @@ export function initGridFrameModal({
   function applyInputValues(values) {
     const normalized = normalizeStoredInput(values) || defaultInputValues();
     stories = normalized.stories.map(story => ({ ...story }));
+    foundation = { ...normalized.foundation };
     storyCountInput.value = String(stories.length);
     for (const field of spanFields) field.input.value = normalized[field.key];
     for (const key of GENERATE_KEYS) generateInputs[key].checked = normalized.generate[key];
     renderStoryTable();
+    renderFoundationRow();
     // Capture back so retained/saved values hold the resolved section names.
     retainedValues = captureInputValues();
   }
@@ -480,6 +539,7 @@ export function initGridFrameModal({
     for (const rendered of renderedRows) {
       if (rendered) clearOneInputError(rendered.heightInput);
     }
+    clearOneInputError(foundationDepthInput);
   }
 
   function show() {
@@ -507,7 +567,9 @@ export function initGridFrameModal({
     }
   }
 
-  function parseStoryHeight(rawValue) {
+  // Shared by the story heights and the foundation depth: both are a single
+  // millimetre value bounded by the generator's dimension limits.
+  function parseMmValue(rawValue) {
     const raw = String(rawValue ?? '').trim();
     if (!raw) return null;
     const value = Number(raw);
@@ -525,7 +587,7 @@ export function initGridFrameModal({
 
     const parsedStories = [];
     for (const [storyIndex, story] of stories.entries()) {
-      const height = parseStoryHeight(story.height);
+      const height = parseMmValue(story.height);
       if (height === null) {
         const rendered = renderedRows[storyIndex];
         if (rendered) {
@@ -556,6 +618,21 @@ export function initGridFrameModal({
       }
       parsed[field.key] = result.values;
     }
+
+    if (generateInputs.foundation.checked) {
+      const depth = parseMmValue(foundation.depth);
+      if (depth === null) {
+        markInputError(foundationDepthInput);
+        foundationDepthInput.focus();
+        showNotice(t('gridFrameFoundationDepthInvalid'), 'error');
+        return null;
+      }
+      parsed.foundation = {
+        depth,
+        columnSection: foundation.columnSection,
+        beamSection: foundation.beamSection,
+      };
+    }
     return parsed;
   }
 
@@ -563,6 +640,7 @@ export function initGridFrameModal({
     if (error?.code === 'member-count') {
       return t('gridFrameTooLarge', { count: error.count, max: error.max });
     }
+    if (error?.code === 'foundation-depth') return t('gridFrameFoundationDepthInvalid');
     return t('gridFrameGenerateFailed');
   }
 
@@ -610,11 +688,21 @@ export function initGridFrameModal({
       writeStorage(GRID_FRAME_INPUT_STORAGE_KEY, inputValues);
       requestAnimationFrame(() => document.getElementById('btn-settings')?.focus());
 
-      const columns = state.members.filter(member => member.type === 'column').length;
-      const beams = state.members.filter(member => member.type === 'beam').length;
+      // The foundation is the only level below GL, so it is always the lowest
+      // one; its members are reported separately from the frame above.
+      const foundationLevelId = inputValues.generate.foundation
+        ? [...state.levels].sort((a, b) => a.z - b.z)[0]?.id
+        : undefined;
+      const tally = { columns: 0, beams: 0, foundationColumns: 0, foundationBeams: 0 };
+      for (const member of state.members) {
+        const isFoundation = foundationLevelId !== undefined
+          && member.levelId === foundationLevelId;
+        if (member.type === 'column') tally[isFoundation ? 'foundationColumns' : 'columns']++;
+        else if (member.type === 'beam') tally[isFoundation ? 'foundationBeams' : 'beams']++;
+      }
       const floors = state.surfaces?.filter(surface => surface.type === 'floor').length || 0;
       const walls = state.surfaces?.filter(surface => surface.type === 'exteriorWall').length || 0;
-      showNotice(t('gridFrameDone', { columns, beams, floors, walls }), 'success');
+      showNotice(t('gridFrameDone', { ...tally, floors, walls }), 'success');
     } catch (error) {
       console.error('Grid frame generation failed:', error);
       if (snapshotSaved) history.undo();
@@ -690,7 +778,20 @@ export function initGridFrameModal({
   document.getElementById('btn-grid-frame-cancel').addEventListener('click', hide);
   storyCountInput.addEventListener('change', () => setStoryCount(storyCountInput.value));
   for (const key of GENERATE_KEYS) {
-    generateInputs[key].addEventListener('change', updateSectionColumnState);
+    generateInputs[key].addEventListener('change', () => {
+      updateSectionColumnState();
+      updateFoundationState();
+    });
+  }
+  foundationDepthInput.addEventListener('input', () => {
+    foundation.depth = foundationDepthInput.value;
+    clearOneInputError(foundationDepthInput);
+  });
+  for (const field of FOUNDATION_SECTION_FIELDS) {
+    const select = foundationSelects[field.key];
+    select.addEventListener('change', () => {
+      foundation[field.key] = select.value;
+    });
   }
   modal.addEventListener('click', event => {
     if (event.target === modal) hide();

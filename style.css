@@ -776,6 +776,33 @@ body.property-collapsed #property-panel > * {
 .grid-frame-bulk-row td {
   border-bottom: 1px solid var(--border);
 }
+.grid-frame-foundation-group {
+  display: grid;
+  grid-template-columns: auto minmax(72px, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.grid-frame-foundation-group label {
+  color: var(--text);
+  white-space: nowrap;
+}
+.grid-frame-foundation-group input,
+.grid-frame-foundation-group select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.grid-frame-foundation-group input:disabled,
+.grid-frame-foundation-group select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* Layer selector layout */
 .layer-label {
