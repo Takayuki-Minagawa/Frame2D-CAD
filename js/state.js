@@ -1300,7 +1300,11 @@ export class AppState {
       this.activeLevelId = this.levels[0].id;
     }
     if (this.surfaceDraftTopLevelId === id) {
-      this.surfaceDraftTopLevelId = this.levels[this.levels.length - 1].id;
+      // Pick the replacement by elevation, not by array order: a level below GL
+      // (the generated foundation) is appended last, so the tail of the array is
+      // not necessarily the topmost level.
+      this.surfaceDraftTopLevelId = this.getNextLevelId(this.activeLevelId)
+        || [...this.levels].sort((a, b) => a.z - b.z).pop().id;
     }
     this._touch();
     return true;
