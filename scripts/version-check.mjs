@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 import {
   displayVersionFromPackageVersion,
+  extractAppVersion,
   extractIndexAssetVersions,
   extractIndexDisplayVersion,
   extractReadmeDisplayVersion,
@@ -14,11 +15,13 @@ const displayVersion = displayVersionFromPackageVersion(packageVersion);
 const indexSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const readmeSource = await readFile(new URL('../README.md', import.meta.url), 'utf8');
 const lockSource = await readFile(new URL('../package-lock.json', import.meta.url), 'utf8');
+const constantsSource = await readFile(new URL('../js/constants.js', import.meta.url), 'utf8');
 const lock = JSON.parse(lockSource);
 
 const indexVersions = extractIndexDisplayVersion(indexSource);
 const indexAssetVersions = extractIndexAssetVersions(indexSource);
 const readmeVersion = extractReadmeDisplayVersion(readmeSource);
+const appVersion = extractAppVersion(constantsSource);
 
 const issues = [];
 
@@ -36,6 +39,9 @@ if (indexAssetVersions.app !== packageVersion) {
 }
 if (readmeVersion !== displayVersion) {
   issues.push(`README.md heading version mismatch: expected ${displayVersion}, actual ${readmeVersion || 'not found'}`);
+}
+if (appVersion !== packageVersion) {
+  issues.push(`js/constants.js APP_VERSION mismatch: expected ${packageVersion}, actual ${appVersion || 'not found'}`);
 }
 
 const lockRootVersion = typeof lock?.version === 'string' ? lock.version : null;

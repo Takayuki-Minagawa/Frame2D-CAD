@@ -19,11 +19,21 @@ export const DEFAULT_SECTION_DEFINITIONS = [
 ];
 
 export const DEFAULT_SPRING_DEFINITIONS = [
-  { symbol: '_SP', memo: '回転バネ', isDefault: true },
+  { symbol: '_SP', kr: null, kt: null, memo: '回転バネ', isDefault: true },
+];
+
+// Trial defaults for analysis-model preparation. They are intentionally
+// marked as defaults in both the UI and exported model; project-specific
+// values should be reviewed and edited before design use.
+export const DEFAULT_MATERIAL_DEFINITIONS = [
+  { name: 'steel', E: 205000, G: 79000, density: 7850, isDefault: true },
+  { name: 'rc', E: 24000, G: 10000, density: 2400, isDefault: true },
+  { name: 'wood', E: 10000, G: 650, density: 500, isDefault: true },
 ];
 
 export const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(s => s.name));
 export const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
+export const DEFAULT_MATERIAL_NAME_SET = new Set(DEFAULT_MATERIAL_DEFINITIONS.map(m => m.name));
 export const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
 export const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
@@ -55,6 +65,10 @@ export function createDefaultSpringCatalog() {
   return DEFAULT_SPRING_DEFINITIONS.map(s => ({ ...s }));
 }
 
+export function createDefaultMaterialCatalog() {
+  return DEFAULT_MATERIAL_DEFINITIONS.map(material => ({ ...material }));
+}
+
 export function normalizeCatalogSectionEntry(entry) {
   if (!entry || (entry.target !== 'member' && entry.target !== 'surface')) return null;
   const type = entry.target === 'member'
@@ -75,6 +89,10 @@ export function normalizeCatalogSectionEntry(entry) {
     memo: sanitizeText(entry.memo) || '',
   };
   if (entry.target === 'member') {
+    normalized.A = optionalPositiveNumber(entry.A ?? entry.area);
+    normalized.Iy = optionalPositiveNumber(entry.Iy);
+    normalized.Iz = optionalPositiveNumber(entry.Iz);
+    normalized.J = optionalPositiveNumber(entry.J);
     normalized.defaultEndI = normalizeSectionDefaultEnd(entry.defaultEndI || entry.endI);
     normalized.defaultEndJ = normalizeSectionDefaultEnd(entry.defaultEndJ || entry.endJ);
   }
@@ -87,8 +105,21 @@ export function normalizeSpringEntry(entry) {
   if (!symbol) return null;
   return {
     symbol,
+    kr: optionalPositiveNumber(entry.kr),
+    kt: optionalPositiveNumber(entry.kt),
     memo: sanitizeText(entry.memo) || '',
   };
+}
+
+export function normalizeMaterialEntry(entry) {
+  if (!entry) return null;
+  const name = sanitizeText(entry.name || entry.material);
+  if (!name) return null;
+  const E = optionalPositiveNumber(entry.E);
+  const G = optionalPositiveNumber(entry.G);
+  const density = optionalPositiveNumber(entry.density ?? entry.rho);
+  if (E === null || G === null || density === null) return null;
+  return { name, E, G, density };
 }
 
 export function isSameSectionDefinition(a, b) {
@@ -101,9 +132,51 @@ export function isSameSectionDefinition(a, b) {
     (a.target !== 'member' || (
       sanitizePositiveNumber(a.b, DEFAULT_SECTION_B_MM) === sanitizePositiveNumber(b.b, DEFAULT_SECTION_B_MM) &&
       sanitizePositiveNumber(a.h, DEFAULT_SECTION_H_MM) === sanitizePositiveNumber(b.h, DEFAULT_SECTION_H_MM) &&
+      optionalPositiveNumber(a.A) === optionalPositiveNumber(b.A) &&
+      optionalPositiveNumber(a.Iy) === optionalPositiveNumber(b.Iy) &&
+      optionalPositiveNumber(a.Iz) === optionalPositiveNumber(b.Iz) &&
+      optionalPositiveNumber(a.J) === optionalPositiveNumber(b.J) &&
       isSameMemberEnd(a.defaultEndI, b.defaultEndI) &&
       isSameMemberEnd(a.defaultEndJ, b.defaultEndJ)
     ));
+}
+
+export function isSameSpringDefinition(a, b) {
+  return a.symbol === b.symbol &&
+    optionalPositiveNumber(a.kr) === optionalPositiveNumber(b.kr) &&
+    optionalPositiveNumber(a.kt) === optionalPositiveNumber(b.kt) &&
+    (a.memo || '') === (b.memo || '');
+}
+
+export function isSameMaterialDefinition(a, b) {
+  return a.name === b.name && Number(a.E) === Number(b.E) &&
+    Number(a.G) === Number(b.G) && Number(a.density) === Number(b.density);
+}
+
+// Rectangle properties in the CAD mm-N system. Iy/Iz follow the conventional
+// centroidal axes for dimensions b/h. J uses the Saint-Venant approximation
+// for a solid rectangle (a >= t), which is substantially more appropriate for
+// torsion than the polar second moment.
+export function rectangularSectionProperties(section) {
+  const b = sanitizePositiveNumber(section?.b, DEFAULT_SECTION_B_MM);
+  const h = sanitizePositiveNumber(section?.h, DEFAULT_SECTION_H_MM);
+  const a = Math.max(b, h);
+  const t = Math.min(b, h);
+  const ratio = t / a;
+  const calculated = {
+    A: b * h,
+    Iy: b * h ** 3 / 12,
+    Iz: h * b ** 3 / 12,
+    J: a * t ** 3 * (1 / 3 - 0.21 * ratio * (1 - ratio ** 4 / 12)),
+  };
+  const properties = {};
+  const propertySource = {};
+  for (const key of ['A', 'Iy', 'Iz', 'J']) {
+    const explicit = optionalPositiveNumber(section?.[key]);
+    properties[key] = explicit ?? calculated[key];
+    propertySource[key] = explicit === null ? 'rectangle' : 'explicit';
+  }
+  return { ...properties, propertySource };
 }
 
 export function cloneSection(section) {
@@ -222,7 +295,7 @@ export function hydrateSpringCatalog(rawCatalog) {
 
     const defaultDef = defaultsBySymbol.get(normalized.symbol);
     if (defaultDef) {
-      if ((defaultDef.memo || '') !== (normalized.memo || '')) {
+      if (!isSameSpringDefinition(defaultDef, normalized)) {
         throw new Error(`Reserved default spring symbol: ${normalized.symbol}`);
       }
       continue;
@@ -234,4 +307,33 @@ export function hydrateSpringCatalog(rawCatalog) {
     catalog.push({ ...normalized, isDefault: false });
   }
   return catalog;
+}
+
+export function hydrateMaterialCatalog(rawCatalog) {
+  const catalog = createDefaultMaterialCatalog();
+  if (!Array.isArray(rawCatalog)) return catalog;
+
+  for (const raw of rawCatalog) {
+    const normalized = normalizeMaterialEntry(raw);
+    if (!normalized) continue;
+    const existingIndex = catalog.findIndex(material => material.name === normalized.name);
+    if (existingIndex >= 0) {
+      const defaultDefinition = DEFAULT_MATERIAL_DEFINITIONS.find(
+        material => material.name === normalized.name
+      );
+      catalog[existingIndex] = {
+        ...normalized,
+        isDefault: Boolean(defaultDefinition && isSameMaterialDefinition(defaultDefinition, normalized)),
+      };
+      continue;
+    }
+    catalog.push({ ...normalized, isDefault: false });
+  }
+  return catalog;
+}
+
+function optionalPositiveNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }

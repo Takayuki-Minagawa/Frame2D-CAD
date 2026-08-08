@@ -231,7 +231,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 10,
+  "schemaVersion": 12,
   "meta": {
     "name": "sample",
     "unit": "mm",
@@ -252,13 +252,20 @@ app.js ─┬─ state.js      Data model (AppState)
     { "id": 1, "x": 0, "y": 0, "z": 0 },
     { "id": 2, "x": 5000, "y": 0, "z": 0 }
   ],
+  "materialCatalog": [
+    { "name": "steel", "E": 205000, "G": 79000, "density": 7850, "isDefault": true }
+  ],
   "sectionCatalog": [
     { "target": "member", "type": "beam", "name": "_G", "material": "steel", "b": 200, "h": 400, "color": "#666666", "memo": "", "defaultEndI": { "condition": "pin", "springSymbol": null }, "defaultEndJ": { "condition": "pin", "springSymbol": null }, "isDefault": true },
     { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "_SP" }, "isDefault": false }
   ],
   "springCatalog": [
-    { "symbol": "_SP", "memo": "回転バネ", "isDefault": true }
+    { "symbol": "_SP", "kr": null, "kt": null, "memo": "回転バネ", "isDefault": true }
   ],
+  "analysisSettings": {
+    "massSources": { "DL": 1, "LL": 0.3, "EQX": 0, "EQY": 0, "WX": 0, "WY": 0 },
+    "selfWeightMode": "fromDensity"
+  },
   "members": [
     {
       "type": "beam",
@@ -307,28 +314,47 @@ app.js ─┬─ state.js      Data model (AppState)
 }
 ```
 
+- `materialCatalog` には E・G・密度、`sectionCatalog` には任意の A・Iy・Iz・J 上書き、`springCatalog` には kr・kt が含まれます
 - `sectionCatalog` / `springCatalog` にはデフォルト定義＋使用中のカスタム定義が含まれます（未使用のカスタム定義は含まれません）
 - 断面定義には `memo`（説明テキスト）フィールドが含まれます
 - `nodes` / `levels` の `id` はJSONに保存されます。節点IDと `members` の節点参照は数値で出力されます
-- `members` / `surfaces` / `loads` の `id` は内部管理のみで、Export時には出力されません（Import時に再採番）
+- `members` / `surfaces` / `loads` / `supports` の `id` はCAD保存に含まれ、読込後も保持されます
 - 旧バージョンで保存されたファイルも後方互換で読込可能
 - schemaVersion 10 以降、`endI` / `endJ` が未指定の線材はピンとして読み込まれます（明示された材端条件は保持されます）
 
 ### ユーザー定義ファイル
 
-「設定 → ユーザー定義 → エクスポート」で出力されるファイル。カスタム断面・バネ定義のみ含まれます。
+「設定 → ユーザー定義 → エクスポート」で出力されるファイル。カスタム材料・断面・バネ定義を含みます。
 
 ```json
 {
   "userDefinitions": true,
+  "materials": [
+    { "name": "project-steel", "E": 200000, "G": 77000, "density": 7800, "isDefault": false }
+  ],
   "sections": [
     { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "SP1" } }
   ],
   "springs": [
-    { "symbol": "SP1", "memo": "カスタムバネ" }
+    { "symbol": "SP1", "kr": 500000, "kt": null, "memo": "カスタムバネ" }
   ]
 }
 ```
+
+### 解析エクスポート v2
+
+「解析JSON出力」「解析CSV出力」は `element-modeler-analysis` version 2 を出力します。
+要素・支点・荷重は1始まりの数値IDを持ち、CAD上のIDは `sourceId` に保持されます。
+形式判定は `*_analysis_*` というファイル名ではなく、JSON/CSV内の `format` と
+`version` を正とします。
+
+v2には generator・生成日時・右手系/Z鉛直・節点順・単位宣言、E/G/密度、
+A/Iy/Iz/J、ばねkr/kt、荷重ケース別の質量換算係数、自重の二重計上防止モードが
+含まれます。組み込み物性と質量係数は試行値であり、設計適合値ではありません。
+解析前に「解析出力設定」と「ユーザー定義」で確認してください。
+
+詳細なフィールド、矩形断面の算定式、警告ゲート、v1との差分は
+[解析エクスポート v2 仕様](docs/analysis-export-v2.md)を参照してください。
 
 ## Getting Started
 

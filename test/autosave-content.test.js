@@ -57,3 +57,13 @@ test('edited load combinations are autosaved', () => {
   }
   assert.equal(modelHasContent(emptied.toJSON()), true);
 });
+
+test('analysis settings and material-only changes are autosaved', () => {
+  const analysis = new AppState();
+  analysis.updateAnalysisSettings({ massSources: { LL: 0.2 } });
+  assert.equal(modelHasContent(analysis.toJSON()), true);
+
+  const material = new AppState();
+  material.updateMaterial('steel', { E: 210000 });
+  assert.equal(modelHasContent(material.toJSON()), true);
+});

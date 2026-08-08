@@ -135,6 +135,10 @@ test('importUserDefs adds custom definitions and skips duplicates and defaults',
   const state = new AppState();
   const payload = {
     userDefinitions: true,
+    materials: [
+      { name: 'test-material', E: 123000, G: 47000, density: 4560 },
+      { name: 'test-material', E: 123000, G: 47000, density: 4560 }, // duplicate -> skipped
+    ],
     sections: [
       { target: 'member', type: 'beam', name: 'TestBeam', b: 150, h: 300 },
       { target: 'member', type: 'beam', name: 'TestBeam', b: 150, h: 300 }, // duplicate -> skipped
@@ -147,7 +151,7 @@ test('importUserDefs adds custom definitions and skips duplicates and defaults',
   };
 
   const result = await importUserDefs(new Blob([JSON.stringify(payload)]), state);
-  assert.deepEqual(result, { added: 2, skipped: 2 });
+  assert.deepEqual(result, { added: 3, skipped: 3 });
 
   const section = state.sectionCatalog.find(s => s.name === 'TestBeam');
   assert.ok(section);
@@ -155,6 +159,7 @@ test('importUserDefs adds custom definitions and skips duplicates and defaults',
   assert.equal(section.b, 150);
   assert.equal(section.h, 300);
   assert.ok(state.springCatalog.some(s => s.symbol === 'K_TEST' && !s.isDefault));
+  assert.equal(state.getMaterial('test-material').density, 4560);
   assert.equal(state.sectionCatalog.some(s => s.name === 'DefaultLike'), false);
 });
 
@@ -173,6 +178,7 @@ test('exportUserDefs -> importUserDefs roundtrip restores custom definitions', a
   const source = new AppState();
   assert.ok(source.addSection({ target: 'member', type: 'beam', name: 'RoundTripBeam', b: 120, h: 240, memo: 'note' }));
   assert.ok(source.addSpring({ symbol: 'K_RT', memo: 'spring note' }));
+  assert.ok(source.addMaterial({ name: 'roundtrip-material', E: 100000, G: 40000, density: 4000 }));
 
   const captured = withExportCapture(cap => {
     assert.equal(exportUserDefs(source), true);
@@ -185,13 +191,15 @@ test('exportUserDefs -> importUserDefs roundtrip restores custom definitions', a
   assert.equal(data.userDefinitions, true);
   assert.deepEqual(data.sections.map(s => s.name), ['RoundTripBeam']);
   assert.deepEqual(data.springs.map(s => s.symbol), ['K_RT']);
+  assert.deepEqual(data.materials.map(material => material.name), ['roundtrip-material']);
   // Default catalog entries are never exported
   assert.equal(data.sections.some(s => s.isDefault), false);
   assert.equal(data.springs.some(s => s.isDefault), false);
+  assert.equal(data.materials.some(material => material.isDefault), false);
 
   const target = new AppState();
   const result = await importUserDefs(new Blob([JSON.stringify(data)]), target);
-  assert.deepEqual(result, { added: 2, skipped: 0 });
+  assert.deepEqual(result, { added: 3, skipped: 0 });
 
   const restored = target.sectionCatalog.find(s => s.name === 'RoundTripBeam');
   const original = source.sectionCatalog.find(s => s.name === 'RoundTripBeam');
@@ -199,5 +207,9 @@ test('exportUserDefs -> importUserDefs roundtrip restores custom definitions', a
   assert.deepEqual(
     target.springCatalog.find(s => s.symbol === 'K_RT'),
     source.springCatalog.find(s => s.symbol === 'K_RT')
+  );
+  assert.deepEqual(
+    target.getMaterial('roundtrip-material'),
+    source.getMaterial('roundtrip-material')
   );
 });

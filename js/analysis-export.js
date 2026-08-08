@@ -5,11 +5,13 @@
 // force N, line load N/mm, area load N/mm2, moment N*mm. UI-entered load
 // values (N/m, N/m², N·m) are converted here.
 
-import { LOAD_CASES } from './constants.js';
+import { isDefaultAnalysisSettings, normalizeAnalysisSettings } from './analysis-settings.js';
+import { APP_VERSION, LOAD_CASES } from './constants.js';
+import { rectangularSectionProperties } from './section-catalog.js';
 import { normalizeLoadCase } from './state.js';
 
 export const ANALYSIS_FORMAT = 'element-modeler-analysis';
-export const ANALYSIS_FORMAT_VERSION = 1;
+export const ANALYSIS_FORMAT_VERSION = 2;
 
 // Endpoints closer than this merge into one analysis node. CAD input is
 // mm-scale, so anything closer is the same physical point.
@@ -84,9 +86,11 @@ function cloneEnd(end) {
 
 // Converts one CAD load to the mm-N base system:
 // lineLoad N/m -> N/mm, areaLoad N/m² -> N/mm², moments N·m -> N·mm.
-function convertLoad(state, load) {
+function convertLoad(state, load, id) {
   const out = {
     ...load,
+    id,
+    sourceId: load.id,
     loadCase: normalizeLoadCase(load.loadCase),
     z: state.getLevelZ(load.levelId),
   };
@@ -102,14 +106,18 @@ function convertLoad(state, load) {
   return out;
 }
 
-export function buildAnalysisModel(state) {
+export function buildAnalysisModel(state, options = {}) {
   const pool = createNodePool(NODE_MERGE_TOLERANCE);
+  const generatedAt = options.generatedAt || new Date().toISOString();
+  const appVersion = options.appVersion || APP_VERSION;
 
   const elements = [];
-  const pushElement = (member, id, nodeI, nodeJ, { swapEnds = false } = {}) => {
+  const pushElement = (member, nodeI, nodeJ, { swapEnds = false, sourceBranch = 'primary' } = {}) => {
     if (nodeI === nodeJ) return; // zero-length after 3D resolution
     elements.push({
-      id,
+      id: elements.length + 1,
+      sourceId: member.id,
+      sourceBranch,
       type: member.type,
       nodeI,
       nodeJ,
@@ -131,22 +139,23 @@ export function buildAnalysisModel(state) {
     if (!n1 || !n2) continue;
     const startZ = memberEndZ(state, member, 'start');
     const endZ = memberEndZ(state, member, 'end');
-    pushElement(member, member.id,
+    pushElement(member,
       pool.idFor(n1.x, n1.y, startZ),
       pool.idFor(n2.x, n2.y, endZ));
     // A cross (X) brace is one CAD member but two analysis diagonals: the
     // second one mirrors the plan endpoints between the same two levels, so
     // its end conditions swap with the endpoints (end I sits on plan point 2).
     if (member.type === 'vbrace' && member.bracePattern === 'cross') {
-      pushElement(member, `${member.id}X`,
+      pushElement(member,
         pool.idFor(n2.x, n2.y, startZ),
         pool.idFor(n1.x, n1.y, endZ),
-        { swapEnds: true });
+        { swapEnds: true, sourceBranch: 'cross' });
     }
   }
 
-  const supports = state.supports.map(sup => ({
-    id: sup.id,
+  const supports = state.supports.map((sup, index) => ({
+    id: index + 1,
+    sourceId: sup.id,
     nodeId: pool.idFor(sup.x, sup.y, state.getLevelZ(sup.levelId)),
     dx: !!sup.dx,
     dy: !!sup.dy,
@@ -156,18 +165,38 @@ export function buildAnalysisModel(state) {
     rz: !!sup.rz,
   }));
 
-  const loads = state.loads.map(load => convertLoad(state, load));
+  const loads = state.loads.map((load, index) => convertLoad(state, load, index + 1));
 
   const usedSectionNames = new Set(elements.map(e => e.sectionName).filter(Boolean));
   const sections = state.sectionCatalog
     .filter(s => s.target === 'member' && usedSectionNames.has(s.name))
-    .map(s => ({
-      name: s.name,
-      type: s.type,
-      material: s.material || 'steel',
-      b: s.b,
-      h: s.h,
+    .map(section => ({
+      name: section.name,
+      type: section.type,
+      material: section.material || 'steel',
+      b: section.b,
+      h: section.h,
+      ...rectangularSectionProperties(section),
+      isDefault: !!section.isDefault,
     }));
+
+  const usedMaterialNames = new Set([
+    ...elements.map(element => element.material).filter(Boolean),
+    ...sections.map(section => section.material).filter(Boolean),
+  ]);
+  const materialByName = new Map(
+    (state.materialCatalog || []).map(material => [material.name, material])
+  );
+  const materials = [...usedMaterialNames].map(name => {
+    const material = materialByName.get(name);
+    return {
+      name,
+      E: finitePositiveOrNull(material?.E),
+      G: finitePositiveOrNull(material?.G),
+      density: finitePositiveOrNull(material?.density),
+      isDefault: !!material?.isDefault,
+    };
+  });
 
   const usedSpringSymbols = new Set();
   for (const e of elements) {
@@ -176,7 +205,24 @@ export function buildAnalysisModel(state) {
   }
   const springs = state.springCatalog
     .filter(s => usedSpringSymbols.has(s.symbol))
-    .map(s => ({ symbol: s.symbol, memo: s.memo || '' }));
+    .map(s => ({
+      symbol: s.symbol,
+      kr: finitePositiveOrNull(s.kr),
+      kt: finitePositiveOrNull(s.kt),
+      memo: s.memo || '',
+      isDefault: !!s.isDefault,
+    }));
+
+  const analysisSettings = normalizeAnalysisSettings(state.analysisSettings);
+  const undefinedSpringSymbols = springs
+    .filter(spring => spring.kr === null)
+    .map(spring => spring.symbol);
+  const undefinedMassSourceCases = LOAD_CASES.filter(
+    loadCase => analysisSettings.massSources[loadCase] === null
+  );
+  const undefinedMaterialNames = materials
+    .filter(material => material.E === null || material.G === null || material.density === null)
+    .map(material => material.name);
 
   return {
     format: ANALYSIS_FORMAT,
@@ -187,22 +233,60 @@ export function buildAnalysisModel(state) {
       lineLoad: 'N/mm',
       areaLoad: 'N/mm2',
       moment: 'N*mm',
+      mass: 'kg',
+      elasticModulus: 'N/mm2',
+      shearModulus: 'N/mm2',
+      density: 'kg/m3',
+      area: 'mm2',
+      secondMomentOfArea: 'mm4',
+      torsionConstant: 'mm4',
+      rotationalStiffness: 'N*mm/rad',
+      translationalStiffness: 'N/mm',
     },
-    meta: { name: state.meta?.name || 'untitled' },
+    meta: {
+      name: state.meta?.name || 'untitled',
+      generator: {
+        name: 'element-modeler',
+        formatVersion: ANALYSIS_FORMAT_VERSION,
+        appVersion,
+      },
+      generatedAt,
+      coordinates: { verticalAxis: 'z', handedness: 'right' },
+      nodeOrder: 'ascending-id',
+      warnings: {
+        undefinedSpringStiffness: undefinedSpringSymbols.length > 0,
+        undefinedSpringSymbols,
+        undefinedMassSources: undefinedMassSourceCases.length > 0,
+        undefinedMassSourceCases,
+        undefinedMaterialProperties: undefinedMaterialNames.length > 0,
+        undefinedMaterialNames,
+      },
+    },
     levels: state.levels.map(l => ({ id: l.id, name: l.name, z: l.z })),
     nodes: pool.nodes,
     elements,
     sections,
+    materials,
     springs,
     supports,
     loadCases: LOAD_CASES.slice(),
     loads,
+    massSources: { ...analysisSettings.massSources },
+    selfWeight: {
+      mode: analysisSettings.selfWeightMode,
+      isDefault: isDefaultAnalysisSettings(analysisSettings),
+    },
     loadCombinations: state.loadCombinations.map(c => ({
       id: c.id,
       name: c.name,
       factors: { ...c.factors },
     })),
   };
+}
+
+function finitePositiveOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
 }
 
 function endText(end) {
@@ -216,55 +300,90 @@ function loadUnitText(type) {
   return 'N;N*mm';
 }
 
-const CSV_COLUMNS = 12;
+const CSV_COLUMNS = 18;
 
 // Flat CSV rendering of the analysis model (one `section` marker column, same
 // convention as the quantity CSVs). Values use the same mm-N base system as
 // the JSON model.
-export function buildAnalysisCSV(state) {
-  const model = buildAnalysisModel(state);
+export function buildAnalysisCSV(state, options = {}) {
+  const model = buildAnalysisModel(state, options);
   const rows = [];
   const push = (...cells) => {
     while (cells.length < CSV_COLUMNS) cells.push('');
     rows.push(cells);
   };
 
-  push('section', 'id', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j');
+  push('section', 'id', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p');
+  push('meta_header', 'key', 'value');
+  push('meta', 'format', model.format);
+  push('meta', 'version', String(model.version));
+  push('meta', 'project_name', model.meta.name);
+  push('meta', 'generator_name', model.meta.generator.name);
+  push('meta', 'generator_format_version', String(model.meta.generator.formatVersion));
+  push('meta', 'generator_app_version', model.meta.generator.appVersion);
+  push('meta', 'generated_at', model.meta.generatedAt);
+  push('meta', 'vertical_axis', model.meta.coordinates.verticalAxis);
+  push('meta', 'handedness', model.meta.coordinates.handedness);
+  push('meta', 'node_order', model.meta.nodeOrder);
+  push('meta', 'warning_undefined_spring_stiffness', model.meta.warnings.undefinedSpringStiffness ? '1' : '0');
+  push('meta', 'warning_undefined_spring_symbols', model.meta.warnings.undefinedSpringSymbols.join(';'));
+  push('meta', 'warning_undefined_mass_sources', model.meta.warnings.undefinedMassSources ? '1' : '0');
+  push('meta', 'warning_undefined_mass_source_cases', model.meta.warnings.undefinedMassSourceCases.join(';'));
+  push('meta', 'warning_undefined_material_properties', model.meta.warnings.undefinedMaterialProperties ? '1' : '0');
+  push('meta', 'warning_undefined_material_names', model.meta.warnings.undefinedMaterialNames.join(';'));
+  push('unit_header', 'quantity', 'unit');
+  for (const [quantity, unit] of Object.entries(model.units)) {
+    push('unit', quantity, unit);
+  }
   push('node_header', 'id', 'x_mm', 'y_mm', 'z_mm');
   for (const n of model.nodes) {
     push('node', String(n.id), String(n.x), String(n.y), String(n.z));
   }
   push('element_header', 'id', 'type', 'node_i', 'node_j', 'section', 'material',
-    'b_mm', 'h_mm', 'end_i', 'end_j', 'roof_role');
+    'b_mm', 'h_mm', 'end_i', 'end_j', 'roof_role', 'source_id', 'source_branch');
   for (const e of model.elements) {
     push('element', e.id, e.type, String(e.nodeI), String(e.nodeJ),
       e.sectionName || '', e.material,
       e.b === null ? '' : String(e.b), e.h === null ? '' : String(e.h),
-      endText(e.endI), endText(e.endJ), e.roofRole || '');
+      endText(e.endI), endText(e.endJ), e.roofRole || '', e.sourceId, e.sourceBranch);
   }
-  push('sect_header', 'name', 'type', 'material', 'b_mm', 'h_mm');
+  push('sect_header', 'name', 'type', 'material', 'b_mm', 'h_mm', 'A_mm2', 'Iy_mm4', 'Iz_mm4', 'J_mm4', 'is_default',
+    'A_source', 'Iy_source', 'Iz_source', 'J_source');
   for (const s of model.sections) {
-    push('sect', s.name, s.type, s.material, String(s.b ?? ''), String(s.h ?? ''));
+    push('sect', s.name, s.type, s.material, String(s.b ?? ''), String(s.h ?? ''),
+      String(s.A), String(s.Iy), String(s.Iz), String(s.J), s.isDefault ? '1' : '0',
+      s.propertySource.A, s.propertySource.Iy, s.propertySource.Iz, s.propertySource.J);
   }
-  push('spring_header', 'symbol', 'memo');
+  push('material_header', 'name', 'E_N_mm2', 'G_N_mm2', 'density_kg_m3', 'is_default');
+  for (const material of model.materials) {
+    push('material', material.name, String(material.E ?? ''), String(material.G ?? ''),
+      String(material.density ?? ''), material.isDefault ? '1' : '0');
+  }
+  push('spring_header', 'symbol', 'memo', 'kr_N_mm_rad', 'kt_N_mm', 'is_default');
   for (const s of model.springs) {
-    push('spring', s.symbol, s.memo);
+    push('spring', s.symbol, s.memo, String(s.kr ?? ''), String(s.kt ?? ''), s.isDefault ? '1' : '0');
   }
-  push('support_header', 'id', 'node', 'dx', 'dy', 'dz', 'rx', 'ry', 'rz');
+  push('support_header', 'id', 'node', 'dx', 'dy', 'dz', 'rx', 'ry', 'rz', 'source_id');
   for (const s of model.supports) {
     push('support', s.id, String(s.nodeId),
       s.dx ? '1' : '0', s.dy ? '1' : '0', s.dz ? '1' : '0',
-      s.rx ? '1' : '0', s.ry ? '1' : '0', s.rz ? '1' : '0');
+      s.rx ? '1' : '0', s.ry ? '1' : '0', s.rz ? '1' : '0', s.sourceId);
   }
-  push('load_header', 'id', 'type', 'case', 'unit', 'x1', 'y1', 'x2', 'y2', 'value', 'z_mm');
+  push('load_header', 'id', 'type', 'case', 'unit', 'x1', 'y1', 'x2', 'y2', 'value', 'z_mm', 'source_id');
   for (const l of model.loads) {
     const value = l.type === 'pointLoad'
       ? `fx=${l.fx || 0};fy=${l.fy || 0};fz=${l.fz || 0};mx=${l.mx || 0};my=${l.my || 0};mz=${l.mz || 0}`
       : String(l.value ?? 0);
     push('load', l.id, l.type, l.loadCase, loadUnitText(l.type),
       String(l.x1 ?? ''), String(l.y1 ?? ''), String(l.x2 ?? ''), String(l.y2 ?? ''),
-      value, String(l.z));
+      value, String(l.z), l.sourceId);
   }
+  push('mass_source_header', 'load_case', 'factor');
+  for (const loadCase of model.loadCases) {
+    push('mass_source', loadCase, String(model.massSources[loadCase] ?? ''));
+  }
+  push('self_weight_header', 'mode', 'is_default');
+  push('self_weight', model.selfWeight.mode, model.selfWeight.isDefault ? '1' : '0');
   push('combo_header', 'id', 'name', 'factors');
   for (const c of model.loadCombinations) {
     const factors = Object.entries(c.factors).map(([k, v]) => `${k}=${v}`).join(';');

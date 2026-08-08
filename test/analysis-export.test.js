@@ -2,7 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { AppState } from '../js/state.js';
-import { buildAnalysisCSV, buildAnalysisModel } from '../js/analysis-export.js';
+import {
+  ANALYSIS_FORMAT_VERSION,
+  buildAnalysisCSV,
+  buildAnalysisModel,
+} from '../js/analysis-export.js';
+
+const FIXED_EXPORT_OPTIONS = {
+  generatedAt: '2026-08-08T00:00:00.000Z',
+  appVersion: '1.1.0-test',
+};
 
 function buildFrame() {
   const state = new AppState();
@@ -53,7 +62,12 @@ test('buildAnalysisModel carries sections, load cases and combinations', () => {
   assert.equal(model.units.lineLoad, 'N/mm');
   assert.equal(model.units.areaLoad, 'N/mm2');
   assert.equal(model.units.moment, 'N*mm');
+  assert.equal(model.units.mass, 'kg');
+  assert.equal(model.units.density, 'kg/m3');
   assert.ok(model.sections.some(s => s.name === '_G'));
+  assert.deepEqual(model.materials.find(material => material.name === 'steel'), {
+    name: 'steel', E: 205000, G: 79000, density: 7850, isDefault: true,
+  });
   assert.equal(model.loads[0].loadCase, 'LL');
   assert.ok(model.loadCases.includes('EQX'));
   assert.ok(model.loadCombinations.length >= 5);
@@ -90,8 +104,11 @@ test('cross vertical braces expand into two diagonal elements', () => {
   assert.equal(model.elements.length, 2);
   assert.equal(model.nodes.length, 4);
   const [d1, d2] = model.elements;
-  assert.equal(d1.id, brace.id);
-  assert.equal(d2.id, `${brace.id}X`);
+  assert.deepEqual([d1.id, d2.id], [1, 2]);
+  assert.equal(d1.sourceId, brace.id);
+  assert.equal(d2.sourceId, brace.id);
+  assert.equal(d1.sourceBranch, 'primary');
+  assert.equal(d2.sourceBranch, 'cross');
   assert.equal(d1.bracePattern, 'cross');
   // The second diagonal mirrors the first: same node set, opposite pairing.
   assert.equal(d2.nodeI, model.nodes.find(n => n.x === 2000 && n.z === gl.z).id);
@@ -161,18 +178,26 @@ test('zero-length elements are dropped after 3D resolution', () => {
 
 test('buildAnalysisCSV renders node/element/section/support/load/combo sections', () => {
   const { state } = buildFrame();
-  const csv = buildAnalysisCSV(state);
+  const csv = buildAnalysisCSV(state, FIXED_EXPORT_OPTIONS);
 
   assert.match(csv, /^section,id/);
+  assert.match(csv, /\r\nmeta,version,2,/);
+  assert.match(csv, /\r\nmeta,generator_name,element-modeler,/);
+  assert.match(csv, /\r\nmeta,generator_app_version,1\.1\.0-test,/);
+  assert.match(csv, /\r\nmeta,warning_undefined_mass_sources,0,/);
+  assert.match(csv, /\r\nunit,density,kg\/m3,/);
   assert.match(csv, /\r\nnode,1,/);
-  assert.match(csv, /\r\nelement_header,id,type,node_i,node_j,section,material,b_mm,h_mm,end_i,end_j,roof_role/);
-  assert.match(csv, /\r\nelement,M3,beam,/);
-  assert.match(csv, /\r\nsect_header,name,type,material,b_mm,h_mm/);
-  assert.match(csv, /\r\nsect,_G,/);
-  assert.match(csv, /\r\nspring_header,symbol,memo/);
-  assert.match(csv, /\r\nsupport,SUP1,/);
+  assert.match(csv, /\r\nelement_header,id,type,node_i,node_j,section,material,b_mm,h_mm,end_i,end_j,roof_role,source_id,source_branch/);
+  assert.match(csv, /\r\nelement,3,beam,.*M3,primary/);
+  assert.match(csv, /\r\nsect_header,name,type,material,b_mm,h_mm,A_mm2,Iy_mm4,Iz_mm4,J_mm4,is_default,A_source,Iy_source,Iz_source,J_source/);
+  assert.match(csv, /\r\nsect,_G,.*rectangle,rectangle,rectangle,rectangle/);
+  assert.match(csv, /\r\nmaterial,steel,205000,79000,7850,1/);
+  assert.match(csv, /\r\nspring_header,symbol,memo,kr_N_mm_rad,kt_N_mm/);
+  assert.match(csv, /\r\nsupport,1,1,.*SUP1/);
   assert.match(csv, /\r\nload_header,id,type,case,unit,/);
-  assert.match(csv, /\r\nload,LD1,pointLoad,LL,N;N\*mm,/);
+  assert.match(csv, /\r\nload,1,pointLoad,LL,N;N\*mm,.*LD1/);
+  assert.match(csv, /\r\nmass_source,LL,0\.3,/);
+  assert.match(csv, /\r\nself_weight_header,mode,is_default,/);
   assert.match(csv, /\r\ncombo,LC1,G\+P,DL=1;LL=1/);
 });
 
@@ -185,4 +210,122 @@ test('buildAnalysisCSV element rows carry section dimensions', () => {
   const cells = row.split(',');
   assert.equal(Number(cells[7]), beam.b);
   assert.equal(Number(cells[8]), beam.h);
+});
+
+test('v2 assigns unique numeric ids while preserving source ids', () => {
+  const { state } = buildFrame();
+  const model = buildAnalysisModel(state, FIXED_EXPORT_OPTIONS);
+
+  assert.equal(model.version, ANALYSIS_FORMAT_VERSION);
+  assert.deepEqual(model.elements.map(element => element.id), [1, 2, 3]);
+  assert.deepEqual(model.elements.map(element => element.sourceId), ['M1', 'M2', 'M3']);
+  assert.deepEqual(model.supports.map(support => support.id), [1]);
+  assert.deepEqual(model.supports.map(support => support.sourceId), ['SUP1']);
+  assert.deepEqual(model.loads.map(load => load.id), [1]);
+  assert.deepEqual(model.loads.map(load => load.sourceId), ['LD1']);
+  assert.equal(new Set(model.elements.map(element => element.id)).size, model.elements.length);
+});
+
+test('v2 metadata declares provenance, coordinates, units, and node order', () => {
+  const { state } = buildFrame();
+  const model = buildAnalysisModel(state, FIXED_EXPORT_OPTIONS);
+
+  assert.deepEqual(model.meta.generator, {
+    name: 'element-modeler',
+    formatVersion: 2,
+    appVersion: '1.1.0-test',
+  });
+  assert.equal(model.meta.generatedAt, FIXED_EXPORT_OPTIONS.generatedAt);
+  assert.deepEqual(model.meta.coordinates, { verticalAxis: 'z', handedness: 'right' });
+  assert.equal(model.meta.nodeOrder, 'ascending-id');
+  assert.deepEqual(model.nodes.map(node => node.id), [1, 2, 3, 4]);
+});
+
+test('rectangle section properties match hand calculations and allow explicit overrides', () => {
+  const state = new AppState();
+  state.addSection({
+    target: 'member', type: 'beam', name: 'RECT', material: 'steel', b: 200, h: 400,
+  });
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(4000, 0);
+  state.addMember(n1.id, n2.id, { type: 'beam', sectionName: 'RECT' });
+
+  let section = buildAnalysisModel(state).sections.find(item => item.name === 'RECT');
+  assert.equal(section.A, 80000);
+  assert.equal(section.Iy, 200 * 400 ** 3 / 12);
+  assert.equal(section.Iz, 400 * 200 ** 3 / 12);
+  assert.ok(Math.abs(section.J - 732416666.6666666) < 1e-6);
+  assert.deepEqual(section.propertySource, {
+    A: 'rectangle', Iy: 'rectangle', Iz: 'rectangle', J: 'rectangle',
+  });
+
+  state.updateSection('member', 'beam', 'RECT', {
+    A: 81000, Iy: 1.1e9, Iz: 2.8e8, J: 8e8,
+  });
+  section = buildAnalysisModel(state).sections.find(item => item.name === 'RECT');
+  assert.deepEqual(
+    { A: section.A, Iy: section.Iy, Iz: section.Iz, J: section.J },
+    { A: 81000, Iy: 1.1e9, Iz: 2.8e8, J: 8e8 }
+  );
+  assert.deepEqual(section.propertySource, {
+    A: 'explicit', Iy: 'explicit', Iz: 'explicit', J: 'explicit',
+  });
+});
+
+test('used springs export stiffness and flag an undefined rotational value', () => {
+  const state = new AppState();
+  state.addSpring({ symbol: 'K1', kt: 500 });
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(1000, 0);
+  state.addMember(n1.id, n2.id, {
+    type: 'beam', endI: { condition: 'spring', springSymbol: 'K1' },
+  });
+
+  let model = buildAnalysisModel(state);
+  assert.deepEqual(model.springs[0], {
+    symbol: 'K1', kr: null, kt: 500, memo: '', isDefault: false,
+  });
+  assert.equal(model.meta.warnings.undefinedSpringStiffness, true);
+  assert.deepEqual(model.meta.warnings.undefinedSpringSymbols, ['K1']);
+
+  state.updateSpring('K1', { kr: 120000 });
+  model = buildAnalysisModel(state);
+  assert.equal(model.springs[0].kr, 120000);
+  assert.equal(model.meta.warnings.undefinedSpringStiffness, false);
+});
+
+test('mass-source defaults and overrides are exported with undefined detection', () => {
+  const state = new AppState();
+  let model = buildAnalysisModel(state);
+  assert.deepEqual(model.massSources, { DL: 1, LL: 0.3, EQX: 0, EQY: 0, WX: 0, WY: 0 });
+  assert.deepEqual(model.selfWeight, { mode: 'fromDensity', isDefault: true });
+  assert.equal(model.meta.warnings.undefinedMassSources, false);
+
+  state.updateAnalysisSettings({
+    massSources: { LL: 0.25, WX: null },
+    selfWeightMode: 'includedInDL',
+  });
+  model = buildAnalysisModel(state);
+  assert.equal(model.massSources.LL, 0.25);
+  assert.equal(model.massSources.WX, null);
+  assert.deepEqual(model.selfWeight, { mode: 'includedInDL', isDefault: false });
+  assert.equal(model.meta.warnings.undefinedMassSources, true);
+  assert.deepEqual(model.meta.warnings.undefinedMassSourceCases, ['WX']);
+});
+
+test('unknown material properties remain null and are machine-readable warnings', () => {
+  const state = new AppState();
+  state.addSection({
+    target: 'member', type: 'beam', name: 'UNKNOWN_MAT', material: 'project-material', b: 100, h: 200,
+  });
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(1000, 0);
+  state.addMember(n1.id, n2.id, { type: 'beam', sectionName: 'UNKNOWN_MAT' });
+
+  const model = buildAnalysisModel(state);
+  assert.deepEqual(model.materials[0], {
+    name: 'project-material', E: null, G: null, density: null, isDefault: false,
+  });
+  assert.equal(model.meta.warnings.undefinedMaterialProperties, true);
+  assert.deepEqual(model.meta.warnings.undefinedMaterialNames, ['project-material']);
 });

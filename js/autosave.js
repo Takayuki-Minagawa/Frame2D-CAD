@@ -2,6 +2,7 @@
 // restore-on-startup prompt (crash / accidental-close recovery).
 
 import { LOAD_CASES } from './constants.js';
+import { isDefaultAnalysisSettings } from './analysis-settings.js';
 import { createDefaultLoadCombinations } from './state.js';
 import { createDefaultSettings, normalizeSettings } from './display-settings.js';
 
@@ -39,7 +40,12 @@ export function modelHasContent(data) {
     (data.axes?.length || 0) +
     (data.underlay?.entities?.length || 0);
   if (count > 0) return true;
-  return loadCombinationsEdited(data.loadCombinations) || settingsEdited(data.settings);
+  const materialCatalogEdited = Array.isArray(data.materialCatalog) &&
+    data.materialCatalog.some(material => material?.isDefault === false);
+  return loadCombinationsEdited(data.loadCombinations) ||
+    settingsEdited(data.settings) ||
+    !isDefaultAnalysisSettings(data.analysisSettings) ||
+    materialCatalogEdited;
 }
 
 export function readAutosave() {

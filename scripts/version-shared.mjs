@@ -49,6 +49,13 @@ export function updateReadme(source, displayVersion) {
   );
 }
 
+export function updateAppVersion(source, packageVersion) {
+  return source.replace(
+    /export const APP_VERSION = '[^']+';/,
+    `export const APP_VERSION = '${packageVersion}';`
+  );
+}
+
 export function extractIndexDisplayVersion(source) {
   const titleMatch = source.match(/<title>Element Modeler - (Ver\.[^<]+)<\/title>/);
   const statusMatch = source.match(/<span id="status-version">(Ver\.[^<]+)<\/span>/);
@@ -70,4 +77,9 @@ export function extractIndexAssetVersions(source) {
 export function extractReadmeDisplayVersion(source) {
   const headingMatch = source.match(/^# Element Modeler \((Ver\.[^)]+)\)$/m);
   return headingMatch?.[1] || null;
+}
+
+export function extractAppVersion(source) {
+  const match = source.match(/export const APP_VERSION = '([^']+)'/);
+  return match?.[1] || null;
 }

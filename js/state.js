@@ -31,13 +31,22 @@ import * as modelOps from './model-ops.js';
 import { normalizeRoofDirection } from './roof-geometry.js';
 import * as roofGen from './roof-generation.js';
 import {
+  createDefaultAnalysisSettings,
+  normalizeAnalysisSettings,
+} from './analysis-settings.js';
+import {
   cloneSection,
+  createDefaultMaterialCatalog,
   createDefaultSectionCatalog,
   createDefaultSpringCatalog,
+  DEFAULT_MATERIAL_DEFINITIONS,
+  DEFAULT_MATERIAL_NAME_SET,
   DEFAULT_SECTION_NAME_SET,
   DEFAULT_SPRING_SYMBOL_SET,
   defaultColorForSection,
+  isSameMaterialDefinition,
   normalizeCatalogSectionEntry,
+  normalizeMaterialEntry,
   normalizeMemberEndInfo,
   normalizeSectionType,
   normalizeSpringEntry,
@@ -111,10 +120,12 @@ export class AppState {
     this.surfaces = [];
     this.loads = [];
     this.supports = [];
+    this.materialCatalog = createDefaultMaterialCatalog();
     this.sectionCatalog = createDefaultSectionCatalog();
     this.springCatalog = createDefaultSpringCatalog();
     this.axes = [];
     this.loadCombinations = createDefaultLoadCombinations();
+    this.analysisSettings = createDefaultAnalysisSettings();
     // Optional imported drawing underlay ({ name, entities }) shown beneath
     // the plan; not part of the structural model.
     this.underlay = null;
@@ -150,6 +161,22 @@ export class AppState {
     if (this.settings[key] === value) return;
     this.settings[key] = value;
     this._touch();
+  }
+
+  updateAnalysisSettings(props = {}) {
+    const candidate = {
+      ...this.analysisSettings,
+      ...props,
+      massSources: {
+        ...this.analysisSettings.massSources,
+        ...(props.massSources || {}),
+      },
+    };
+    const next = normalizeAnalysisSettings(candidate);
+    if (JSON.stringify(next) === JSON.stringify(this.analysisSettings)) return false;
+    this.analysisSettings = next;
+    this._touch();
+    return true;
   }
 
   // Resets selection, tool, and draft state to the initial defaults.
@@ -469,11 +496,19 @@ export class AppState {
     if (!section || section.isDefault) return null;
 
     if (target === 'member') {
+      if (hasOwn(props, 'material')) {
+        section.material = sanitizeText(props.material) || section.material || 'steel';
+      }
       if (hasOwn(props, 'b')) {
         section.b = sanitizePositiveNumber(props.b, sanitizePositiveNumber(section.b, DEFAULT_SECTION_B_MM));
       }
       if (hasOwn(props, 'h')) {
         section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, DEFAULT_SECTION_H_MM));
+      }
+      for (const property of ['A', 'Iy', 'Iz', 'J']) {
+        if (hasOwn(props, property)) {
+          section[property] = sanitizeOptionalPositiveNumber(props[property]);
+        }
       }
       if (hasOwn(props, 'defaultEndI')) {
         section.defaultEndI = this._normalizeMemberEnd(props.defaultEndI);
@@ -566,6 +601,12 @@ export class AppState {
   updateSpring(symbol, props = {}) {
     const spring = this._getSpringRef(symbol);
     if (!spring || spring.isDefault) return null;
+    if (hasOwn(props, 'kr')) {
+      spring.kr = sanitizeOptionalPositiveNumber(props.kr);
+    }
+    if (hasOwn(props, 'kt')) {
+      spring.kt = sanitizeOptionalPositiveNumber(props.kt);
+    }
     if (hasOwn(props, 'memo')) {
       spring.memo = sanitizeText(props.memo) || '';
     }
@@ -590,6 +631,67 @@ export class AppState {
     );
     if (inSectionPreset) return false;
     this.springCatalog.splice(idx, 1);
+    this._touch();
+    return true;
+  }
+
+  _getMaterialRef(name) {
+    return this.materialCatalog.find(material => material.name === name) || null;
+  }
+
+  getMaterial(name) {
+    const material = this._getMaterialRef(name);
+    return material ? { ...material } : null;
+  }
+
+  listMaterials() {
+    return this.materialCatalog
+      .slice()
+      .sort((a, b) => {
+        const aDefaultIndex = DEFAULT_MATERIAL_DEFINITIONS.findIndex(item => item.name === a.name);
+        const bDefaultIndex = DEFAULT_MATERIAL_DEFINITIONS.findIndex(item => item.name === b.name);
+        if (aDefaultIndex >= 0 || bDefaultIndex >= 0) {
+          if (aDefaultIndex < 0) return 1;
+          if (bDefaultIndex < 0) return -1;
+          return aDefaultIndex - bDefaultIndex;
+        }
+        return a.name.localeCompare(b.name);
+      })
+      .map(material => ({ ...material }));
+  }
+
+  addMaterial(entry) {
+    const normalized = normalizeMaterialEntry(entry);
+    if (!normalized || normalized.name.startsWith('_')) return null;
+    if (this._getMaterialRef(normalized.name)) return null;
+    const material = { ...normalized, isDefault: false };
+    this.materialCatalog.push(material);
+    this._touch();
+    return { ...material };
+  }
+
+  updateMaterial(name, props = {}) {
+    const material = this._getMaterialRef(name);
+    if (!material) return null;
+    const normalized = normalizeMaterialEntry({ ...material, ...props, name });
+    if (!normalized) return null;
+    const defaultDefinition = DEFAULT_MATERIAL_DEFINITIONS.find(item => item.name === name);
+    Object.assign(material, normalized, {
+      isDefault: Boolean(defaultDefinition && isSameMaterialDefinition(defaultDefinition, normalized)),
+    });
+    this._touch();
+    return { ...material };
+  }
+
+  removeMaterial(name) {
+    if (DEFAULT_MATERIAL_NAME_SET.has(name)) return false;
+    const index = this.materialCatalog.findIndex(material => material.name === name);
+    if (index < 0) return false;
+    const inUse = this.sectionCatalog.some(
+      section => section.target === 'member' && section.material === name
+    );
+    if (inUse) return false;
+    this.materialCatalog.splice(index, 1);
     this._touch();
     return true;
   }
@@ -1692,6 +1794,11 @@ export function sanitizeOptionalNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function sanitizeOptionalPositiveNumber(value) {
+  const number = sanitizeOptionalNumber(value);
+  return number !== null && number > 0 ? number : null;
 }
 
 function sanitizeText(value) {
