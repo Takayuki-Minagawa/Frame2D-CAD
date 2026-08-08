@@ -273,6 +273,7 @@
     <button id="btn-import-trigger" title="Load CAD data">&#128194; <span data-i18n="import">CAD読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
     <hr>
+    <button id="btn-analysis-settings" title="Configure analysis export">&#9881; <span data-i18n="analysisSettingsOpen">解析出力設定</span></button>
     <button id="btn-analysis-export" title="Export analysis model (JSON)">&#128640; <span data-i18n="analysisExport">解析JSON出力</span></button>
     <button id="btn-analysis-csv-export" title="Export analysis model (CSV)">&#128640; <span data-i18n="analysisCsvExport">解析CSV出力</span></button>
     <button id="btn-dxf-export" title="Export plan DXF">&#128196; <span data-i18n="dxfExport">図面DXF出力</span></button>
@@ -491,6 +492,7 @@
           <select id="user-def-kind">
             <option value="section" data-i18n="userDefSection">断面定義</option>
             <option value="spring" data-i18n="userDefSpring">バネ定義</option>
+            <option value="material" data-i18n="userDefMaterial">材料定義</option>
           </select>
         </div>
 
@@ -524,6 +526,33 @@
               <input id="user-def-h" type="number" min="1" step="1" value="100">
             </div>
           </div>
+          <div id="user-def-section-material-group" class="settings-group">
+            <label data-i18n="userDefMaterialName">材料</label>
+            <select id="user-def-section-material"></select>
+          </div>
+          <div id="user-def-properties-group">
+            <p class="quantity-note" data-i18n="userDefSectionPropertyHint">空欄は矩形 b×h から算定します。</p>
+            <div class="prop-row">
+              <div class="settings-group settings-group-grow">
+                <label data-i18n="userDefAreaA">A (mm²)</label>
+                <input id="user-def-A" type="number" min="0" step="any" placeholder="auto">
+              </div>
+              <div class="settings-group settings-group-grow">
+                <label data-i18n="userDefIy">Iy (mm⁴)</label>
+                <input id="user-def-Iy" type="number" min="0" step="any" placeholder="auto">
+              </div>
+            </div>
+            <div class="prop-row">
+              <div class="settings-group settings-group-grow">
+                <label data-i18n="userDefIz">Iz (mm⁴)</label>
+                <input id="user-def-Iz" type="number" min="0" step="any" placeholder="auto">
+              </div>
+              <div class="settings-group settings-group-grow">
+                <label data-i18n="userDefJ">J (mm⁴)</label>
+                <input id="user-def-J" type="number" min="0" step="any" placeholder="auto">
+              </div>
+            </div>
+          </div>
           <div id="user-def-end-preset-group" class="prop-row">
             <div class="settings-group settings-group-grow">
               <label data-i18n="userDefDefaultEndI">I端プリセット</label>
@@ -555,9 +584,38 @@
             <label data-i18n="userDefName">名称</label>
             <input id="user-def-symbol" type="text" placeholder="SP1">
           </div>
+          <div class="prop-row">
+            <div class="settings-group settings-group-grow">
+              <label data-i18n="userDefKr">回転剛性 kr (N·mm/rad)</label>
+              <input id="user-def-kr" type="number" min="0" step="any" placeholder="未定義">
+            </div>
+            <div class="settings-group settings-group-grow">
+              <label data-i18n="userDefKt">並進剛性 kt (N/mm)</label>
+              <input id="user-def-kt" type="number" min="0" step="any" placeholder="任意">
+            </div>
+          </div>
           <div class="settings-group">
             <label data-i18n="userDefMemo">メモ</label>
             <input id="user-def-memo" type="text" placeholder="">
+          </div>
+        </div>
+
+        <div id="user-def-material-group" hidden>
+          <div class="settings-group">
+            <label data-i18n="userDefName">名称</label>
+            <input id="user-def-material-name" type="text" placeholder="material1">
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefElasticModulus">ヤング係数 E (N/mm²)</label>
+            <input id="user-def-E" type="number" min="0" step="any">
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefShearModulus">せん断弾性係数 G (N/mm²)</label>
+            <input id="user-def-G" type="number" min="0" step="any">
+          </div>
+          <div class="settings-group">
+            <label data-i18n="userDefDensity">密度 ρ (kg/m³)</label>
+            <input id="user-def-density" type="number" min="0" step="any">
           </div>
         </div>
 
@@ -581,6 +639,33 @@
         <button id="btn-user-def-list-close" class="modal-close" data-i18n="helpClose">閉じる</button>
       </div>
       <div id="user-def-list-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Analysis Export Settings Modal -->
+  <div id="analysis-settings-modal" class="modal-overlay">
+    <div class="modal-content modal-settings">
+      <div class="modal-header">
+        <h2 data-i18n="analysisSettingsTitle">解析出力設定</h2>
+        <button id="btn-analysis-settings-close" class="modal-close" data-i18n="choiceCancel">キャンセル</button>
+      </div>
+      <form id="analysis-settings-form" class="modal-body">
+        <p class="quantity-note" data-i18n="analysisMassSourceHint">荷重ケースを固有値解析用質量へ換算する係数です。</p>
+        <div id="analysis-mass-source-list"></div>
+        <div class="settings-group">
+          <label for="analysis-self-weight-mode" data-i18n="analysisSelfWeightMode">部材自重</label>
+          <select id="analysis-self-weight-mode">
+            <option value="fromDensity" data-i18n="analysisSelfWeightDensity">材料密度×断面積×長さから算定</option>
+            <option value="includedInDL" data-i18n="analysisSelfWeightDL">DLに含む（密度からは算定しない）</option>
+          </select>
+        </div>
+        <p id="analysis-settings-error" class="form-error" hidden></p>
+        <p class="quantity-note" data-i18n="analysisDefaultsTrial">組み込み値は試行用です。解析前に確認してください。</p>
+        <div class="support-preset-row">
+          <button id="btn-analysis-settings-cancel" type="button" class="support-preset-btn" data-i18n="choiceCancel">キャンセル</button>
+          <button id="btn-analysis-settings-save" type="submit" class="support-preset-btn" data-i18n="choiceConfirm">保存</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -41,7 +41,7 @@ export const helpContentJa = `
 <table>
   <tr><td><b>荷重ケース</b></td><td>荷重ツールとプロパティパネルで DL/LL/EQX/EQY/WX/WY を設定</td></tr>
   <tr><td><b>荷重組合せ</b></td><td>設定 → 荷重組合せ でケースごとの係数を編集・追加</td></tr>
-  <tr><td><b>解析出力</b></td><td>「解析JSON出力」「解析CSV出力」で共有3D節点・要素・断面・材端・支点・荷重・組合せを出力（単位 mm, N）</td></tr>
+  <tr><td><b>解析出力</b></td><td>「解析JSON出力」「解析CSV出力」で数値ID・元ID・共有3D節点・材料/断面物性・ばね剛性・質量源・支点・荷重・組合せをv2形式で出力（元単位 mm, N）</td></tr>
   <tr><td><b>図面出力</b></td><td>「図面DXF出力」「PNG出力」で平面図を出力</td></tr>
 </table>
 
@@ -110,10 +110,11 @@ export const helpContentJa = `
 <ul>
   <li><b>テーマ</b> - ダーク / ライトを切替</li>
   <li><b>言語</b> - 日本語 / English を切替</li>
-  <li><b>ユーザー定義</b> - 断面定義 / バネ定義を追加・管理</li>
+  <li><b>ユーザー定義</b> - 材料 / 断面 / バネ定義と解析物性を追加・管理</li>
   <li><b>ヘルプ</b> - この簡易マニュアルを表示</li>
 </ul>
-<p>既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>）は編集・削除できません。ユーザー定義名の先頭に <code>_</code> は使えません。線材の断面定義には、配置時に使う I端/J端の材端条件プリセットを設定できます。登録後は名前以外の項目（寸法・色・材端プリセット・メモ）を更新でき、ユーザー定義は削除可能です（使用中の定義は削除できません）。</p>
+<p>材料には E・G・密度、線材断面には任意の A・Iy・Iz・J 上書き、バネには kr・kt を設定できます。断面特性の空欄は矩形 b×h から算定され、ばね kr の空欄は解析出力の警告になります。組み込み材料値は試行値なので解析前に確認してください。既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_SP</code>）は編集・削除できません。</p>
+<p>ツールバーの「解析出力設定」では荷重ケース別の質量換算係数と、部材自重を密度から算定するかDLに含めるかを指定します。</p>
 <p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
 <p>「エクスポート」でユーザー定義をJSONファイルとしてダウンロード、「インポート」で別環境からユーザー定義を読み込めます。</p>
 
@@ -127,15 +128,15 @@ export const helpContentJa = `
 <p>レイヤーはz値（高さ）の昇順で表示されます。同じz値のレイヤーは作成できません。</p>
 
 <h3>データ入出力</h3>
-<p>CADデータ（図面情報）とユーザー定義（断面・バネ）は<b>別ファイルとしても分離管理</b>できます。</p>
+<p>CADデータ（図面情報）とユーザー定義（材料・断面・バネ）は<b>別ファイルとしても分離管理</b>できます。</p>
 <table>
-  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。使用中のカスタムユーザー定義もCADファイルに含まれます（未使用の定義は含まれません）</td></tr>
+  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。材料カタログは全件、断面・バネはデフォルト定義と使用中のカスタム定義を含みます</td></tr>
   <tr><td><b>CAD読込</b></td><td>ツールバーの「CAD読込」でJSONファイルを読み込み。既にメモリ上にあるカスタム定義は維持されます</td></tr>
   <tr><td><b>定義エクスポート</b></td><td>設定 → ユーザー定義 →「エクスポート」でカスタム定義を別ファイルに保存</td></tr>
   <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み。CADファイルから読込済みの定義を含め、同名の定義はスキップされます</td></tr>
 </table>
 <p>定義インポート時、追加件数とスキップ件数が通知されます。断面定義・バネ定義にはメモ（説明テキスト）を付与できます。</p>
-<p>部材IDは内部管理用で、CADファイルには含まれません。旧バージョンで保存されたファイルも読み込めます。</p>
+<p>ノード・部材・面材・荷重・支点IDはCADファイルに保存され、読込後も保持されます。旧バージョンで保存されたファイルも読み込めます。</p>
 `;
 
 export const helpContentEn = `
@@ -179,7 +180,7 @@ export const helpContentEn = `
 <table>
   <tr><td><b>Load cases</b></td><td>Assign DL/LL/EQX/EQY/WX/WY in the load tool and property panel</td></tr>
   <tr><td><b>Combinations</b></td><td>Settings → Load Combinations to edit per-case factors</td></tr>
-  <tr><td><b>Analysis export</b></td><td>"Analysis JSON" / "Analysis CSV" export shared 3D nodes, elements, sections, end conditions, supports, loads, and combinations (units: mm, N)</td></tr>
+  <tr><td><b>Analysis export</b></td><td>"Analysis JSON" / "Analysis CSV" export v2 numeric/source IDs, shared 3D nodes, material/section properties, spring stiffness, mass sources, supports, loads, and combinations (source units: mm, N)</td></tr>
   <tr><td><b>Drawing export</b></td><td>"Plan DXF" / "Plan PNG" export the plan drawing</td></tr>
 </table>
 
@@ -248,7 +249,7 @@ export const helpContentEn = `
 <ul>
   <li><b>Theme</b> - Switch between Dark / Light</li>
   <li><b>Language</b> - Switch between Japanese / English</li>
-  <li><b>User Definitions</b> - Add/manage section and spring definitions</li>
+  <li><b>User Definitions</b> - Add/manage material, section, spring, and analysis-property definitions</li>
   <li><b>Help</b> - Opens this quick manual</li>
 </ul>
 <p>Default definitions (for example <code>_G</code>, <code>_C</code>, <code>_S</code>, <code>_OW</code>, <code>_IW</code>, <code>_SP</code>) cannot be edited or deleted. Custom names cannot start with <code>_</code>. Line section definitions can set I/J end condition presets used when placing new lines. After registration, fields other than name can be updated (size, color, end presets, memo), and custom definitions can be deleted unless they are currently in use.</p>
@@ -265,15 +266,17 @@ export const helpContentEn = `
 <p>Layers are displayed sorted by z value (ascending). Duplicate z values are not allowed.</p>
 
 <h3>Data I/O</h3>
-<p>CAD data (drawing) and user definitions (sections/springs) can also be <b>managed as separate files</b>.</p>
+<p>Materials define E, G, and density; member sections allow explicit A, Iy, Iz, and J overrides; springs allow kr and optional kt. Blank section properties are calculated as a rectangle b×h, while blank rotational spring stiffness is exported as a warning. Built-in material values are trial defaults and must be reviewed before analysis.</p>
+<p>Use "Analysis Export Settings" to edit load-case mass factors and choose whether member self-weight is calculated from density or already included in DL.</p>
+<p>CAD data (drawing) and user definitions (materials/sections/springs) can also be <b>managed as separate files</b>.</p>
 <table>
-  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. Custom definitions in use are included in the CAD file (unused definitions are excluded)</td></tr>
+  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. The complete material catalog plus default and in-use custom section/spring definitions are included</td></tr>
   <tr><td><b>Load CAD</b></td><td>Click "Load CAD" in the toolbar to load a JSON file. Existing custom definitions in memory are preserved</td></tr>
   <tr><td><b>Export Defs</b></td><td>Settings → User Definitions → "Export" to save custom definitions to a separate file</td></tr>
   <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment. Definitions with duplicate names (including those loaded from CAD files) are skipped</td></tr>
 </table>
 <p>When importing, the number of added and skipped items is shown. Section and spring definitions can include a memo (description text).</p>
-<p>Member IDs are internal and are not written to CAD files. Files saved with older versions can still be loaded.</p>
+<p>Node, member, surface, load, and support IDs are written to CAD files and preserved when reloaded. Files saved with older versions can still be loaded.</p>
 `;
 
 export function getHelpContent(lang) {

@@ -34,6 +34,7 @@ import { initGridFrameModal } from './grid-frame-modal.js';
 import { initComboModal } from './combo-modal.js';
 import { initElevationModal } from './elevation-modal.js';
 import { initJoinSplitModal } from './join-split-modal.js';
+import { initAnalysisSettingsModal } from './analysis-settings-modal.js';
 import { clearAutosave, initAutosave, readAutosave } from './autosave.js';
 import { buildSampleModel } from './samples.js';
 
@@ -480,6 +481,15 @@ const userDefModal = initUserDefModal({
   refreshDraftSectionSelectors: () => ui.refreshDraftSectionSelectors(),
 });
 
+const analysisSettingsModal = initAnalysisSettingsModal({
+  state,
+  onSave(settings) {
+    history.transact(() => state.updateAnalysisSettings(settings));
+    update();
+    showNotice(t('analysisSettingsSaved'), 'success');
+  },
+});
+
 const layerModal = initLayerModal({
   state,
   onModelChange: update,
@@ -589,6 +599,7 @@ function applyLang(lang) {
   applyI18nTo(settingsModal);
   gridFrameModal.applyLanguage();
   userDefModal.applyLanguage();
+  analysisSettingsModal.applyLanguage();
   layerModal.clearFormError();
 }
 
@@ -668,6 +679,9 @@ window.addEventListener('keydown', (e) => {
   if (e.isComposing) return;
   if (e.key === 'Escape') {
     if (userDefModal.isOpen()) {
+      e.stopPropagation();
+    } else if (analysisSettingsModal.isOpen()) {
+      analysisSettingsModal.hide();
       e.stopPropagation();
     } else if (helpModal.classList.contains('visible')) {
       hideHelpModal();

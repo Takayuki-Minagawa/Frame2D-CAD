@@ -1,4 +1,4 @@
-// user-def-modal.js - user-defined section / spring modals.
+// user-def-modal.js - user-defined section / spring / material modals.
 // Covers the definition form (add + validation), the list modal (inline edit,
 // update/delete via event delegation) and user-definition export/import.
 // Dependencies (state, model-change callback, selector refresh) are injected
@@ -10,6 +10,7 @@ import { showNotice } from './notice.js';
 import { exportUserDefs, importUserDefs } from './io.js';
 
 const END_CONDITIONS = ['pin', 'rigid', 'spring'];
+const BUILT_IN_MATERIAL_NAMES = new Set(['steel', 'rc', 'wood']);
 
 export function initUserDefModal({ state, onModelChange, refreshDraftSectionSelectors }) {
   const userDefModal = document.getElementById('user-def-modal');
@@ -18,11 +19,19 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   const userDefTypeSelect = document.getElementById('user-def-type');
   const userDefSectionGroup = document.getElementById('user-def-section-group');
   const userDefSpringGroup = document.getElementById('user-def-spring-group');
+  const userDefMaterialGroup = document.getElementById('user-def-material-group');
   const userDefSizeGroup = document.getElementById('user-def-size-group');
+  const userDefSectionMaterialGroup = document.getElementById('user-def-section-material-group');
+  const userDefSectionMaterialSelect = document.getElementById('user-def-section-material');
+  const userDefPropertiesGroup = document.getElementById('user-def-properties-group');
   const userDefNameInput = document.getElementById('user-def-name');
   const userDefColorInput = document.getElementById('user-def-color');
   const userDefBInput = document.getElementById('user-def-b');
   const userDefHInput = document.getElementById('user-def-h');
+  const userDefAInput = document.getElementById('user-def-A');
+  const userDefIyInput = document.getElementById('user-def-Iy');
+  const userDefIzInput = document.getElementById('user-def-Iz');
+  const userDefJInput = document.getElementById('user-def-J');
   const userDefEndPresetGroup = document.getElementById('user-def-end-preset-group');
   const userDefEndIConditionSelect = document.getElementById('user-def-endi-condition');
   const userDefEndJConditionSelect = document.getElementById('user-def-endj-condition');
@@ -30,7 +39,13 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   const userDefEndJSpringSelect = document.getElementById('user-def-endj-spring');
   const userDefSectionMemoInput = document.getElementById('user-def-section-memo');
   const userDefSymbolInput = document.getElementById('user-def-symbol');
+  const userDefKrInput = document.getElementById('user-def-kr');
+  const userDefKtInput = document.getElementById('user-def-kt');
   const userDefMemoInput = document.getElementById('user-def-memo');
+  const userDefMaterialNameInput = document.getElementById('user-def-material-name');
+  const userDefEInput = document.getElementById('user-def-E');
+  const userDefGInput = document.getElementById('user-def-G');
+  const userDefDensityInput = document.getElementById('user-def-density');
   const userDefListModal = document.getElementById('user-def-list-modal');
   const userDefListBody = document.getElementById('user-def-list-body');
   const userDefFormErrorEl = document.getElementById('user-def-form-error');
@@ -52,6 +67,15 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     clearInputInvalid(userDefBInput);
     clearInputInvalid(userDefHInput);
     clearInputInvalid(userDefSymbolInput);
+    clearInputInvalid(userDefKrInput);
+    clearInputInvalid(userDefKtInput);
+    clearInputInvalid(userDefMaterialNameInput);
+    clearInputInvalid(userDefEInput);
+    clearInputInvalid(userDefGInput);
+    clearInputInvalid(userDefDensityInput);
+    for (const input of [userDefAInput, userDefIyInput, userDefIzInput, userDefJInput]) {
+      clearInputInvalid(input);
+    }
   }
 
   function showUserDefFormError(message, input) {
@@ -92,13 +116,31 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   }
 
   function refreshUserDefFormVisibility() {
-    const isSection = userDefKindSelect?.value !== 'spring';
+    const kind = userDefKindSelect?.value || 'section';
+    const isSection = kind === 'section';
+    const isSpring = kind === 'spring';
     if (userDefSectionGroup) userDefSectionGroup.style.display = isSection ? '' : 'none';
-    if (userDefSpringGroup) userDefSpringGroup.hidden = isSection;
+    if (userDefSpringGroup) userDefSpringGroup.hidden = !isSpring;
+    if (userDefMaterialGroup) userDefMaterialGroup.hidden = kind !== 'material';
     const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
     if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
+    if (userDefSectionMaterialGroup) userDefSectionMaterialGroup.style.display = isMemberSection ? '' : 'none';
+    if (userDefPropertiesGroup) userDefPropertiesGroup.style.display = isMemberSection ? '' : 'none';
     if (userDefEndPresetGroup) userDefEndPresetGroup.style.display = isMemberSection ? 'flex' : 'none';
+    refreshMaterialSelectOptions();
     refreshUserDefEndSpringVisibility();
+  }
+
+  function refreshMaterialSelectOptions(selectedName = '') {
+    if (!userDefSectionMaterialSelect) return;
+    const materials = state.listMaterials();
+    const selected = selectedName || userDefSectionMaterialSelect.value || materials[0]?.name || 'steel';
+    userDefSectionMaterialSelect.innerHTML = materials.map(material =>
+      `<option value="${escapeHtml(material.name)}" ${material.name === selected ? 'selected' : ''}>${escapeHtml(t(material.name) === material.name ? material.name : t(material.name))}</option>`
+    ).join('');
+    if (materials.some(material => material.name === selected)) {
+      userDefSectionMaterialSelect.value = selected;
+    }
   }
 
   function getUserDefGroupDefaultSection(target, type) {
@@ -122,6 +164,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     if (target === 'member') {
       if (userDefBInput) userDefBInput.value = String(section?.b || 200);
       if (userDefHInput) userDefHInput.value = String(section?.h || 400);
+      refreshMaterialSelectOptions(section?.material || 'steel');
       setUserDefEndPresetInputs(section?.defaultEndI, section?.defaultEndJ);
     }
   }
@@ -220,6 +263,22 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     );
   }
 
+  function readOptionalPositiveInput(input) {
+    const raw = input?.value?.trim() || '';
+    if (raw === '') return { valid: true, value: null };
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0
+      ? { valid: true, value }
+      : { valid: false, value: null };
+  }
+
+  function readRequiredPositiveInput(input) {
+    const value = Number(input?.value);
+    return Number.isFinite(value) && value > 0
+      ? { valid: true, value }
+      : { valid: false, value: null };
+  }
+
   // --- Form actions ---
 
   function resetUserDefForm() {
@@ -230,9 +289,18 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     if (userDefColorInput) userDefColorInput.value = '#666666';
     if (userDefBInput) userDefBInput.value = '200';
     if (userDefHInput) userDefHInput.value = '400';
+    for (const input of [userDefAInput, userDefIyInput, userDefIzInput, userDefJInput]) {
+      if (input) input.value = '';
+    }
     if (userDefSectionMemoInput) userDefSectionMemoInput.value = '';
     if (userDefSymbolInput) userDefSymbolInput.value = '';
+    if (userDefKrInput) userDefKrInput.value = '';
+    if (userDefKtInput) userDefKtInput.value = '';
     if (userDefMemoInput) userDefMemoInput.value = '';
+    if (userDefMaterialNameInput) userDefMaterialNameInput.value = '';
+    if (userDefEInput) userDefEInput.value = '';
+    if (userDefGInput) userDefGInput.value = '';
+    if (userDefDensityInput) userDefDensityInput.value = '';
     refreshUserDefTypeOptions();
     refreshUserDefFormVisibility();
   }
@@ -273,12 +341,29 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
           markInputInvalid(userDefHInput);
           return;
         }
+        const propertyInputs = {
+          A: userDefAInput,
+          Iy: userDefIyInput,
+          Iz: userDefIzInput,
+          J: userDefJInput,
+        };
+        const properties = {};
+        for (const [property, input] of Object.entries(propertyInputs)) {
+          const result = readOptionalPositiveInput(input);
+          if (!result.valid) {
+            showUserDefFormError(t('userDefInvalidProperty'), input);
+            return;
+          }
+          properties[property] = result.value;
+        }
         added = state.addSection({
           target,
           type,
           name,
           b,
           h,
+          material: userDefSectionMaterialSelect?.value || 'steel',
+          ...properties,
           color,
           memo: sectionMemo,
           defaultEndI: readEndPreset(userDefEndIConditionSelect, userDefEndISpringSelect),
@@ -287,18 +372,41 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       } else {
         added = state.addSection({ target, type, name, color, memo: sectionMemo });
       }
-    } else {
+    } else if (kind === 'spring') {
       const symbol = userDefSymbolInput?.value?.trim() || '';
       if (symbol.startsWith('_')) {
         showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefSymbolInput);
         return;
       }
       const memo = userDefMemoInput?.value?.trim() || '';
-      added = state.addSpring({ symbol, memo });
+      const kr = readOptionalPositiveInput(userDefKrInput);
+      const kt = readOptionalPositiveInput(userDefKtInput);
+      if (!kr.valid || !kt.valid) {
+        showUserDefFormError(t('userDefInvalidStiffness'), !kr.valid ? userDefKrInput : userDefKtInput);
+        return;
+      }
+      added = state.addSpring({ symbol, kr: kr.value, kt: kt.value, memo });
+    } else {
+      const name = userDefMaterialNameInput?.value?.trim() || '';
+      if (name.startsWith('_')) {
+        showUserDefFormError(t('userDefNoLeadingUnderscore'), userDefMaterialNameInput);
+        return;
+      }
+      const E = readRequiredPositiveInput(userDefEInput);
+      const G = readRequiredPositiveInput(userDefGInput);
+      const density = readRequiredPositiveInput(userDefDensityInput);
+      if (!E.valid || !G.valid || !density.valid) {
+        const invalid = !E.valid ? userDefEInput : (!G.valid ? userDefGInput : userDefDensityInput);
+        showUserDefFormError(t('userDefInvalidMaterial'), invalid);
+        return;
+      }
+      added = state.addMaterial({ name, E: E.value, G: G.value, density: density.value });
     }
 
     if (!added) {
-      const keyInput = kind === 'section' ? userDefNameInput : userDefSymbolInput;
+      const keyInput = kind === 'section'
+        ? userDefNameInput
+        : (kind === 'spring' ? userDefSymbolInput : userDefMaterialNameInput);
       showUserDefFormError(t('userDefAddFailed'), keyInput);
       return;
     }
@@ -320,6 +428,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   function currentUserDefGroupLabel() {
     const kind = userDefKindSelect?.value || 'section';
     if (kind === 'spring') return t('userDefSpring');
+    if (kind === 'material') return t('userDefMaterial');
     const target = userDefTargetSelect?.value || 'member';
     const type = userDefTypeSelect?.value || '';
     return `${target === 'member' ? t('userDefTargetMember') : t('userDefTargetSurface')} / ${t(type)}`;
@@ -350,6 +459,25 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       : `<input type="number" class="user-def-table-input" data-field="${field}" min="1" step="1" value="${Number.isFinite(value) ? value : 1}">`;
   }
 
+  function renderOptionalNumberCell(item, field, editable = !item.isDefault) {
+    const value = item[field];
+    if (!editable) return Number.isFinite(value) ? String(value) : '-';
+    return `<input type="number" class="user-def-table-input" data-field="${field}" min="0" step="any" value="${Number.isFinite(value) ? value : ''}" placeholder="auto">`;
+  }
+
+  function renderRequiredNumberCell(item, field) {
+    const value = item[field];
+    return `<input type="number" class="user-def-table-input" data-field="${field}" min="0" step="any" value="${Number.isFinite(value) ? value : ''}">`;
+  }
+
+  function renderMaterialSelectCell(section) {
+    if (section.isDefault) return escapeHtml(section.material || 'steel');
+    const materials = state.listMaterials();
+    return `<select class="user-def-table-input" data-field="material">
+      ${materials.map(material => `<option value="${escapeHtml(material.name)}" ${material.name === section.material ? 'selected' : ''}>${escapeHtml(material.name)}</option>`).join('')}
+    </select>`;
+  }
+
   function renderColorCell(item) {
     return item.isDefault
       ? `<span style="display:inline-block;width:14px;height:14px;border:1px solid #999;vertical-align:middle;margin-right:6px;background:${escapeHtml(item.color || '#666666')};"></span>${escapeHtml(item.color || '')}`
@@ -359,6 +487,8 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   function buildSpringColumns() {
     return [
       { header: t('userDefListColName'), cell: s => escapeHtml(s.symbol) },
+      { header: t('userDefListColKr'), cell: s => renderOptionalNumberCell(s, 'kr') },
+      { header: t('userDefListColKt'), cell: s => renderOptionalNumberCell(s, 'kt') },
       { header: t('userDefListColMemo'), cell: renderMemoCell },
       { header: t('userDefListColDefault'), cell: renderDefaultFlagCell },
       {
@@ -381,6 +511,11 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       columns.push(
         { header: t('userDefListColB'), cell: s => renderSizeCell(s, 'b') },
         { header: t('userDefListColH'), cell: s => renderSizeCell(s, 'h') },
+        { header: t('userDefListColMaterial'), cell: renderMaterialSelectCell },
+        { header: 'A', cell: s => renderOptionalNumberCell(s, 'A') },
+        { header: 'Iy', cell: s => renderOptionalNumberCell(s, 'Iy') },
+        { header: 'Iz', cell: s => renderOptionalNumberCell(s, 'Iz') },
+        { header: 'J', cell: s => renderOptionalNumberCell(s, 'J') },
         { header: t('userDefListColEndI'), cell: s => renderEndPresetCell(s.defaultEndI, 'defaultEndI', !s.isDefault, springDefs) },
         { header: t('userDefListColEndJ'), cell: s => renderEndPresetCell(s.defaultEndJ, 'defaultEndJ', !s.isDefault, springDefs) },
       );
@@ -400,6 +535,23 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       },
     );
     return columns;
+  }
+
+  function buildMaterialColumns() {
+    return [
+      { header: t('userDefListColName'), cell: material => escapeHtml(material.name) },
+      { header: 'E (N/mm²)', cell: material => renderRequiredNumberCell(material, 'E') },
+      { header: 'G (N/mm²)', cell: material => renderRequiredNumberCell(material, 'G') },
+      { header: 'ρ (kg/m³)', cell: material => renderRequiredNumberCell(material, 'density') },
+      { header: t('userDefListColDefault'), cell: renderDefaultFlagCell },
+      {
+        header: t('userDefListColAction'),
+        cell: material => `<div class="user-def-table-actions">
+          <button type="button" class="user-def-table-btn" data-action="save-material" data-material="${escapeHtml(material.name)}">${t('userDefUpdate')}</button>
+          ${BUILT_IN_MATERIAL_NAMES.has(material.name) ? '' : `<button type="button" class="user-def-table-btn" data-action="remove-material" data-material="${escapeHtml(material.name)}">${t('userDefDelete')}</button>`}
+        </div>`,
+      },
+    ];
   }
 
   function renderUserDefListTable(items, columns) {
@@ -433,6 +585,12 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
         return;
       }
       userDefListBody.innerHTML = renderUserDefListTable(springs, buildSpringColumns());
+      return;
+    }
+
+    if (kind === 'material') {
+      const materials = state.listMaterials();
+      userDefListBody.innerHTML = renderUserDefListTable(materials, buildMaterialColumns());
       return;
     }
 
@@ -479,6 +637,17 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       }
       patch.b = b;
       patch.h = h;
+      patch.material = row.querySelector('[data-field="material"]')?.value || 'steel';
+      for (const property of ['A', 'Iy', 'Iz', 'J']) {
+        const input = row.querySelector(`[data-field="${property}"]`);
+        const result = readOptionalPositiveInput(input);
+        if (!result.valid) {
+          markInputInvalid(input);
+          showNotice(t('userDefInvalidProperty'), 'error');
+          return;
+        }
+        patch[property] = result.value;
+      }
       patch.defaultEndI = readRowEndPreset(row, 'defaultEndI');
       patch.defaultEndJ = readRowEndPreset(row, 'defaultEndJ');
     }
@@ -498,13 +667,47 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     const row = btn.closest('tr');
     if (!row) return;
     const memo = row.querySelector('[data-field="memo"]')?.value || '';
-    const updated = state.updateSpring(symbol, { memo });
+    const krInput = row.querySelector('[data-field="kr"]');
+    const ktInput = row.querySelector('[data-field="kt"]');
+    const kr = readOptionalPositiveInput(krInput);
+    const kt = readOptionalPositiveInput(ktInput);
+    if (!kr.valid || !kt.valid) {
+      markInputInvalid(!kr.valid ? krInput : ktInput);
+      showNotice(t('userDefInvalidStiffness'), 'error');
+      return;
+    }
+    const updated = state.updateSpring(symbol, { kr: kr.value, kt: kt.value, memo });
     if (!updated) {
       showNotice(t('userDefUpdateFailed'), 'error');
       return;
     }
     showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
     onModelChange();
+    renderUserDefGroupList();
+  }
+
+  function saveMaterialRow(btn) {
+    const name = btn.dataset.material || '';
+    const row = btn.closest('tr');
+    if (!row) return;
+    const values = {};
+    for (const field of ['E', 'G', 'density']) {
+      const input = row.querySelector(`[data-field="${field}"]`);
+      const result = readRequiredPositiveInput(input);
+      if (!result.valid) {
+        markInputInvalid(input);
+        showNotice(t('userDefInvalidMaterial'), 'error');
+        return;
+      }
+      values[field] = result.value;
+    }
+    if (!state.updateMaterial(name, values)) {
+      showNotice(t('userDefUpdateFailed'), 'error');
+      return;
+    }
+    showNotice(t('userDefUpdated'), 'success');
+    onModelChange();
+    refreshMaterialSelectOptions();
     renderUserDefGroupList();
   }
 
@@ -543,6 +746,20 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     showNotice(t('userDefDeleted') || t('userDefDelete'), 'success');
     onModelChange();
     refreshDraftSectionSelectors();
+    renderUserDefGroupList();
+  }
+
+  function removeMaterialRow(btn) {
+    const name = btn.dataset.material || '';
+    if (!name) return;
+    if (!window.confirm(t('userDefDeleteConfirm', { name }))) return;
+    if (!state.removeMaterial(name)) {
+      showNotice(t('userDefDeleteFailed'), 'error');
+      return;
+    }
+    showNotice(t('userDefDeleted'), 'success');
+    onModelChange();
+    refreshMaterialSelectOptions();
     renderUserDefGroupList();
   }
 
@@ -588,6 +805,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
           : t('userDefImported', { n: added });
         showNotice(msg, 'success');
         refreshUserDefEndSpringVisibility();
+        refreshMaterialSelectOptions();
         onModelChange();
         refreshDraftSectionSelectors();
         if (userDefListModal?.classList.contains('visible')) {
@@ -639,8 +857,10 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     switch (btn.dataset.action) {
       case 'save-section': saveSectionRow(btn); break;
       case 'save-spring': saveSpringRow(btn); break;
+      case 'save-material': saveMaterialRow(btn); break;
       case 'remove-section': removeSectionRow(btn); break;
       case 'remove-spring': removeSpringRow(btn); break;
+      case 'remove-material': removeMaterialRow(btn); break;
     }
   });
 

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   displayVersionFromPackageVersion,
+  extractAppVersion,
+  updateAppVersion,
   updateIndexHtml,
   extractIndexDisplayVersion,
   extractIndexAssetVersions,
@@ -55,4 +57,11 @@ test('extractIndexAssetVersions returns null when a query string is absent', () 
   const assets = extractIndexAssetVersions(source);
   assert.equal(assets.style, null);
   assert.equal(assets.app, null);
+});
+
+test('updateAppVersion keeps the analysis generator version in package sync', () => {
+  const source = "export const APP_VERSION = '0.0.1';\n";
+  const next = updateAppVersion(source, '1.2.3');
+  assert.equal(extractAppVersion(next), '1.2.3');
+  assert.equal(updateAppVersion(next, '1.2.3'), next);
 });

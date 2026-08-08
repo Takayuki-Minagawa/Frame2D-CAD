@@ -222,9 +222,10 @@ export function importJSON(file, state, history) {
 export function exportUserDefs(state) {
   const sections = state.sectionCatalog.filter(s => !s.isDefault).map(s => cloneSectionDefinition(s));
   const springs = state.springCatalog.filter(s => !s.isDefault).map(s => ({ ...s }));
-  if (sections.length === 0 && springs.length === 0) return false;
+  const materials = state.materialCatalog.filter(material => !material.isDefault).map(material => ({ ...material }));
+  if (sections.length === 0 && springs.length === 0 && materials.length === 0) return false;
 
-  const data = { userDefinitions: true, sections, springs };
+  const data = { userDefinitions: true, materials, sections, springs };
   downloadJson(`user_definitions_${timestamp()}.json`, data);
   return true;
 }
@@ -249,6 +250,16 @@ export function importUserDefs(file, state) {
         }
         let added = 0;
         let skipped = 0;
+        if (Array.isArray(data.materials)) {
+          for (const entry of data.materials) {
+            if (entry.isDefault) continue;
+            const existing = state.getMaterial(entry.name);
+            const result = existing?.isDefault
+              ? state.updateMaterial(entry.name, entry)
+              : state.addMaterial(entry);
+            if (result) { added++; } else { skipped++; }
+          }
+        }
         if (Array.isArray(data.springs)) {
           for (const entry of data.springs) {
             if (entry.isDefault) continue;

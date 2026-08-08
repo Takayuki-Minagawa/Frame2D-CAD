@@ -3,9 +3,16 @@
 // AppState keeps thin delegating methods with the same public API.
 
 import { DEFAULT_ROOF_GROUP_ID, DEFAULT_SECTION_B_MM, DEFAULT_SECTION_H_MM } from './constants.js';
+import { normalizeAnalysisSettings } from './analysis-settings.js';
 import { normalizeSettings } from './display-settings.js';
 import { positiveNumber as sanitizePositiveNumber } from './geometry-utils.js';
-import { cloneSection, hydrateSectionCatalog, hydrateSpringCatalog } from './section-catalog.js';
+import {
+  cloneSection,
+  hydrateMaterialCatalog,
+  hydrateSectionCatalog,
+  hydrateSpringCatalog,
+  normalizeMaterialEntry,
+} from './section-catalog.js';
 import {
   createDefaultLevels,
   createDefaultLoadCombinations,
@@ -26,7 +33,7 @@ function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export const CURRENT_SCHEMA_VERSION = 11;
+export const CURRENT_SCHEMA_VERSION = 12;
 const SUPPORTED_SCHEMA_VERSIONS = new Set(
   Array.from({ length: CURRENT_SCHEMA_VERSION }, (_, index) => index + 1)
 );
@@ -74,10 +81,15 @@ export function serializeModel(state) {
     levels: state.levels.map(l => ({ ...l })),
     axes: state.axes.map(a => ({ ...a })),
     loadCombinations: state.loadCombinations.map(c => ({ ...c, factors: { ...c.factors } })),
+    analysisSettings: {
+      ...state.analysisSettings,
+      massSources: { ...state.analysisSettings.massSources },
+    },
     underlay: state.underlay
       ? { name: state.underlay.name, entities: structuredClone(state.underlay.entities) }
       : null,
     nodes: state.nodes.map(n => ({ ...n })),
+    materialCatalog: state.materialCatalog.map(material => ({ ...material })),
     sectionCatalog: usedSectionCatalog(state).map(s => cloneSection(s)),
     springCatalog: usedSpringCatalog(state).map(s => ({ ...s })),
     members: state.members.map(m => ({
@@ -174,13 +186,33 @@ export function loadModelJSON(state, data) {
       factors: normalizeLoadFactors(c.factors),
     }))
     : createDefaultLoadCombinations();
+  state.analysisSettings = normalizeAnalysisSettings(data.analysisSettings);
   state.underlay = data.underlay && Array.isArray(data.underlay.entities) && data.underlay.entities.length
     ? { name: sanitizeText(data.underlay.name) || 'underlay', entities: structuredClone(data.underlay.entities) }
     : null;
   state.nodes = (data.nodes || []).map(n => ({ ...n }));
   // Preserve current custom user definitions across CAD load
+  const prevCustomMaterials = state.materialCatalog.filter(material => !material.isDefault);
   const prevCustomSections = state.sectionCatalog.filter(s => !s.isDefault);
   const prevCustomSprings = state.springCatalog.filter(s => !s.isDefault);
+  const loadedMaterialNames = new Set(
+    Array.isArray(data.materialCatalog)
+      ? data.materialCatalog
+        .map(material => normalizeMaterialEntry(material))
+        .filter(Boolean)
+        .map(material => material.name)
+      : []
+  );
+  state.materialCatalog = hydrateMaterialCatalog(data.materialCatalog);
+  for (const material of prevCustomMaterials) {
+    if (loadedMaterialNames.has(material.name)) continue;
+    const existingIndex = state.materialCatalog.findIndex(item => item.name === material.name);
+    if (existingIndex >= 0) {
+      state.materialCatalog[existingIndex] = { ...material };
+    } else {
+      state.materialCatalog.push({ ...material });
+    }
+  }
   state.sectionCatalog = hydrateSectionCatalog(data.sectionCatalog);
   state.springCatalog = hydrateSpringCatalog(data.springCatalog);
   for (const cs of prevCustomSections) {
