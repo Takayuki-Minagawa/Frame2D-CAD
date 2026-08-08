@@ -5,9 +5,9 @@
 // force N, line load N/mm, area load N/mm2, moment N*mm. UI-entered load
 // values (N/m, N/m², N·m) are converted here.
 
-import { isDefaultAnalysisSettings, normalizeAnalysisSettings } from './analysis-settings.js';
+import { normalizeAnalysisSettings } from './analysis-settings.js';
 import { APP_VERSION, LOAD_CASES } from './constants.js';
-import { rectangularSectionProperties } from './section-catalog.js';
+import { normalizeSectionType, rectangularSectionProperties } from './section-catalog.js';
 import { normalizeLoadCase } from './state.js';
 
 export const ANALYSIS_FORMAT = 'element-modeler-analysis';
@@ -167,10 +167,18 @@ export function buildAnalysisModel(state, options = {}) {
 
   const loads = state.loads.map((load, index) => convertLoad(state, load, index + 1));
 
-  const usedSectionNames = new Set(elements.map(e => e.sectionName).filter(Boolean));
+  const memberSectionKey = (type, name) =>
+    JSON.stringify([normalizeSectionType('member', type), name]);
+  const usedSectionKeys = new Set(
+    elements
+      .filter(element => element.sectionName)
+      .map(element => memberSectionKey(element.type, element.sectionName))
+  );
   const sections = state.sectionCatalog
-    .filter(s => s.target === 'member' && usedSectionNames.has(s.name))
-    .map(section => ({
+    .filter(section => section.target === 'member' &&
+      usedSectionKeys.has(memberSectionKey(section.type, section.name)))
+    .map((section, index) => ({
+      id: index + 1,
       name: section.name,
       type: section.type,
       material: section.material || 'steel',
@@ -179,6 +187,14 @@ export function buildAnalysisModel(state, options = {}) {
       ...rectangularSectionProperties(section),
       isDefault: !!section.isDefault,
     }));
+  const sectionIdByKey = new Map(
+    sections.map(section => [memberSectionKey(section.type, section.name), section.id])
+  );
+  for (const element of elements) {
+    element.sectionId = element.sectionName
+      ? (sectionIdByKey.get(memberSectionKey(element.type, element.sectionName)) ?? null)
+      : null;
+  }
 
   const usedMaterialNames = new Set([
     ...elements.map(element => element.material).filter(Boolean),
@@ -274,7 +290,7 @@ export function buildAnalysisModel(state, options = {}) {
     massSources: { ...analysisSettings.massSources },
     selfWeight: {
       mode: analysisSettings.selfWeightMode,
-      isDefault: isDefaultAnalysisSettings(analysisSettings),
+      isDefault: analysisSettings.selfWeightMode === 'fromDensity',
     },
     loadCombinations: state.loadCombinations.map(c => ({
       id: c.id,
@@ -340,19 +356,21 @@ export function buildAnalysisCSV(state, options = {}) {
     push('node', String(n.id), String(n.x), String(n.y), String(n.z));
   }
   push('element_header', 'id', 'type', 'node_i', 'node_j', 'section', 'material',
-    'b_mm', 'h_mm', 'end_i', 'end_j', 'roof_role', 'source_id', 'source_branch');
+    'b_mm', 'h_mm', 'end_i', 'end_j', 'roof_role', 'source_id', 'source_branch', 'section_id');
   for (const e of model.elements) {
     push('element', e.id, e.type, String(e.nodeI), String(e.nodeJ),
       e.sectionName || '', e.material,
       e.b === null ? '' : String(e.b), e.h === null ? '' : String(e.h),
-      endText(e.endI), endText(e.endJ), e.roofRole || '', e.sourceId, e.sourceBranch);
+      endText(e.endI), endText(e.endJ), e.roofRole || '', e.sourceId, e.sourceBranch,
+      e.sectionId ?? '');
   }
   push('sect_header', 'name', 'type', 'material', 'b_mm', 'h_mm', 'A_mm2', 'Iy_mm4', 'Iz_mm4', 'J_mm4', 'is_default',
-    'A_source', 'Iy_source', 'Iz_source', 'J_source');
+    'A_source', 'Iy_source', 'Iz_source', 'J_source', 'section_id');
   for (const s of model.sections) {
     push('sect', s.name, s.type, s.material, String(s.b ?? ''), String(s.h ?? ''),
       String(s.A), String(s.Iy), String(s.Iz), String(s.J), s.isDefault ? '1' : '0',
-      s.propertySource.A, s.propertySource.Iy, s.propertySource.Iz, s.propertySource.J);
+      s.propertySource.A, s.propertySource.Iy, s.propertySource.Iz, s.propertySource.J,
+      s.id);
   }
   push('material_header', 'name', 'E_N_mm2', 'G_N_mm2', 'density_kg_m3', 'is_default');
   for (const material of model.materials) {

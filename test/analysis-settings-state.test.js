@@ -83,3 +83,64 @@ test('materials cannot be removed while referenced by a member section', () => {
   });
   assert.equal(state.removeMaterial('in-use'), false);
 });
+
+test('CAD load rejects duplicate material definitions instead of silently overwriting values', () => {
+  const data = new AppState().toJSON();
+  data.materialCatalog.push({
+    name: 'steel', E: 210000, G: 80000, density: 7900, isDefault: false,
+  });
+
+  assert.throws(
+    () => new AppState().loadJSON(data),
+    /Duplicate material name: steel/
+  );
+});
+
+test('invalid embedded material rows do not discard an existing valid custom definition', () => {
+  const state = new AppState();
+  const existing = state.addMaterial({
+    name: 'keep-me', E: 123000, G: 47000, density: 4560,
+  });
+  const data = new AppState().toJSON();
+  data.materialCatalog.push({
+    name: 'keep-me', E: null, G: 47000, density: 4560, isDefault: false,
+  });
+
+  state.loadJSON(data);
+
+  assert.deepEqual(state.getMaterial('keep-me'), existing);
+});
+
+test('explicit invalid section dimensions and properties are rejected instead of using fallbacks', () => {
+  const state = new AppState();
+  assert.throws(
+    () => state.addSection({
+      target: 'member', type: 'beam', name: 'BAD_B', b: 0, h: 400,
+    }),
+    /Invalid section dimension b: BAD_B/
+  );
+  assert.throws(
+    () => state.addSection({
+      target: 'member', type: 'beam', name: 'BAD_A', b: 200, h: 400, A: -1,
+    }),
+    /Invalid section property A: BAD_A/
+  );
+
+  state.addSection({
+    target: 'member', type: 'beam', name: 'VALID', b: 200, h: 400, A: 80000,
+  });
+  assert.equal(state.updateSection('member', 'beam', 'VALID', { h: -1 }), null);
+  assert.equal(state.updateSection('member', 'beam', 'VALID', { A: 0 }), null);
+  assert.equal(state.getSection('member', 'beam', 'VALID').h, 400);
+  assert.equal(state.getSection('member', 'beam', 'VALID').A, 80000);
+
+  const data = new AppState().toJSON();
+  data.sectionCatalog.push({
+    target: 'member', type: 'beam', name: 'BAD_H', b: 200, h: 'invalid',
+  });
+  assert.throws(() => new AppState().loadJSON(data), /Invalid section dimension h: BAD_H/);
+
+  data.sectionCatalog.at(-1).h = 400;
+  data.sectionCatalog.at(-1).J = 'invalid';
+  assert.throws(() => new AppState().loadJSON(data), /Invalid section property J: BAD_H/);
+});

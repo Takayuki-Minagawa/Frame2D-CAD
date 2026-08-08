@@ -11,6 +11,7 @@ import {
   hydrateMaterialCatalog,
   hydrateSectionCatalog,
   hydrateSpringCatalog,
+  normalizeMaterialEntry,
 } from './section-catalog.js';
 import {
   createDefaultLevels,
@@ -196,7 +197,10 @@ export function loadModelJSON(state, data) {
   const prevCustomSprings = state.springCatalog.filter(s => !s.isDefault);
   const loadedMaterialNames = new Set(
     Array.isArray(data.materialCatalog)
-      ? data.materialCatalog.map(material => material?.name).filter(Boolean)
+      ? data.materialCatalog
+        .map(material => normalizeMaterialEntry(material))
+        .filter(Boolean)
+        .map(material => material.name)
       : []
   );
   state.materialCatalog = hydrateMaterialCatalog(data.materialCatalog);

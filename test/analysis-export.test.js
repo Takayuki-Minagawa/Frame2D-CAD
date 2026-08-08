@@ -187,9 +187,9 @@ test('buildAnalysisCSV renders node/element/section/support/load/combo sections'
   assert.match(csv, /\r\nmeta,warning_undefined_mass_sources,0,/);
   assert.match(csv, /\r\nunit,density,kg\/m3,/);
   assert.match(csv, /\r\nnode,1,/);
-  assert.match(csv, /\r\nelement_header,id,type,node_i,node_j,section,material,b_mm,h_mm,end_i,end_j,roof_role,source_id,source_branch/);
+  assert.match(csv, /\r\nelement_header,id,type,node_i,node_j,section,material,b_mm,h_mm,end_i,end_j,roof_role,source_id,source_branch,section_id/);
   assert.match(csv, /\r\nelement,3,beam,.*M3,primary/);
-  assert.match(csv, /\r\nsect_header,name,type,material,b_mm,h_mm,A_mm2,Iy_mm4,Iz_mm4,J_mm4,is_default,A_source,Iy_source,Iz_source,J_source/);
+  assert.match(csv, /\r\nsect_header,name,type,material,b_mm,h_mm,A_mm2,Iy_mm4,Iz_mm4,J_mm4,is_default,A_source,Iy_source,Iz_source,J_source,section_id/);
   assert.match(csv, /\r\nsect,_G,.*rectangle,rectangle,rectangle,rectangle/);
   assert.match(csv, /\r\nmaterial,steel,205000,79000,7850,1/);
   assert.match(csv, /\r\nspring_header,symbol,memo,kr_N_mm_rad,kt_N_mm/);
@@ -272,6 +272,62 @@ test('rectangle section properties match hand calculations and allow explicit ov
   });
 });
 
+test('section ids disambiguate equal names across member types and only used definitions export', () => {
+  const state = new AppState();
+  state.addSection({
+    target: 'member', type: 'beam', name: 'DUP', material: 'steel', b: 200, h: 400,
+  });
+  state.addSection({
+    target: 'member', type: 'column', name: 'DUP', material: 'rc', b: 300, h: 300,
+  });
+  const n1 = state.addNode(0, 0);
+  const n2 = state.addNode(4000, 0);
+  state.addMember(n1.id, n2.id, { type: 'beam', sectionName: 'DUP' });
+
+  let model = buildAnalysisModel(state);
+  assert.deepEqual(model.sections.map(section => [section.type, section.name]), [['beam', 'DUP']]);
+  assert.equal(model.elements[0].sectionId, model.sections[0].id);
+
+  const n3 = state.addNode(8000, 0);
+  state.addMember(n3.id, n3.id, {
+    type: 'column', sectionName: 'DUP', levelId: state.levels[0].id,
+    topLevelId: state.levels[1].id,
+  });
+  model = buildAnalysisModel(state);
+  const sectionsByType = new Map(model.sections.map(section => [section.type, section]));
+  assert.equal(sectionsByType.size, 2);
+  for (const element of model.elements) {
+    assert.equal(element.sectionId, sectionsByType.get(element.type).id);
+  }
+});
+
+test('section reference keys cannot collide when imported names contain separator characters', () => {
+  const state = new AppState();
+  const definitions = [
+    { type: 'beam\u0000X', name: 'Y' },
+    { type: 'beam', name: 'X\u0000Y' },
+  ];
+  definitions.forEach((definition, index) => {
+    state.addSection({
+      target: 'member', ...definition, material: 'steel', b: 200 + index, h: 400,
+    });
+    const n1 = state.addNode(index * 2000, 0);
+    const n2 = state.addNode(index * 2000 + 1000, 0);
+    state.addMember(n1.id, n2.id, {
+      type: definition.type, sectionName: definition.name,
+    });
+  });
+
+  const model = buildAnalysisModel(state);
+  assert.equal(model.sections.length, 2);
+  for (const element of model.elements) {
+    const section = model.sections.find(item =>
+      item.type === element.type && item.name === element.sectionName
+    );
+    assert.equal(element.sectionId, section.id);
+  }
+});
+
 test('used springs export stiffness and flag an undefined rotational value', () => {
   const state = new AppState();
   state.addSpring({ symbol: 'K1', kt: 500 });
@@ -301,8 +357,12 @@ test('mass-source defaults and overrides are exported with undefined detection',
   assert.deepEqual(model.selfWeight, { mode: 'fromDensity', isDefault: true });
   assert.equal(model.meta.warnings.undefinedMassSources, false);
 
+  state.updateAnalysisSettings({ massSources: { LL: 0.25 } });
+  model = buildAnalysisModel(state);
+  assert.deepEqual(model.selfWeight, { mode: 'fromDensity', isDefault: true });
+
   state.updateAnalysisSettings({
-    massSources: { LL: 0.25, WX: null },
+    massSources: { WX: null },
     selfWeightMode: 'includedInDL',
   });
   model = buildAnalysisModel(state);

@@ -78,6 +78,25 @@ export function normalizeCatalogSectionEntry(entry) {
   if (!type || !name) return null;
   const material = sanitizeText(entry.material) || (entry.target === 'member' ? 'steel' : '');
 
+  if (entry.target === 'member') {
+    for (const dimension of ['b', 'h']) {
+      if (!isValidOptionalPositiveNumber(entry[dimension])) {
+        throw new Error(`Invalid section dimension ${dimension}: ${name}`);
+      }
+    }
+    const rawProperties = {
+      A: entry.A ?? entry.area,
+      Iy: entry.Iy,
+      Iz: entry.Iz,
+      J: entry.J,
+    };
+    for (const [property, value] of Object.entries(rawProperties)) {
+      if (!isValidOptionalPositiveNumber(value)) {
+        throw new Error(`Invalid section property ${property}: ${name}`);
+      }
+    }
+  }
+
   const normalized = {
     target: entry.target,
     type,
@@ -120,6 +139,13 @@ export function normalizeMaterialEntry(entry) {
   const density = optionalPositiveNumber(entry.density ?? entry.rho);
   if (E === null || G === null || density === null) return null;
   return { name, E, G, density };
+}
+
+export function isValidOptionalPositiveNumber(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0;
 }
 
 export function isSameSectionDefinition(a, b) {
@@ -312,10 +338,15 @@ export function hydrateSpringCatalog(rawCatalog) {
 export function hydrateMaterialCatalog(rawCatalog) {
   const catalog = createDefaultMaterialCatalog();
   if (!Array.isArray(rawCatalog)) return catalog;
+  const loadedNames = new Set();
 
   for (const raw of rawCatalog) {
     const normalized = normalizeMaterialEntry(raw);
     if (!normalized) continue;
+    if (loadedNames.has(normalized.name)) {
+      throw new Error(`Duplicate material name: ${normalized.name}`);
+    }
+    loadedNames.add(normalized.name);
     const existingIndex = catalog.findIndex(material => material.name === normalized.name);
     if (existingIndex >= 0) {
       const defaultDefinition = DEFAULT_MATERIAL_DEFINITIONS.find(

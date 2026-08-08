@@ -44,6 +44,7 @@ import {
   DEFAULT_SECTION_NAME_SET,
   DEFAULT_SPRING_SYMBOL_SET,
   defaultColorForSection,
+  isValidOptionalPositiveNumber,
   isSameMaterialDefinition,
   normalizeCatalogSectionEntry,
   normalizeMaterialEntry,
@@ -494,6 +495,12 @@ export class AppState {
       s => s.target === target && s.type === normalizedType && s.name === name
     );
     if (!section || section.isDefault) return null;
+
+    if (target === 'member' && ['b', 'h', 'A', 'Iy', 'Iz', 'J'].some(property =>
+      hasOwn(props, property) && !isValidOptionalPositiveNumber(props[property])
+    )) {
+      return null;
+    }
 
     if (target === 'member') {
       if (hasOwn(props, 'material')) {

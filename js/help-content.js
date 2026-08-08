@@ -130,13 +130,13 @@ export const helpContentJa = `
 <h3>データ入出力</h3>
 <p>CADデータ（図面情報）とユーザー定義（材料・断面・バネ）は<b>別ファイルとしても分離管理</b>できます。</p>
 <table>
-  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。使用中のカスタムユーザー定義もCADファイルに含まれます（未使用の定義は含まれません）</td></tr>
+  <tr><td><b>CAD保存</b></td><td>ツールバーの「CAD保存」で図面データをJSONファイルとしてダウンロード。材料カタログは全件、断面・バネはデフォルト定義と使用中のカスタム定義を含みます</td></tr>
   <tr><td><b>CAD読込</b></td><td>ツールバーの「CAD読込」でJSONファイルを読み込み。既にメモリ上にあるカスタム定義は維持されます</td></tr>
   <tr><td><b>定義エクスポート</b></td><td>設定 → ユーザー定義 →「エクスポート」でカスタム定義を別ファイルに保存</td></tr>
   <tr><td><b>定義インポート</b></td><td>設定 → ユーザー定義 →「インポート」で別環境のカスタム定義を読み込み。CADファイルから読込済みの定義を含め、同名の定義はスキップされます</td></tr>
 </table>
 <p>定義インポート時、追加件数とスキップ件数が通知されます。断面定義・バネ定義にはメモ（説明テキスト）を付与できます。</p>
-<p>部材IDは内部管理用で、CADファイルには含まれません。旧バージョンで保存されたファイルも読み込めます。</p>
+<p>ノード・部材・面材・荷重・支点IDはCADファイルに保存され、読込後も保持されます。旧バージョンで保存されたファイルも読み込めます。</p>
 `;
 
 export const helpContentEn = `
@@ -270,13 +270,13 @@ export const helpContentEn = `
 <p>Use "Analysis Export Settings" to edit load-case mass factors and choose whether member self-weight is calculated from density or already included in DL.</p>
 <p>CAD data (drawing) and user definitions (materials/sections/springs) can also be <b>managed as separate files</b>.</p>
 <table>
-  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. Custom definitions in use are included in the CAD file (unused definitions are excluded)</td></tr>
+  <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. The complete material catalog plus default and in-use custom section/spring definitions are included</td></tr>
   <tr><td><b>Load CAD</b></td><td>Click "Load CAD" in the toolbar to load a JSON file. Existing custom definitions in memory are preserved</td></tr>
   <tr><td><b>Export Defs</b></td><td>Settings → User Definitions → "Export" to save custom definitions to a separate file</td></tr>
   <tr><td><b>Import Defs</b></td><td>Settings → User Definitions → "Import" to load custom definitions from another environment. Definitions with duplicate names (including those loaded from CAD files) are skipped</td></tr>
 </table>
 <p>When importing, the number of added and skipped items is shown. Section and spring definitions can include a memo (description text).</p>
-<p>Member IDs are internal and are not written to CAD files. Files saved with older versions can still be loaded.</p>
+<p>Node, member, surface, load, and support IDs are written to CAD files and preserved when reloaded. Files saved with older versions can still be loaded.</p>
 `;
 
 export function getHelpContent(lang) {
