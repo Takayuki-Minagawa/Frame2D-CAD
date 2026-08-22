@@ -322,7 +322,7 @@ const CSV_COLUMNS = 18;
 // convention as the quantity CSVs). Values use the same mm-N base system as
 // the JSON model.
 export function buildAnalysisCSV(state, options = {}) {
-  const model = buildAnalysisModel(state, options);
+  const model = options.model || buildAnalysisModel(state, options);
   const rows = [];
   const push = (...cells) => {
     while (cells.length < CSV_COLUMNS) cells.push('');

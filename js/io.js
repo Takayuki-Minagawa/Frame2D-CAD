@@ -156,14 +156,14 @@ export function exportQuantityDetailCSV(state) {
   downloadCsv(`${name}_quantity_details_${timestamp()}.csv`, buildQuantityDetailCSV(state));
 }
 
-export function exportAnalysisJSON(state) {
+export function exportAnalysisJSON(state, options = {}) {
   const name = state.meta?.name || 'lineframe';
-  downloadJson(`${name}_analysis_${timestamp()}.json`, buildAnalysisModel(state));
+  downloadJson(`${name}_analysis_${timestamp()}.json`, options.model || buildAnalysisModel(state));
 }
 
-export function exportAnalysisCSV(state) {
+export function exportAnalysisCSV(state, options = {}) {
   const name = state.meta?.name || 'lineframe';
-  downloadCsv(`${name}_analysis_${timestamp()}.csv`, buildAnalysisCSV(state));
+  downloadCsv(`${name}_analysis_${timestamp()}.csv`, buildAnalysisCSV(state, options));
 }
 
 export function exportDXF(state, options = {}) {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { AppState } from '../js/state.js';
 import { buildSampleModel, SAMPLE_IDS } from '../js/samples.js';
+import { buildAnalysisPreflight } from '../js/analysis-preflight.js';
 
 test('every sample model builds and loads cleanly', () => {
   for (const sampleId of SAMPLE_IDS) {
@@ -17,6 +18,7 @@ test('every sample model builds and loads cleanly', () => {
 
     const errors = state.validateModel().filter(issue => issue.severity === 'error');
     assert.deepEqual(errors, [], `${sampleId}: no model errors`);
+    assert.equal(buildAnalysisPreflight(state).canExport, true, `${sampleId}: passes analysis preflight`);
   }
 });
 

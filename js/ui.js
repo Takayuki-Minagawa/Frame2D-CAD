@@ -489,6 +489,32 @@ export class UI {
     `;
   }
 
+  renderAnalysisPreflight(preflight) {
+    const container = document.getElementById('model-check-content');
+    if (!container) return;
+    const summary = preflight.summary;
+    const summaryHtml = `<p class="quantity-note">${escapeHtml(t('analysisPreflightSummary', {
+      nodes: summary.nodes,
+      elements: summary.elements,
+      supports: summary.supports,
+      components: summary.components,
+    }))}</p>`;
+    if (!preflight.issues.length) {
+      container.innerHTML = `${summaryHtml}<p class="quantity-note">${escapeHtml(t('analysisPreflightPassed'))}</p>`;
+      return;
+    }
+    container.innerHTML = `${summaryHtml}
+      <ul class="model-check-list">
+        ${preflight.issues.map(item => `
+          <li class="model-check-item model-check-${escapeHtml(item.severity)}">
+            <b>${escapeHtml(t('modelCheck' + capitalize(item.severity)))}</b>
+            ${escapeHtml(t(item.messageKey, item.params))}
+          </li>
+        `).join('')}
+      </ul>
+    `;
+  }
+
   _updateMemberLayerHint() {
     const hint = document.getElementById('member-layer-hint');
     if (!hint) return;

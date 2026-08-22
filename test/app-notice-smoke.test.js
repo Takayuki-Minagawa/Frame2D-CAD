@@ -11,6 +11,9 @@ test('major app flows use notice/inline errors instead of alert dialogs', async 
     assert.doesNotMatch(source, /alert\(/);
   }
   assert.match(sources['app.js'], /showNotice\(/);
+  assert.match(sources['app.js'], /buildAnalysisPreflight\(state\)/);
+  assert.match(sources['app.js'], /if \(!preflight\.canExport\)/);
+  assert.match(sources['app.js'], /preflight\.summary\.warnings \? 'warning' : 'success'/);
   assert.match(sources['notice.js'], /export function showNotice\(/);
   assert.match(sources['user-def-modal.js'], /showUserDefFormError\(/);
   assert.match(sources['layer-modal.js'], /showLayerFormError\(/);

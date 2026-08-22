@@ -115,6 +115,7 @@ export const helpContentJa = `
 </ul>
 <p>材料には E・G・密度、線材断面には任意の A・Iy・Iz・J 上書き、バネには kr・kt を設定できます。断面特性の空欄は矩形 b×h から算定され、ばね kr の空欄は解析出力の警告になります。組み込み材料値は試行値なので解析前に確認してください。既定の断面・バネ（例: <code>_G</code>, <code>_C</code>, <code>_SP</code>）は編集・削除できません。</p>
 <p>ツールバーの「解析出力設定」では荷重ケース別の質量換算係数と、部材自重を密度から算定するかDLに含めるかを指定します。</p>
+<p>解析JSON/CSV出力の直前にはプリフライト検査を行います。元モデルの整合エラー、必須の材料・ばね・質量設定の未定義、線材要素ゼロ、または連結成分に未拘束の剛体運動がある場合は出力を中止し、結果をモデルチェック欄に表示します。支持条件の検査対象は構造全体の剛体6自由度であり、ソルバーによる剛性・内部機構の検査を代替するものではありません。</p>
 <p>「同グループ一覧」で現在のグループ定義を別画面で確認できます。</p>
 <p>「エクスポート」でユーザー定義をJSONファイルとしてダウンロード、「インポート」で別環境からユーザー定義を読み込めます。</p>
 
@@ -268,6 +269,7 @@ export const helpContentEn = `
 <h3>Data I/O</h3>
 <p>Materials define E, G, and density; member sections allow explicit A, Iy, Iz, and J overrides; springs allow kr and optional kt. Blank section properties are calculated as a rectangle b×h, while blank rotational spring stiffness is exported as a warning. Built-in material values are trial defaults and must be reviewed before analysis.</p>
 <p>Use "Analysis Export Settings" to edit load-case mass factors and choose whether member self-weight is calculated from density or already included in DL.</p>
+<p>Analysis JSON/CSV export runs a preflight check first. Export is stopped when the source model is inconsistent, required material/spring/mass properties are undefined, no member elements exist, or any disconnected component retains rigid-body motion. The restraint check covers the six whole-body degrees of freedom; it does not replace a solver stiffness or internal-mechanism check. Results are shown in Model Check.</p>
 <p>CAD data (drawing) and user definitions (materials/sections/springs) can also be <b>managed as separate files</b>.</p>
 <table>
   <tr><td><b>Save CAD</b></td><td>Click "Save CAD" in the toolbar to download drawing data as JSON. The complete material catalog plus default and in-use custom section/spring definitions are included</td></tr>

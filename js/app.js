@@ -37,6 +37,7 @@ import { initJoinSplitModal } from './join-split-modal.js';
 import { initAnalysisSettingsModal } from './analysis-settings-modal.js';
 import { clearAutosave, initAutosave, readAutosave } from './autosave.js';
 import { buildSampleModel } from './samples.js';
+import { buildAnalysisPreflight } from './analysis-preflight.js';
 
 // --- Initialize ---
 
@@ -349,14 +350,28 @@ document.getElementById('btn-quantity-detail-export')?.addEventListener('click',
   showNotice(t('quantityDetailCsvExported'), 'success');
 });
 
+function runAnalysisExport(exporter, successKey) {
+  const preflight = buildAnalysisPreflight(state);
+  ui.renderAnalysisPreflight(preflight);
+  if (!preflight.canExport) {
+    showNotice(t('analysisPreflightBlocked', { count: preflight.summary.errors }), 'error');
+    return;
+  }
+  exporter(state, { model: preflight.model });
+  showNotice(
+    preflight.summary.warnings
+      ? t('analysisExportedWithWarnings', { count: preflight.summary.warnings })
+      : t(successKey),
+    preflight.summary.warnings ? 'warning' : 'success'
+  );
+}
+
 document.getElementById('btn-analysis-export')?.addEventListener('click', () => {
-  exportAnalysisJSON(state);
-  showNotice(t('analysisExported'), 'success');
+  runAnalysisExport(exportAnalysisJSON, 'analysisExported');
 });
 
 document.getElementById('btn-analysis-csv-export')?.addEventListener('click', () => {
-  exportAnalysisCSV(state);
-  showNotice(t('analysisCsvExported'), 'success');
+  runAnalysisExport(exportAnalysisCSV, 'analysisCsvExported');
 });
 
 document.getElementById('btn-dxf-export')?.addEventListener('click', () => {
