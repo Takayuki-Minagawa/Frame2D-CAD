@@ -222,6 +222,9 @@ body.toolbar-collapsed #toolbar > * {
 .app-notice-success {
   border-left-color: #94e2d5;
 }
+.app-notice-warning {
+  border-left-color: #f9e2af;
+}
 
 /* Tool sub-options: hidden by default, shown when relevant tool is active */
 .tool-opts {

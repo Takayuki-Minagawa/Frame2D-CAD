@@ -362,7 +362,7 @@ function runAnalysisExport(exporter, successKey) {
     preflight.summary.warnings
       ? t('analysisExportedWithWarnings', { count: preflight.summary.warnings })
       : t(successKey),
-    preflight.summary.warnings ? 'error' : 'success'
+    preflight.summary.warnings ? 'warning' : 'success'
   );
 }
 

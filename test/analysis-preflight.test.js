@@ -122,6 +122,23 @@ test('undefined solver properties are export blockers', () => {
   assert.ok(codes.includes('undefined-mass-sources'));
 });
 
+test('undefined material and rotational spring properties are export blockers', () => {
+  const state = new AppState();
+  const member = addPlanBeam(state, 0, 0, 4000, 0);
+  member.material = 'missing-material';
+  member.endI = { condition: 'spring', springSymbol: '_SP' };
+  addSupport(state, 0, 0, {
+    dx: true, dy: true, dz: true, rx: true, ry: true, rz: true,
+  });
+
+  const report = buildAnalysisPreflight(state);
+  const codes = report.issues.map(issue => issue.code);
+
+  assert.equal(report.canExport, false);
+  assert.ok(codes.includes('undefined-materials'));
+  assert.ok(codes.includes('undefined-springs'));
+});
+
 test('supports disconnected from every member are reported as warnings', () => {
   const state = new AppState();
   addPlanBeam(state, 0, 0, 4000, 0);
@@ -136,4 +153,3 @@ test('supports disconnected from every member are reported as warnings', () => {
   assert.ok(report.issues.some(issue => issue.code === 'orphan-supports'));
   assert.equal(report.summary.warnings, 1);
 });
-
