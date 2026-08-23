@@ -662,6 +662,9 @@ body.property-collapsed #property-panel > * {
 .modal-settings {
   width: min(400px, 90vw);
 }
+[hidden] {
+  display: none !important;
+}
 .modal-user-def-list {
   width: min(920px, 96vw);
 }

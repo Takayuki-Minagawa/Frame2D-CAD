@@ -44,7 +44,6 @@ import {
   DEFAULT_SECTION_NAME_SET,
   DEFAULT_SPRING_SYMBOL_SET,
   defaultColorForSection,
-  isValidOptionalPositiveNumber,
   isSameMaterialDefinition,
   normalizeCatalogSectionEntry,
   normalizeMaterialEntry,
@@ -496,39 +495,39 @@ export class AppState {
     );
     if (!section || section.isDefault) return null;
 
-    if (target === 'member' && ['b', 'h', 'A', 'Iy', 'Iz', 'J'].some(property =>
-      hasOwn(props, property) && !isValidOptionalPositiveNumber(props[property])
-    )) {
-      return null;
-    }
-
     if (target === 'member') {
-      if (hasOwn(props, 'material')) {
-        section.material = sanitizeText(props.material) || section.material || 'steel';
-      }
-      if (hasOwn(props, 'b')) {
-        section.b = sanitizePositiveNumber(props.b, sanitizePositiveNumber(section.b, DEFAULT_SECTION_B_MM));
-      }
-      if (hasOwn(props, 'h')) {
-        section.h = sanitizePositiveNumber(props.h, sanitizePositiveNumber(section.h, DEFAULT_SECTION_H_MM));
-      }
-      for (const property of ['A', 'Iy', 'Iz', 'J']) {
-        if (hasOwn(props, property)) {
-          section[property] = sanitizeOptionalPositiveNumber(props[property]);
+      // Use the same complete normalizer as add/load. This keeps shape
+      // dimensions, effective shear-area ratios, and legacy b/h/property
+      // edits mutually consistent instead of applying field patches that can
+      // leave an invalid H or box section in the catalog.
+      const candidate = {
+        ...section,
+        ...props,
+        target: 'member',
+        type: normalizedType,
+        name: section.name,
+      };
+      for (const dimension of ['b', 'h']) {
+        if (hasOwn(props, dimension) && (props[dimension] === '' || props[dimension] === null || props[dimension] === undefined)) {
+          candidate[dimension] = section[dimension];
         }
       }
-      if (hasOwn(props, 'defaultEndI')) {
-        section.defaultEndI = this._normalizeMemberEnd(props.defaultEndI);
+      let normalized;
+      try {
+        normalized = normalizeCatalogSectionEntry(candidate);
+      } catch {
+        return null;
       }
-      if (hasOwn(props, 'defaultEndJ')) {
-        section.defaultEndJ = this._normalizeMemberEnd(props.defaultEndJ);
+      if (!normalized) return null;
+      Object.assign(section, normalized);
+      this._normalizeSectionEndDefaults(section);
+    } else {
+      if (hasOwn(props, 'color')) {
+        section.color = sanitizeColor(props.color, defaultColorForSection(target, normalizedType));
       }
-    }
-    if (hasOwn(props, 'color')) {
-      section.color = sanitizeColor(props.color, defaultColorForSection(target, normalizedType));
-    }
-    if (hasOwn(props, 'memo')) {
-      section.memo = sanitizeText(props.memo) || '';
+      if (hasOwn(props, 'memo')) {
+        section.memo = sanitizeText(props.memo) || '';
+      }
     }
 
     if (target === 'member') {

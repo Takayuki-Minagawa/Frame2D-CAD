@@ -35,6 +35,7 @@ export const DEFAULT_SECTION_NAME_SET = new Set(DEFAULT_SECTION_DEFINITIONS.map(
 export const DEFAULT_SPRING_SYMBOL_SET = new Set(DEFAULT_SPRING_DEFINITIONS.map(s => s.symbol));
 export const DEFAULT_MATERIAL_NAME_SET = new Set(DEFAULT_MATERIAL_DEFINITIONS.map(m => m.name));
 export const END_FIXITIES = new Set(['pin', 'rigid', 'spring']);
+export const SECTION_SHAPES = new Set(['rectangle', 'hSection', 'boxSection']);
 export const MEMBER_SECTION_TYPE_ALIAS = {
   brace: 'hbrace',
 };
@@ -52,10 +53,22 @@ export function normalizeSectionType(target, type) {
   return type;
 }
 
+export function normalizeSectionShape(value) {
+  return SECTION_SHAPES.has(value) ? value : 'rectangle';
+}
+
 export function createDefaultSectionCatalog() {
   return DEFAULT_SECTION_DEFINITIONS.map(s => ({
     ...s,
     type: MEMBER_SECTION_TYPE_ALIAS[s.type] || s.type,
+    ...(s.target === 'member' ? {
+      shape: 'rectangle',
+      flangeThickness: null,
+      webThickness: null,
+      boxThickness: null,
+      shearAreaRatioY: null,
+      shearAreaRatioZ: null,
+    } : {}),
     defaultEndI: s.defaultEndI ? { ...s.defaultEndI } : undefined,
     defaultEndJ: s.defaultEndJ ? { ...s.defaultEndJ } : undefined,
   }));
@@ -78,6 +91,7 @@ export function normalizeCatalogSectionEntry(entry) {
   if (!type || !name) return null;
   const material = sanitizeText(entry.material) || (entry.target === 'member' ? 'steel' : '');
 
+  let memberShape = null;
   if (entry.target === 'member') {
     for (const dimension of ['b', 'h']) {
       if (!isValidOptionalPositiveNumber(entry[dimension])) {
@@ -95,6 +109,14 @@ export function normalizeCatalogSectionEntry(entry) {
         throw new Error(`Invalid section property ${property}: ${name}`);
       }
     }
+    for (const ratio of ['shearAreaRatioY', 'shearAreaRatioZ']) {
+      if (!isValidOptionalRatio(entry[ratio])) {
+        throw new Error(`Invalid shear area ratio ${ratio}: ${name}`);
+      }
+    }
+    const b = sanitizePositiveNumber(entry.b, DEFAULT_SECTION_B_MM);
+    const h = sanitizePositiveNumber(entry.h, DEFAULT_SECTION_H_MM);
+    memberShape = normalizeMemberShape(entry, b, h, name);
   }
 
   const normalized = {
@@ -112,6 +134,12 @@ export function normalizeCatalogSectionEntry(entry) {
     normalized.Iy = optionalPositiveNumber(entry.Iy);
     normalized.Iz = optionalPositiveNumber(entry.Iz);
     normalized.J = optionalPositiveNumber(entry.J);
+    normalized.shape = memberShape.shape;
+    normalized.flangeThickness = memberShape.flangeThickness;
+    normalized.webThickness = memberShape.webThickness;
+    normalized.boxThickness = memberShape.boxThickness;
+    normalized.shearAreaRatioY = optionalRatio(entry.shearAreaRatioY);
+    normalized.shearAreaRatioZ = optionalRatio(entry.shearAreaRatioZ);
     normalized.defaultEndI = normalizeSectionDefaultEnd(entry.defaultEndI || entry.endI);
     normalized.defaultEndJ = normalizeSectionDefaultEnd(entry.defaultEndJ || entry.endJ);
   }
@@ -148,6 +176,49 @@ export function isValidOptionalPositiveNumber(value) {
   return Number.isFinite(number) && number > 0;
 }
 
+export function isValidOptionalRatio(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === 'string' && value.trim() === '') return true;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 && number <= 1;
+}
+
+export function optionalRatio(value) {
+  return isValidOptionalRatio(value) && value !== null && value !== undefined &&
+    !(typeof value === 'string' && value.trim() === '')
+    ? Number(value)
+    : null;
+}
+
+function normalizeMemberShape(entry, b, h, name) {
+  const shape = normalizeSectionShape(entry.shape);
+  if (shape === 'rectangle') {
+    return { shape, flangeThickness: null, webThickness: null, boxThickness: null };
+  }
+
+  const dimensionFields = shape === 'hSection'
+    ? [['flangeThickness', entry.flangeThickness ?? entry.tf], ['webThickness', entry.webThickness ?? entry.tw]]
+    : [['boxThickness', entry.boxThickness ?? entry.t]];
+  const dimensions = {};
+  for (const [field, value] of dimensionFields) {
+    if (!isValidOptionalPositiveNumber(value) || optionalPositiveNumber(value) === null) {
+      throw new Error(`Invalid section shape dimension ${field}: ${name}`);
+    }
+    dimensions[field] = optionalPositiveNumber(value);
+  }
+
+  if (shape === 'hSection') {
+    if (2 * dimensions.flangeThickness >= h || dimensions.webThickness >= b) {
+      throw new Error(`Invalid H-section proportions: ${name}`);
+    }
+    return { shape, ...dimensions, boxThickness: null };
+  }
+  if (2 * dimensions.boxThickness >= Math.min(b, h)) {
+    throw new Error(`Invalid box-section proportions: ${name}`);
+  }
+  return { shape, flangeThickness: null, webThickness: null, ...dimensions };
+}
+
 export function isSameSectionDefinition(a, b) {
   return a.target === b.target &&
     (MEMBER_SECTION_TYPE_ALIAS[a.type] || a.type) === (MEMBER_SECTION_TYPE_ALIAS[b.type] || b.type) &&
@@ -158,10 +229,16 @@ export function isSameSectionDefinition(a, b) {
     (a.target !== 'member' || (
       sanitizePositiveNumber(a.b, DEFAULT_SECTION_B_MM) === sanitizePositiveNumber(b.b, DEFAULT_SECTION_B_MM) &&
       sanitizePositiveNumber(a.h, DEFAULT_SECTION_H_MM) === sanitizePositiveNumber(b.h, DEFAULT_SECTION_H_MM) &&
+      normalizeSectionShape(a.shape) === normalizeSectionShape(b.shape) &&
+      optionalPositiveNumber(a.flangeThickness) === optionalPositiveNumber(b.flangeThickness) &&
+      optionalPositiveNumber(a.webThickness) === optionalPositiveNumber(b.webThickness) &&
+      optionalPositiveNumber(a.boxThickness) === optionalPositiveNumber(b.boxThickness) &&
       optionalPositiveNumber(a.A) === optionalPositiveNumber(b.A) &&
       optionalPositiveNumber(a.Iy) === optionalPositiveNumber(b.Iy) &&
       optionalPositiveNumber(a.Iz) === optionalPositiveNumber(b.Iz) &&
       optionalPositiveNumber(a.J) === optionalPositiveNumber(b.J) &&
+      optionalRatio(a.shearAreaRatioY) === optionalRatio(b.shearAreaRatioY) &&
+      optionalRatio(a.shearAreaRatioZ) === optionalRatio(b.shearAreaRatioZ) &&
       isSameMemberEnd(a.defaultEndI, b.defaultEndI) &&
       isSameMemberEnd(a.defaultEndJ, b.defaultEndJ)
     ));
@@ -179,30 +256,73 @@ export function isSameMaterialDefinition(a, b) {
     Number(a.G) === Number(b.G) && Number(a.density) === Number(b.density);
 }
 
-// Rectangle properties in the CAD mm-N system. Iy/Iz follow the conventional
-// centroidal axes for dimensions b/h. J uses the Saint-Venant approximation
-// for a solid rectangle (a >= t), which is substantially more appropriate for
-// torsion than the polar second moment.
-export function rectangularSectionProperties(section) {
+// Calculates gross section properties in the CAD mm-N system. Iy follows the
+// strong axis for the displayed b (width) / h (depth) convention. H-section
+// fillets and welded corner radii are intentionally ignored. The box-section
+// torsional constant uses the standard thin-walled closed-section median-line
+// approximation, which is appropriate for typical steel RHS/box members.
+export function calculateSectionPropertiesFromShape(section) {
   const b = sanitizePositiveNumber(section?.b, DEFAULT_SECTION_B_MM);
   const h = sanitizePositiveNumber(section?.h, DEFAULT_SECTION_H_MM);
+  const shape = normalizeSectionShape(section?.shape);
+
+  if (shape === 'hSection') {
+    const tf = optionalPositiveNumber(section?.flangeThickness);
+    const tw = optionalPositiveNumber(section?.webThickness);
+    if (tf === null || tw === null || 2 * tf >= h || tw >= b) return null;
+    const webHeight = h - 2 * tf;
+    return {
+      A: 2 * b * tf + webHeight * tw,
+      Iy: (b * h ** 3 - (b - tw) * webHeight ** 3) / 12,
+      Iz: 2 * (tf * b ** 3 / 12) + webHeight * tw ** 3 / 12,
+      J: (2 * b * tf ** 3 + webHeight * tw ** 3) / 3,
+    };
+  }
+
+  if (shape === 'boxSection') {
+    const t = optionalPositiveNumber(section?.boxThickness);
+    if (t === null || 2 * t >= Math.min(b, h)) return null;
+    const innerB = b - 2 * t;
+    const innerH = h - 2 * t;
+    const medianB = b - t;
+    const medianH = h - t;
+    return {
+      A: b * h - innerB * innerH,
+      Iy: (b * h ** 3 - innerB * innerH ** 3) / 12,
+      Iz: (h * b ** 3 - innerH * innerB ** 3) / 12,
+      J: 2 * t * medianB ** 2 * medianH ** 2 / (medianB + medianH),
+    };
+  }
+
   const a = Math.max(b, h);
   const t = Math.min(b, h);
   const ratio = t / a;
-  const calculated = {
+  return {
     A: b * h,
     Iy: b * h ** 3 / 12,
     Iz: h * b ** 3 / 12,
     J: a * t ** 3 * (1 / 3 - 0.21 * ratio * (1 - ratio ** 4 / 12)),
   };
+}
+
+export function sectionProperties(section) {
+  const calculated = calculateSectionPropertiesFromShape(section);
+  if (!calculated) return null;
+  const shape = normalizeSectionShape(section?.shape);
   const properties = {};
   const propertySource = {};
   for (const key of ['A', 'Iy', 'Iz', 'J']) {
     const explicit = optionalPositiveNumber(section?.[key]);
     properties[key] = explicit ?? calculated[key];
-    propertySource[key] = explicit === null ? 'rectangle' : 'explicit';
+    propertySource[key] = explicit === null ? shape : 'explicit';
   }
   return { ...properties, propertySource };
+}
+
+// Kept as a backwards-compatible public name for callers introduced before
+// H/box shape support. It now resolves the configured section shape.
+export function rectangularSectionProperties(section) {
+  return sectionProperties(section);
 }
 
 export function cloneSection(section) {

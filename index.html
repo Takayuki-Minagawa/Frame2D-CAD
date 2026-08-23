@@ -526,12 +526,34 @@
               <input id="user-def-h" type="number" min="1" step="1" value="100">
             </div>
           </div>
+          <div id="user-def-shape-group" class="settings-group">
+            <label for="user-def-shape" data-i18n="userDefSectionShape">断面形状</label>
+            <select id="user-def-shape">
+              <option value="rectangle" data-i18n="userDefShapeRectangle">矩形</option>
+              <option value="hSection" data-i18n="userDefShapeHSection">H形鋼</option>
+              <option value="boxSection" data-i18n="userDefShapeBoxSection">ボックス断面</option>
+            </select>
+          </div>
+          <div id="user-def-h-shape-group" class="prop-row" hidden>
+            <div class="settings-group settings-group-grow">
+              <label for="user-def-flange-thickness" data-i18n="userDefFlangeThickness">フランジ厚 tf (mm)</label>
+              <input id="user-def-flange-thickness" type="number" min="0.001" step="any" placeholder="12">
+            </div>
+            <div class="settings-group settings-group-grow">
+              <label for="user-def-web-thickness" data-i18n="userDefWebThickness">ウェブ厚 tw (mm)</label>
+              <input id="user-def-web-thickness" type="number" min="0.001" step="any" placeholder="8">
+            </div>
+          </div>
+          <div id="user-def-box-shape-group" class="settings-group" hidden>
+            <label for="user-def-box-thickness" data-i18n="userDefBoxThickness">板厚 t (mm)</label>
+            <input id="user-def-box-thickness" type="number" min="0.001" step="any" placeholder="9">
+          </div>
           <div id="user-def-section-material-group" class="settings-group">
             <label data-i18n="userDefMaterialName">材料</label>
             <select id="user-def-section-material"></select>
           </div>
           <div id="user-def-properties-group">
-            <p class="quantity-note" data-i18n="userDefSectionPropertyHint">空欄は矩形 b×h から算定します。</p>
+            <p class="quantity-note" data-i18n="userDefSectionPropertyHint">空欄は選択した形状から算定します。計算結果は整数で入力されます。</p>
             <div class="prop-row">
               <div class="settings-group settings-group-grow">
                 <label data-i18n="userDefAreaA">A (mm²)</label>
@@ -550,6 +572,20 @@
               <div class="settings-group settings-group-grow">
                 <label data-i18n="userDefJ">J (mm⁴)</label>
                 <input id="user-def-J" type="number" min="0" step="any" placeholder="auto">
+              </div>
+            </div>
+            <button type="button" id="btn-user-def-calculate-properties" class="support-preset-btn" data-i18n="userDefCalculateProperties">形状から性能を計算</button>
+          </div>
+          <div id="user-def-shear-area-ratio-group">
+            <p class="quantity-note" data-i18n="userDefShearAreaRatioHint">せん断用断面積の比率を 0 より大きく 1 以下の小数で入力します。空欄は未定義です。</p>
+            <div class="prop-row">
+              <div class="settings-group settings-group-grow">
+                <label for="user-def-shear-area-ratio-y" data-i18n="userDefShearAreaRatioY">せん断面積比 Ay/A</label>
+                <input id="user-def-shear-area-ratio-y" type="number" min="0" max="1" step="any" placeholder="0.8">
+              </div>
+              <div class="settings-group settings-group-grow">
+                <label for="user-def-shear-area-ratio-z" data-i18n="userDefShearAreaRatioZ">せん断面積比 Az/A</label>
+                <input id="user-def-shear-area-ratio-z" type="number" min="0" max="1" step="any" placeholder="0.8">
               </div>
             </div>
           </div>

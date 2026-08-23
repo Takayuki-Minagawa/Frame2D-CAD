@@ -27,17 +27,25 @@ test('analysis export settings UI exposes mass factors and self-weight mode', as
 });
 
 test('user definition UI exposes material, section-property, and spring-stiffness inputs', async () => {
-  const [html, source] = await Promise.all([
+  const [html, source, css] = await Promise.all([
     readProjectFile('index.html'),
     readProjectFile('js/user-def-modal.js'),
+    readProjectFile('style.css'),
   ]);
 
   for (const id of [
     'user-def-section-material',
+    'user-def-shape',
+    'user-def-flange-thickness',
+    'user-def-web-thickness',
+    'user-def-box-thickness',
     'user-def-A',
     'user-def-Iy',
     'user-def-Iz',
     'user-def-J',
+    'btn-user-def-calculate-properties',
+    'user-def-shear-area-ratio-y',
+    'user-def-shear-area-ratio-z',
     'user-def-kr',
     'user-def-kt',
     'user-def-material-name',
@@ -51,4 +59,9 @@ test('user definition UI exposes material, section-property, and spring-stiffnes
   assert.match(source, /state\.updateMaterial/);
   assert.match(source, /state\.updateSpring\(symbol, \{ kr:/);
   assert.match(source, /patch\[property\] = result\.value/);
+  assert.match(source, /calculateSectionPropertiesFromShape/);
+  assert.match(source, /Math\.round\(value\)/);
+  assert.match(html, /id="user-def-shear-area-ratio-y"[^>]*step="any"/);
+  assert.match(html, /id="user-def-shear-area-ratio-z"[^>]*step="any"/);
+  assert.match(css, /\[hidden\]\s*\{\s*display: none !important;/);
 });
