@@ -83,6 +83,7 @@ mm-N 系の値を持ちます。
 | E、G | `N/mm2` |
 | 密度 | `kg/m3` |
 | A | `mm2` |
+| Ay、Az | `mm2` |
 | Iy、Iz、J | `mm4` |
 | 回転ばね kr | `N*mm/rad` |
 | 並進ばね kt | `N/mm` |
@@ -105,17 +106,43 @@ mm-N 系の値を持ちます。
 `isDefault: false` です。未登録材料を参照する既存モデルでは E/G/density を
 `null` とし、材料名を `undefinedMaterialNames` に列挙します。
 
-`sections` は既存の `b` / `h` に加え、`A` / `Iy` / `Iz` / `J` を持ちます。
-明示値がないフィールドは、矩形断面として次のように算定します。
+`sections` は `shape`、形状寸法、せん断用断面積比と、`A` / `Iy` / `Iz` / `J` を持ちます。
+`shape` は `rectangle`、`hSection`、`boxSection` のいずれかです。明示値がない
+断面特性は、選択した形状から算定します。H形鋼のフィレット、ボックス断面の
+溶接・角Rは含めません。
+
+矩形断面（`shape: "rectangle"`）は次の式です。
 
 - `A = b h`
 - `Iy = b h³ / 12`
 - `Iz = h b³ / 12`
 - `J = a t³ {1/3 - 0.21(t/a)[1 - (t/a)⁴/12]}`、`a=max(b,h)`、`t=min(b,h)`
 
-各フィールドの `propertySource` は `rectangle` または `explicit` です。
-H形鋼などはユーザー定義の明示入力値で上書きしてください。明示された b/h または
-A/Iy/Iz/J が0以下・非数値の場合は、既定値や矩形値へ置換せず読込を拒否します。
+H形鋼（`shape: "hSection"`）では、`flangeThickness=tf`、`webThickness=tw`、
+`hw=h-2tf` として、次の式を用います。
+
+- `A = 2 b tf + hw tw`
+- `Iy = {b h³ - (b-tw) hw³} / 12`
+- `Iz = 2(tf b³ / 12) + hw tw³ / 12`
+- `J = {2 b tf³ + hw tw³} / 3`
+
+ボックス断面（`shape: "boxSection"`）では、`boxThickness=t`、
+`bi=b-2t`、`hi=h-2t` として、次の式を用います。
+
+- `A = b h - bi hi`
+- `Iy = {b h³ - bi hi³} / 12`
+- `Iz = {h b³ - hi bi³} / 12`
+- `J = 2t(b-t)²(h-t)² / {b+h-2t}`（薄肉閉断面の近似）
+
+`shearAreaRatioY` と `shearAreaRatioZ` は 0 より大きく 1 以下の小数で、
+それぞれ `Ay = A × shearAreaRatioY`、`Az = A × shearAreaRatioZ` を表します。
+未入力時は比率と `Ay` / `Az` を `null` とします。`propertySource` は
+`rectangle`、`hSection`、`boxSection`、または `explicit` です。明示された b/h、
+形状寸法、A/Iy/Iz/J、せん断面積比が不正な場合は読込を拒否します。
+
+CSV の `sect_header` / `sect` 行では、従来列の後ろに `shape`、
+`flange_thickness_mm`、`web_thickness_mm`、`box_thickness_mm`、
+`shear_area_ratio_y`、`shear_area_ratio_z`、`Ay_mm2`、`Az_mm2` を出力します。
 
 ## ばね
 

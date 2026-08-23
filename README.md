@@ -236,7 +236,7 @@ app.js ─┬─ state.js      Data model (AppState)
 
 ```json
 {
-  "schemaVersion": 12,
+  "schemaVersion": 13,
   "meta": {
     "name": "sample",
     "unit": "mm",
@@ -322,7 +322,7 @@ app.js ─┬─ state.js      Data model (AppState)
 }
 ```
 
-- `materialCatalog` には E・G・密度、`sectionCatalog` には任意の A・Iy・Iz・J 上書き、`springCatalog` には kr・kt が含まれます
+- `materialCatalog` には E・G・密度、`sectionCatalog` には断面形状（矩形・H形鋼・ボックス）、形状寸法、任意の A・Iy・Iz・J 上書き、せん断用断面積比 Ay/A・Az/A、`springCatalog` には kr・kt が含まれます
 - `materialCatalog` は未使用のカスタム材料も含む全件を保存します
 - `sectionCatalog` / `springCatalog` にはデフォルト定義＋使用中のカスタム定義が含まれます（未使用のカスタム定義は含まれません）
 - 断面定義には `memo`（説明テキスト）フィールドが含まれます
@@ -342,7 +342,7 @@ app.js ─┬─ state.js      Data model (AppState)
     { "name": "project-steel", "E": 200000, "G": 77000, "density": 7800, "isDefault": false }
   ],
   "sections": [
-    { "target": "member", "type": "beam", "name": "B300x500", "material": "steel", "b": 300, "h": 500, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "SP1" } }
+    { "target": "member", "type": "beam", "name": "H300x150", "material": "steel", "b": 150, "h": 300, "shape": "hSection", "flangeThickness": 9, "webThickness": 6, "shearAreaRatioY": 0.8, "shearAreaRatioZ": 0.6, "color": "#123456", "memo": "カスタム梁", "defaultEndI": { "condition": "rigid", "springSymbol": null }, "defaultEndJ": { "condition": "spring", "springSymbol": "SP1" } }
   ],
   "springs": [
     { "symbol": "SP1", "kr": 500000, "kt": null, "memo": "カスタムバネ" }
@@ -358,11 +358,11 @@ app.js ─┬─ state.js      Data model (AppState)
 `version` を正とします。
 
 v2には generator・生成日時・右手系/Z鉛直・節点順・単位宣言、E/G/密度、
-A/Iy/Iz/J、ばねkr/kt、荷重ケース別の質量換算係数、自重の二重計上防止モードが
+A/Iy/Iz/J、断面形状（矩形・H形鋼・ボックス断面）、せん断用断面積比 Ay/A・Az/A、ばねkr/kt、荷重ケース別の質量換算係数、自重の二重計上防止モードが
 含まれます。組み込み物性と質量係数は試行値であり、設計適合値ではありません。
 解析前に「解析出力設定」と「ユーザー定義」で確認してください。
 
-詳細なフィールド、矩形断面の算定式、警告ゲート、v1との差分は
+詳細なフィールド、断面形状の算定式、警告ゲート、v1との差分は
 [解析エクスポート v2 仕様](docs/analysis-export-v2.md)を参照してください。
 
 ## Getting Started

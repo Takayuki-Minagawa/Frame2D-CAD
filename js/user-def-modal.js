@@ -8,6 +8,7 @@ import { t } from './i18n.js';
 import { escapeHtml, markInputInvalid, clearInputInvalid } from './dom-utils.js';
 import { showNotice } from './notice.js';
 import { exportUserDefs, importUserDefs } from './io.js';
+import { calculateSectionPropertiesFromShape, normalizeSectionShape } from './section-catalog.js';
 
 const END_CONDITIONS = ['pin', 'rigid', 'spring'];
 const BUILT_IN_MATERIAL_NAMES = new Set(['steel', 'rc', 'wood']);
@@ -24,6 +25,16 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
   const userDefSectionMaterialGroup = document.getElementById('user-def-section-material-group');
   const userDefSectionMaterialSelect = document.getElementById('user-def-section-material');
   const userDefPropertiesGroup = document.getElementById('user-def-properties-group');
+  const userDefShapeGroup = document.getElementById('user-def-shape-group');
+  const userDefShapeSelect = document.getElementById('user-def-shape');
+  const userDefHShapeGroup = document.getElementById('user-def-h-shape-group');
+  const userDefBoxShapeGroup = document.getElementById('user-def-box-shape-group');
+  const userDefFlangeThicknessInput = document.getElementById('user-def-flange-thickness');
+  const userDefWebThicknessInput = document.getElementById('user-def-web-thickness');
+  const userDefBoxThicknessInput = document.getElementById('user-def-box-thickness');
+  const userDefShearAreaRatioGroup = document.getElementById('user-def-shear-area-ratio-group');
+  const userDefShearAreaRatioYInput = document.getElementById('user-def-shear-area-ratio-y');
+  const userDefShearAreaRatioZInput = document.getElementById('user-def-shear-area-ratio-z');
   const userDefNameInput = document.getElementById('user-def-name');
   const userDefColorInput = document.getElementById('user-def-color');
   const userDefBInput = document.getElementById('user-def-b');
@@ -66,6 +77,11 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     clearInputInvalid(userDefNameInput);
     clearInputInvalid(userDefBInput);
     clearInputInvalid(userDefHInput);
+    clearInputInvalid(userDefFlangeThicknessInput);
+    clearInputInvalid(userDefWebThicknessInput);
+    clearInputInvalid(userDefBoxThicknessInput);
+    clearInputInvalid(userDefShearAreaRatioYInput);
+    clearInputInvalid(userDefShearAreaRatioZInput);
     clearInputInvalid(userDefSymbolInput);
     clearInputInvalid(userDefKrInput);
     clearInputInvalid(userDefKtInput);
@@ -124,11 +140,20 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     if (userDefMaterialGroup) userDefMaterialGroup.hidden = kind !== 'material';
     const isMemberSection = isSection && userDefTargetSelect?.value === 'member';
     if (userDefSizeGroup) userDefSizeGroup.style.display = isMemberSection ? 'flex' : 'none';
+    if (userDefShapeGroup) userDefShapeGroup.style.display = isMemberSection ? '' : 'none';
     if (userDefSectionMaterialGroup) userDefSectionMaterialGroup.style.display = isMemberSection ? '' : 'none';
     if (userDefPropertiesGroup) userDefPropertiesGroup.style.display = isMemberSection ? '' : 'none';
+    if (userDefShearAreaRatioGroup) userDefShearAreaRatioGroup.style.display = isMemberSection ? '' : 'none';
     if (userDefEndPresetGroup) userDefEndPresetGroup.style.display = isMemberSection ? 'flex' : 'none';
+    refreshUserDefShapeVisibility(isMemberSection);
     refreshMaterialSelectOptions();
     refreshUserDefEndSpringVisibility();
+  }
+
+  function refreshUserDefShapeVisibility(isMemberSection = userDefTargetSelect?.value === 'member') {
+    const shape = normalizeSectionShape(userDefShapeSelect?.value);
+    if (userDefHShapeGroup) userDefHShapeGroup.hidden = !isMemberSection || shape !== 'hSection';
+    if (userDefBoxShapeGroup) userDefBoxShapeGroup.hidden = !isMemberSection || shape !== 'boxSection';
   }
 
   function refreshMaterialSelectOptions(selectedName = '') {
@@ -164,8 +189,15 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     if (target === 'member') {
       if (userDefBInput) userDefBInput.value = String(section?.b || 200);
       if (userDefHInput) userDefHInput.value = String(section?.h || 400);
+      if (userDefShapeSelect) userDefShapeSelect.value = normalizeSectionShape(section?.shape);
+      if (userDefFlangeThicknessInput) userDefFlangeThicknessInput.value = section?.flangeThickness ?? '';
+      if (userDefWebThicknessInput) userDefWebThicknessInput.value = section?.webThickness ?? '';
+      if (userDefBoxThicknessInput) userDefBoxThicknessInput.value = section?.boxThickness ?? '';
+      if (userDefShearAreaRatioYInput) userDefShearAreaRatioYInput.value = section?.shearAreaRatioY ?? '';
+      if (userDefShearAreaRatioZInput) userDefShearAreaRatioZInput.value = section?.shearAreaRatioZ ?? '';
       refreshMaterialSelectOptions(section?.material || 'steel');
       setUserDefEndPresetInputs(section?.defaultEndI, section?.defaultEndJ);
+      refreshUserDefShapeVisibility();
     }
   }
 
@@ -279,6 +311,49 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       : { valid: false, value: null };
   }
 
+  function readOptionalRatioInput(input) {
+    const raw = input?.value?.trim() || '';
+    if (raw === '') return { valid: true, value: null };
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 && value <= 1
+      ? { valid: true, value }
+      : { valid: false, value: null };
+  }
+
+  function readSectionShapeInputs({ shapeSelect, flangeThicknessInput, webThicknessInput, boxThicknessInput }) {
+    const shape = normalizeSectionShape(shapeSelect?.value);
+    const values = {
+      shape,
+      flangeThickness: null,
+      webThickness: null,
+      boxThickness: null,
+    };
+    const requiredInputs = shape === 'hSection'
+      ? [['flangeThickness', flangeThicknessInput], ['webThickness', webThicknessInput]]
+      : (shape === 'boxSection' ? [['boxThickness', boxThicknessInput]] : []);
+    for (const [field, input] of requiredInputs) {
+      const result = readOptionalPositiveInput(input);
+      if (!result.valid || result.value === null) return { valid: false, input, value: values };
+      values[field] = result.value;
+    }
+    return { valid: true, input: null, value: values };
+  }
+
+  function calculatedIntegerProperties(section) {
+    const calculated = calculateSectionPropertiesFromShape(section);
+    if (!calculated) return null;
+    return Object.fromEntries(
+      Object.entries(calculated).map(([property, value]) => [property, Math.round(value)])
+    );
+  }
+
+  function applyCalculatedProperties(properties, inputs) {
+    for (const property of ['A', 'Iy', 'Iz', 'J']) {
+      const input = inputs[property];
+      if (input) input.value = String(properties[property]);
+    }
+  }
+
   // --- Form actions ---
 
   function resetUserDefForm() {
@@ -318,6 +393,38 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     userDefModal.classList.remove('visible');
   }
 
+  function calculateUserDefSectionProperties() {
+    clearUserDefFormError();
+    const b = readRequiredPositiveInput(userDefBInput);
+    const h = readRequiredPositiveInput(userDefHInput);
+    if (!b.valid || !h.valid) {
+      showUserDefFormError(t('userDefInvalidSize'), !b.valid ? userDefBInput : userDefHInput);
+      if (!b.valid && !h.valid) markInputInvalid(userDefHInput);
+      return;
+    }
+    const shape = readSectionShapeInputs({
+      shapeSelect: userDefShapeSelect,
+      flangeThicknessInput: userDefFlangeThicknessInput,
+      webThicknessInput: userDefWebThicknessInput,
+      boxThicknessInput: userDefBoxThicknessInput,
+    });
+    if (!shape.valid) {
+      showUserDefFormError(t('userDefInvalidShape'), shape.input);
+      return;
+    }
+    const properties = calculatedIntegerProperties({ b: b.value, h: h.value, ...shape.value });
+    if (!properties) {
+      showUserDefFormError(t('userDefInvalidShape'), shape.input || userDefShapeSelect);
+      return;
+    }
+    applyCalculatedProperties(properties, {
+      A: userDefAInput,
+      Iy: userDefIyInput,
+      Iz: userDefIzInput,
+      J: userDefJInput,
+    });
+  }
+
   function addUserDefinition() {
     clearUserDefFormError();
     const kind = userDefKindSelect?.value || 'section';
@@ -334,11 +441,21 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       const color = userDefColorInput?.value || '';
       const sectionMemo = userDefSectionMemoInput?.value?.trim() || '';
       if (target === 'member') {
-        const b = parseFloat(userDefBInput?.value || '');
-        const h = parseFloat(userDefHInput?.value || '');
-        if (!(Number.isFinite(b) && b > 0 && Number.isFinite(h) && h > 0)) {
+        const b = readRequiredPositiveInput(userDefBInput);
+        const h = readRequiredPositiveInput(userDefHInput);
+        if (!b.valid || !h.valid) {
           showUserDefFormError(t('userDefInvalidSize'), userDefBInput);
           markInputInvalid(userDefHInput);
+          return;
+        }
+        const shape = readSectionShapeInputs({
+          shapeSelect: userDefShapeSelect,
+          flangeThicknessInput: userDefFlangeThicknessInput,
+          webThicknessInput: userDefWebThicknessInput,
+          boxThicknessInput: userDefBoxThicknessInput,
+        });
+        if (!shape.valid || !calculateSectionPropertiesFromShape({ b: b.value, h: h.value, ...shape.value })) {
+          showUserDefFormError(t('userDefInvalidShape'), shape.input || userDefShapeSelect);
           return;
         }
         const propertyInputs = {
@@ -356,14 +473,26 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
           }
           properties[property] = result.value;
         }
+        const shearAreaRatioY = readOptionalRatioInput(userDefShearAreaRatioYInput);
+        const shearAreaRatioZ = readOptionalRatioInput(userDefShearAreaRatioZInput);
+        if (!shearAreaRatioY.valid || !shearAreaRatioZ.valid) {
+          showUserDefFormError(
+            t('userDefInvalidShearAreaRatio'),
+            !shearAreaRatioY.valid ? userDefShearAreaRatioYInput : userDefShearAreaRatioZInput
+          );
+          return;
+        }
         added = state.addSection({
           target,
           type,
           name,
-          b,
-          h,
+          b: b.value,
+          h: h.value,
           material: userDefSectionMaterialSelect?.value || 'steel',
+          ...shape.value,
           ...properties,
+          shearAreaRatioY: shearAreaRatioY.value,
+          shearAreaRatioZ: shearAreaRatioZ.value,
           color,
           memo: sectionMemo,
           defaultEndI: readEndPreset(userDefEndIConditionSelect, userDefEndISpringSelect),
@@ -444,9 +573,10 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     return item.isDefault ? t('userDefDefaultFlag') : t('userDefCustomFlag');
   }
 
-  function renderActionsCell(item, { saveAction, removeAction, keyAttr, key }) {
+  function renderActionsCell(item, { saveAction, removeAction, keyAttr, key, calculateAction = null }) {
     if (item.isDefault) return '-';
     return `<div class="user-def-table-actions">
+      ${calculateAction ? `<button type="button" class="user-def-table-btn" data-action="${calculateAction}" ${keyAttr}="${escapeHtml(key)}">${t('userDefCalculateProperties')}</button>` : ''}
       <button type="button" class="user-def-table-btn" data-action="${saveAction}" ${keyAttr}="${escapeHtml(key)}">${t('userDefUpdate')}</button>
       <button type="button" class="user-def-table-btn" data-action="${removeAction}" ${keyAttr}="${escapeHtml(key)}">${t('userDefDelete')}</button>
     </div>`;
@@ -463,6 +593,33 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     const value = item[field];
     if (!editable) return Number.isFinite(value) ? String(value) : '-';
     return `<input type="number" class="user-def-table-input" data-field="${field}" min="0" step="any" value="${Number.isFinite(value) ? value : ''}" placeholder="auto">`;
+  }
+
+  function renderShapeOptions(selectedShape) {
+    const shape = normalizeSectionShape(selectedShape);
+    return [
+      ['rectangle', t('userDefShapeRectangle')],
+      ['hSection', t('userDefShapeHSection')],
+      ['boxSection', t('userDefShapeBoxSection')],
+    ].map(([value, label]) =>
+      `<option value="${value}" ${value === shape ? 'selected' : ''}>${escapeHtml(label)}</option>`
+    ).join('');
+  }
+
+  function renderShapeCell(section) {
+    const shape = normalizeSectionShape(section.shape);
+    if (section.isDefault) {
+      return escapeHtml(t(shape === 'hSection' ? 'userDefShapeHSection' : (
+        shape === 'boxSection' ? 'userDefShapeBoxSection' : 'userDefShapeRectangle'
+      )));
+    }
+    return `<select class="user-def-table-input" data-field="shape">${renderShapeOptions(shape)}</select>`;
+  }
+
+  function renderOptionalRatioCell(item, field) {
+    const value = item[field];
+    if (item.isDefault) return Number.isFinite(value) ? String(value) : '-';
+    return `<input type="number" class="user-def-table-input" data-field="${field}" min="0" max="1" step="any" value="${Number.isFinite(value) ? value : ''}" placeholder="-">`;
   }
 
   function renderRequiredNumberCell(item, field) {
@@ -511,11 +668,17 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       columns.push(
         { header: t('userDefListColB'), cell: s => renderSizeCell(s, 'b') },
         { header: t('userDefListColH'), cell: s => renderSizeCell(s, 'h') },
+        { header: t('userDefListColShape'), cell: renderShapeCell },
+        { header: t('userDefListColFlangeThickness'), cell: s => renderOptionalNumberCell(s, 'flangeThickness') },
+        { header: t('userDefListColWebThickness'), cell: s => renderOptionalNumberCell(s, 'webThickness') },
+        { header: t('userDefListColBoxThickness'), cell: s => renderOptionalNumberCell(s, 'boxThickness') },
         { header: t('userDefListColMaterial'), cell: renderMaterialSelectCell },
         { header: 'A', cell: s => renderOptionalNumberCell(s, 'A') },
         { header: 'Iy', cell: s => renderOptionalNumberCell(s, 'Iy') },
         { header: 'Iz', cell: s => renderOptionalNumberCell(s, 'Iz') },
         { header: 'J', cell: s => renderOptionalNumberCell(s, 'J') },
+        { header: t('userDefListColShearAreaRatioY'), cell: s => renderOptionalRatioCell(s, 'shearAreaRatioY') },
+        { header: t('userDefListColShearAreaRatioZ'), cell: s => renderOptionalRatioCell(s, 'shearAreaRatioZ') },
         { header: t('userDefListColEndI'), cell: s => renderEndPresetCell(s.defaultEndI, 'defaultEndI', !s.isDefault, springDefs) },
         { header: t('userDefListColEndJ'), cell: s => renderEndPresetCell(s.defaultEndJ, 'defaultEndJ', !s.isDefault, springDefs) },
       );
@@ -529,6 +692,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
         cell: s => renderActionsCell(s, {
           saveAction: 'save-section',
           removeAction: 'remove-section',
+          calculateAction: hasSize ? 'calculate-section-row' : null,
           keyAttr: 'data-name',
           key: s.name,
         }),
@@ -637,6 +801,18 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
       }
       patch.b = b;
       patch.h = h;
+      const shape = readSectionShapeInputs({
+        shapeSelect: row.querySelector('[data-field="shape"]'),
+        flangeThicknessInput: row.querySelector('[data-field="flangeThickness"]'),
+        webThicknessInput: row.querySelector('[data-field="webThickness"]'),
+        boxThicknessInput: row.querySelector('[data-field="boxThickness"]'),
+      });
+      if (!shape.valid || !calculateSectionPropertiesFromShape({ b, h, ...shape.value })) {
+        markInputInvalid(shape.input || row.querySelector('[data-field="shape"]'));
+        showNotice(t('userDefInvalidShape'), 'error');
+        return;
+      }
+      Object.assign(patch, shape.value);
       patch.material = row.querySelector('[data-field="material"]')?.value || 'steel';
       for (const property of ['A', 'Iy', 'Iz', 'J']) {
         const input = row.querySelector(`[data-field="${property}"]`);
@@ -647,6 +823,16 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
           return;
         }
         patch[property] = result.value;
+      }
+      for (const ratio of ['shearAreaRatioY', 'shearAreaRatioZ']) {
+        const input = row.querySelector(`[data-field="${ratio}"]`);
+        const result = readOptionalRatioInput(input);
+        if (!result.valid) {
+          markInputInvalid(input);
+          showNotice(t('userDefInvalidShearAreaRatio'), 'error');
+          return;
+        }
+        patch[ratio] = result.value;
       }
       patch.defaultEndI = readRowEndPreset(row, 'defaultEndI');
       patch.defaultEndJ = readRowEndPreset(row, 'defaultEndJ');
@@ -660,6 +846,40 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     showNotice(t('userDefUpdated') || t('userDefUpdate'), 'success');
     onModelChange();
     renderUserDefGroupList();
+  }
+
+  function calculateSectionRow(btn) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    const bInput = row.querySelector('[data-field="b"]');
+    const hInput = row.querySelector('[data-field="h"]');
+    const b = readRequiredPositiveInput(bInput);
+    const h = readRequiredPositiveInput(hInput);
+    if (!b.valid || !h.valid) {
+      markInputInvalid(!b.valid ? bInput : hInput);
+      showNotice(t('userDefInvalidSize'), 'error');
+      return;
+    }
+    const shape = readSectionShapeInputs({
+      shapeSelect: row.querySelector('[data-field="shape"]'),
+      flangeThicknessInput: row.querySelector('[data-field="flangeThickness"]'),
+      webThicknessInput: row.querySelector('[data-field="webThickness"]'),
+      boxThicknessInput: row.querySelector('[data-field="boxThickness"]'),
+    });
+    const properties = shape.valid
+      ? calculatedIntegerProperties({ b: b.value, h: h.value, ...shape.value })
+      : null;
+    if (!properties) {
+      markInputInvalid(shape.input || row.querySelector('[data-field="shape"]'));
+      showNotice(t('userDefInvalidShape'), 'error');
+      return;
+    }
+    applyCalculatedProperties(properties, {
+      A: row.querySelector('[data-field="A"]'),
+      Iy: row.querySelector('[data-field="Iy"]'),
+      Iz: row.querySelector('[data-field="Iz"]'),
+      J: row.querySelector('[data-field="J"]'),
+    });
   }
 
   function saveSpringRow(btn) {
@@ -777,6 +997,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
 
   document.getElementById('btn-user-def-close').addEventListener('click', hideUserDefModal);
   document.getElementById('btn-user-def-add').addEventListener('click', addUserDefinition);
+  document.getElementById('btn-user-def-calculate-properties')?.addEventListener('click', calculateUserDefSectionProperties);
   document.getElementById('btn-user-def-list').addEventListener('click', showUserDefListModal);
   document.getElementById('btn-user-def-list-close').addEventListener('click', hideUserDefListModal);
 
@@ -838,6 +1059,10 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     applyUserDefDefaultSectionValues();
     if (userDefListModal?.classList.contains('visible')) renderUserDefGroupList();
   });
+  if (userDefShapeSelect) userDefShapeSelect.addEventListener('change', () => {
+    clearUserDefFormError();
+    refreshUserDefShapeVisibility();
+  });
   if (userDefEndIConditionSelect) userDefEndIConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
   if (userDefEndJConditionSelect) userDefEndJConditionSelect.addEventListener('change', refreshUserDefEndSpringVisibility);
 
@@ -855,6 +1080,7 @@ export function initUserDefModal({ state, onModelChange, refreshDraftSectionSele
     const btn = event.target.closest('button[data-action]');
     if (!btn) return;
     switch (btn.dataset.action) {
+      case 'calculate-section-row': calculateSectionRow(btn); break;
       case 'save-section': saveSectionRow(btn); break;
       case 'save-spring': saveSpringRow(btn); break;
       case 'save-material': saveMaterialRow(btn); break;
