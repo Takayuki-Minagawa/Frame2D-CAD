@@ -91,6 +91,13 @@ test('shape inputs and shear-area ratios validate on add and update', () => {
     }),
     /Invalid shear area ratio shearAreaRatioY: BAD_RATIO/
   );
+  assert.throws(
+    () => state.addSection({
+      target: 'member', type: 'beam', name: 'BAD_SHAPE', b: 150, h: 300,
+      shape: 'hSeccion', flangeThickness: 9, webThickness: 6,
+    }),
+    /Invalid section shape: BAD_SHAPE/
+  );
 
   state.addSection({
     target: 'member', type: 'beam', name: 'VALID_H', b: 150, h: 300,
@@ -102,6 +109,24 @@ test('shape inputs and shear-area ratios validate on add and update', () => {
   const saved = state.getSection('member', 'beam', 'VALID_H');
   assert.equal(saved.webThickness, 6);
   assert.equal(saved.shearAreaRatioY, 0.75);
+});
+
+test('missing legacy shape remains rectangular, but unknown stored shapes are rejected', () => {
+  const state = new AppState();
+  const legacy = state.addSection({
+    target: 'member', type: 'beam', name: 'LEGACY_RECT', b: 150, h: 300,
+  });
+  assert.equal(legacy.shape, 'rectangle');
+
+  const data = new AppState().toJSON();
+  data.sectionCatalog.push({
+    target: 'member', type: 'beam', name: 'BAD_SHAPE_LOAD', b: 150, h: 300,
+    shape: 'hSeccion', flangeThickness: 9, webThickness: 6,
+  });
+  assert.throws(
+    () => new AppState().loadJSON(data),
+    /Invalid section shape: BAD_SHAPE_LOAD/
+  );
 });
 
 test('shape definitions and decimal shear-area ratios survive CAD export/import and analysis CSV export', () => {

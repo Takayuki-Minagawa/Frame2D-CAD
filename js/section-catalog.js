@@ -191,6 +191,9 @@ export function optionalRatio(value) {
 }
 
 function normalizeMemberShape(entry, b, h, name) {
+  if (hasDeclaredSectionShape(entry.shape) && !SECTION_SHAPES.has(entry.shape)) {
+    throw new Error(`Invalid section shape: ${name}`);
+  }
   const shape = normalizeSectionShape(entry.shape);
   if (shape === 'rectangle') {
     return { shape, flangeThickness: null, webThickness: null, boxThickness: null };
@@ -217,6 +220,11 @@ function normalizeMemberShape(entry, b, h, name) {
     throw new Error(`Invalid box-section proportions: ${name}`);
   }
   return { shape, flangeThickness: null, webThickness: null, ...dimensions };
+}
+
+function hasDeclaredSectionShape(value) {
+  return value !== null && value !== undefined &&
+    !(typeof value === 'string' && value.trim() === '');
 }
 
 export function isSameSectionDefinition(a, b) {
