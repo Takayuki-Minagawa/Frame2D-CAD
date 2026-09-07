@@ -2,6 +2,7 @@
 
 import { buildAnalysisCSV, buildAnalysisModel } from './analysis-export.js';
 import { buildDXF, parseDXF } from './dxf.js';
+import { applyModelImport } from './persistence/model-import.js';
 import {
   computeMemberLengthM,
   computeQuantitySummary,
@@ -207,8 +208,7 @@ export function importJSON(file, state, history) {
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        history.save();
-        state.loadJSON(data);
+        applyModelImport(data, state, history);
         resolve(data);
       } catch (err) {
         reject(err);

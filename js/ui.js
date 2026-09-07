@@ -1,24 +1,21 @@
+import { executeModelMutation } from './commands/model-command.js';
+import { renderDiagnostics } from './ui/diagnostics.js';
+import { memberProperties } from './ui/properties/member.js';
+import { surfaceProperties } from './ui/properties/surface.js';
+import { loadProperties } from './ui/properties/load.js';
+import { supportProperties } from './ui/properties/support.js';
 // ui.js - UI controls (toolbar, property panel, status bar)
 
 import { t, getLang } from './i18n.js';
 import { escapeHtml, markInputInvalid, clearInputInvalid } from './dom-utils.js';
-import { resolveMemberColor, roofRoleLabelKey } from './element-style.js';
-import { isGableWallSurfaceType, isSlopedSurfaceType, isWallSurfaceType, normalizeGridSize } from './state.js';
-import {
-  DEFAULT_EAVE_DEPTH_MM,
-  DEFAULT_RAFTER_SPACING_MM,
-  DEFAULT_ROOF_GROUP_ID,
-  LOAD_CASES,
-  MODEL_CHECK_DISPLAY_LIMIT,
-  ZOOM_PERCENT_FACTOR,
-} from './constants.js';
+import { roofRoleLabelKey } from './element-style.js';
+import { isSlopedSurfaceType, isWallSurfaceType, normalizeGridSize } from './state.js';
+import { DEFAULT_ROOF_GROUP_ID, ZOOM_PERCENT_FACTOR } from './constants.js';
 import {
   computeMemberLengthM,
   computeQuantitySummary,
   computeSurfaceSeismicWeightN,
-  computeSurfaceWeightAreaM2,
   computeSurfaceWindProjectionM2,
-  resolveSurfaceVerticalRange,
 } from './quantities.js';
 
 export class UI {
@@ -468,51 +465,54 @@ export class UI {
   }
 
   renderModelCheck() {
-    const container = document.getElementById('model-check-content');
-    if (!container) return;
-    const issues = this.state.validateModel();
-    if (!issues.length) {
-      container.innerHTML = `<p class="quantity-note">${t('modelCheckNoIssues')}</p>`;
-      return;
-    }
-    const limit = MODEL_CHECK_DISPLAY_LIMIT;
-    container.innerHTML = `
-      <ul class="model-check-list">
-        ${issues.slice(0, limit).map(issue => `
-          <li class="model-check-item model-check-${escapeHtml(issue.severity)}">
-            <b>${escapeHtml(t('modelCheck' + capitalize(issue.severity)))}</b>
-            ${escapeHtml(issue.message)}
-          </li>
-        `).join('')}
-      </ul>
-      ${issues.length > limit ? `<p class="quantity-note">${escapeHtml(t('modelCheckMore', { count: issues.length - limit }))}</p>` : ''}
-    `;
+    this._diagnosticSource = 'model';
+    renderDiagnostics(this, this.state.validateModel());
   }
 
   renderAnalysisPreflight(preflight) {
-    const container = document.getElementById('model-check-content');
-    if (!container) return;
+    this._diagnosticSource = 'preflight';
+    this._diagnosticPreflight = preflight;
     const summary = preflight.summary;
-    const summaryHtml = `<p class="quantity-note">${escapeHtml(t('analysisPreflightSummary', {
-      nodes: summary.nodes,
-      elements: summary.elements,
-      supports: summary.supports,
-      components: summary.components,
-    }))}</p>`;
-    if (!preflight.issues.length) {
-      container.innerHTML = `${summaryHtml}<p class="quantity-note">${escapeHtml(t('analysisPreflightPassed'))}</p>`;
+    renderDiagnostics(this, preflight.issues, '<p class="quantity-note">' +
+      escapeHtml(t('analysisPreflightSummary', summary)) + '</p>');
+  }
+
+  setDiagnosticFilters(filters = {}) {
+    this._diagnosticFilters = { ...(this._diagnosticFilters || { severity: 'all', elementType: 'all' }), ...filters };
+    renderDiagnostics(this, this._diagnosticIssues || [], this._diagnosticSummaryHtml || '');
+    this.callbacks.onDiagnosticFilterChange?.({ ...this._diagnosticFilters });
+  }
+
+  _runModelChange(mutate) {
+    if (this._modelCommandActive) return mutate();
+    this._modelCommandActive = true;
+    const effects = this._modelCommandEffects = [];
+    let outcome;
+    try {
+      outcome = this.callbacks.onModelCommand
+        ? this.callbacks.onModelCommand(mutate)
+        : executeModelMutation(this.state, mutate);
+    } finally {
+      this._modelCommandActive = false;
+      this._modelCommandEffects = null;
+    }
+    // History and normalized no-op revisions must be settled before the parent
+    // updates renderers, quantities or cached controls. Failed commands discard
+    // their effects; nested handlers share the outer command's ordered queue.
+    for (const effect of effects) effect();
+    return outcome;
+  }
+
+  _afterModelChange(effect) {
+    if (this._modelCommandActive) {
+      this._modelCommandEffects.push(effect);
       return;
     }
-    container.innerHTML = `${summaryHtml}
-      <ul class="model-check-list">
-        ${preflight.issues.map(item => `
-          <li class="model-check-item model-check-${escapeHtml(item.severity)}">
-            <b>${escapeHtml(t('modelCheck' + capitalize(item.severity)))}</b>
-            ${escapeHtml(t(item.messageKey, item.params))}
-          </li>
-        `).join('')}
-      </ul>
-    `;
+    return effect();
+  }
+
+  _notifyPropertyChange(...args) {
+    return this._afterModelChange(() => this.callbacks.onPropertyChange?.(...args));
   }
 
   _updateMemberLayerHint() {
@@ -535,6 +535,12 @@ export class UI {
 
   updatePropertyPanel() {
     this.refreshQuantitySummary();
+    const key = JSON.stringify([this.state.revision, getLang(), this.state.activeLevelId,
+      this.state.selectedNodeId, this.state.selectedMemberId, this.state.selectedMemberIds,
+      this.state.selectedSurfaceId, this.state.selectedLoadId, this.state.selectedSupportId]);
+    if (this._propertyPanelState === this.state && this._propertyPanelKey === key) return;
+    this._propertyPanelState = this.state;
+    this._propertyPanelKey = key;
     const container = document.getElementById('prop-content');
 
     if (this.state.selectedSupportId) {
@@ -571,159 +577,8 @@ export class UI {
 
   // Batch panel shown when 2+ members are selected: summary, batch section
   // change and the copy/transform operations (mirror / rotate / array).
-  _renderMultiMemberProperties(container) {
-    const members = this.state.selectedMemberIds
-      .map(id => this.state.getMember(id))
-      .filter(Boolean);
-    if (!members.length) {
-      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
-      return;
-    }
-
-    const typeCounts = new Map();
-    for (const m of members) {
-      typeCounts.set(m.type, (typeCounts.get(m.type) || 0) + 1);
-    }
-    const summary = [...typeCounts.entries()]
-      .map(([type, count]) => `${t(type)}: ${count}`)
-      .join(' / ');
-    const types = [...typeCounts.keys()];
-    const firstType = types[0];
-    const typeOptions = types
-      .map(type => `<option value="${escapeHtml(type)}">${escapeHtml(t(type))}</option>`)
-      .join('');
-
-    container.innerHTML = `
-      <div class="prop-group">
-        <label>${t('multiSelectCount')}</label>
-        <input type="text" value="${members.length} (${escapeHtml(summary)})" disabled>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-join-members">${t('joinMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('multiSectionApply')}</label>
-        <div class="prop-row">
-          <div class="prop-group">
-            <select id="batch-member-type">${typeOptions}</select>
-          </div>
-          <div class="prop-group">
-            <select id="batch-section-name"></select>
-          </div>
-        </div>
-        <button type="button" class="support-preset-btn" id="btn-batch-apply-section">${t('multiApply')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('multiMirror')}</label>
-        <div class="prop-row">
-          <div class="prop-group">
-            <select id="batch-mirror-axis">
-              <option value="x">${t('mirrorAxisX')}</option>
-              <option value="y">${t('mirrorAxisY')}</option>
-            </select>
-          </div>
-          <div class="prop-group">
-            <input type="number" id="batch-mirror-coord" value="0" step="100" title="${escapeHtml(t('mirrorCoordHint'))}">
-          </div>
-        </div>
-        <button type="button" class="support-preset-btn" id="btn-batch-mirror">${t('multiMirrorRun')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('multiRotate')}</label>
-        <select id="batch-rotate-angle">
-          <option value="90">90°</option>
-          <option value="180">180°</option>
-          <option value="270">270°</option>
-        </select>
-        <button type="button" class="support-preset-btn" id="btn-batch-rotate">${t('multiRotateRun')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('multiArray')}</label>
-        <div class="prop-row">
-          <div class="prop-group"><label>dX (mm)</label><input type="number" id="batch-array-dx" value="${this.state.settings.gridSize || 1000}" step="100"></div>
-          <div class="prop-group"><label>dY (mm)</label><input type="number" id="batch-array-dy" value="0" step="100"></div>
-        </div>
-        <div class="prop-group">
-          <label>${t('multiArrayCount')}</label>
-          <input type="number" id="batch-array-count" value="1" min="1" max="100" step="1">
-        </div>
-        <button type="button" class="support-preset-btn" id="btn-batch-array">${t('multiArrayRun')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-batch-delete">${t('multiDelete')}</button>
-      </div>
-    `;
-
-    const typeSel = document.getElementById('batch-member-type');
-    const sectionSel = document.getElementById('batch-section-name');
-    const fillSections = () => {
-      const sections = this.state.listSections('member', typeSel.value || firstType);
-      sectionSel.innerHTML = sections
-        .map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`)
-        .join('');
-    };
-    fillSections();
-    typeSel.addEventListener('change', fillSections);
-
-    const selectedIds = () => this.state.selectedMemberIds.slice();
-    const runBatch = fn => {
-      this.callbacks.onBeforeBigChange?.();
-      fn();
-      this.callbacks.onPropertyChange?.();
-    };
-
-    document.getElementById('btn-join-members')?.addEventListener('click', () => {
-      this.callbacks.onJoinMembers?.(selectedIds());
-    });
-
-    document.getElementById('btn-batch-apply-section')?.addEventListener('click', () => {
-      const type = typeSel.value;
-      const sectionName = sectionSel.value;
-      if (!sectionName) return;
-      runBatch(() => {
-        for (const id of selectedIds()) {
-          const member = this.state.getMember(id);
-          if (member && member.type === type) {
-            this.state.updateMember(id, { sectionName });
-          }
-        }
-      });
-    });
-
-    document.getElementById('btn-batch-mirror')?.addEventListener('click', () => {
-      const axis = document.getElementById('batch-mirror-axis')?.value === 'y' ? 'y' : 'x';
-      const coord = parseFloat(document.getElementById('batch-mirror-coord')?.value) || 0;
-      runBatch(() => {
-        const created = this.state.mirrorMembers(selectedIds(), { axis, coord });
-        this.state.selectMembers(created.map(m => m.id));
-      });
-    });
-
-    document.getElementById('btn-batch-rotate')?.addEventListener('click', () => {
-      const angle = parseInt(document.getElementById('batch-rotate-angle')?.value, 10) || 90;
-      runBatch(() => {
-        this.state.rotateMembers(selectedIds(), { angle });
-      });
-    });
-
-    document.getElementById('btn-batch-array')?.addEventListener('click', () => {
-      const dx = parseFloat(document.getElementById('batch-array-dx')?.value) || 0;
-      const dy = parseFloat(document.getElementById('batch-array-dy')?.value) || 0;
-      const count = parseInt(document.getElementById('batch-array-count')?.value, 10) || 1;
-      if (dx === 0 && dy === 0) return;
-      runBatch(() => {
-        this.state.arrayCopyMembers(selectedIds(), { dx, dy, count });
-      });
-    });
-
-    document.getElementById('btn-batch-delete')?.addEventListener('click', () => {
-      runBatch(() => {
-        for (const id of selectedIds()) {
-          this.state.removeMember(id);
-        }
-        this.state.clearSelection();
-      });
-    });
+  _renderMultiMemberProperties(...args) {
+    return memberProperties._renderMultiMemberProperties.apply(this, args);
   }
 
   // Shared property-input binder used by every _renderXxxProperties method.
@@ -735,878 +590,66 @@ export class UI {
     if (!el) return;
     el.addEventListener('change', () => {
       const raw = (checkbox || el.type === 'checkbox') ? el.checked : el.value;
-      applyFn(transform(raw, el));
+      this._runModelChange(() => applyFn(transform(raw, el)));
     });
   }
 
-  _renderMemberProperties(container, member) {
-    const isColumn = member.type === 'column';
-    const isVBrace = member.type === 'vbrace';
-    const hasTopLevel = isColumn || isVBrace;
-    const n1 = this.state.getNode(member.startNodeId);
-    const n2 = this.state.getNode(member.endNodeId);
-    const sectionDefs = this.state.listSections('member', member.type);
-    const springDefs = this.state.listSprings();
-
-    let lengthDisplay;
-    if (isColumn) {
-      const bottomLevel = this.state.levels.find(l => l.id === member.levelId);
-      const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
-      lengthDisplay = (bottomLevel && topLevel) ? `${Math.abs(topLevel.z - bottomLevel.z)} mm` : '?';
-    } else {
-      const dz = member.geometryMode === 'explicit3d'
-        ? (Number(member.endZ || 0) - Number(member.startZ || 0))
-        : 0;
-      const len = n1 && n2 ? Math.round(Math.hypot(n2.x - n1.x, n2.y - n1.y, dz)) : '?';
-      lengthDisplay = `${len} mm`;
-    }
-
-    const sectionOptions = sectionDefs.length > 0
-      ? sectionDefs.map(s =>
-        `<option value="${escapeHtml(s.name)}" ${s.name === member.sectionName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
-      ).join('')
-      : `<option value="${escapeHtml(member.sectionName || '')}" selected>${escapeHtml(member.sectionName || '-')}</option>`;
-
-    const iEnd = member.endI || { condition: 'rigid', springSymbol: null };
-    const jEnd = member.endJ || { condition: 'rigid', springSymbol: null };
-    const typeLabel = t(member.type);
-    const level = this.state.levels.find(l => l.id === member.levelId);
-    const levelLabel = level ? `${level.name} (z=${level.z})` : member.levelId;
-    const topLevel = this.state.levels.find(l => l.id === member.topLevelId);
-    const topLevelLabel = topLevel ? `${topLevel.name} (z=${topLevel.z})` : (member.topLevelId || '-');
-    const bracePatternLabel = member.bracePattern === 'cross' ? t('braceCross') : t('braceSingle');
-    const springOptionsI = springDefs.map(s =>
-      `<option value="${escapeHtml(s.symbol)}" ${s.symbol === iEnd.springSymbol ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
-    ).join('');
-    const springOptionsJ = springDefs.map(s =>
-      `<option value="${escapeHtml(s.symbol)}" ${s.symbol === jEnd.springSymbol ? 'selected' : ''}>${escapeHtml(s.symbol)}</option>`
-    ).join('');
-
-    container.innerHTML = `
-      <div class="prop-group">
-        <label>${t('propType')}</label>
-        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propSection')}</label>
-        <select id="prop-section-name">${sectionOptions}</select>
-        <button type="button" id="prop-apply-draft-section" class="prop-inline-btn" title="${escapeHtml(t('applyAsDraftHint'))}">${escapeHtml(t('applyAsDraft'))}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('propLayer')}</label>
-        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
-      </div>
-      ${hasTopLevel ? `
-      <div class="prop-group">
-        <label>${t('topLayer')}</label>
-        <input type="text" value="${escapeHtml(topLevelLabel)}" disabled>
-      </div>
-      ` : ''}
-      ${isVBrace ? `
-      <div class="prop-group">
-        <label>${t('bracePattern')}</label>
-        <input type="text" value="${escapeHtml(bracePatternLabel)}" disabled>
-      </div>
-      ` : ''}
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('propWidthB')}</label>
-          <input type="text" value="${member.section.b}" disabled>
-        </div>
-        <div class="prop-group">
-          <label>${t('propHeightH')}</label>
-          <input type="text" value="${member.section.h}" disabled>
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('propEndI')} (${t('propStartPoint')})</label>
-        <div class="prop-row">
-          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-start-x" value="${n1 ? Math.round(n1.x) : 0}" step="100"></div>
-          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-start-y" value="${n1 ? Math.round(n1.y) : 0}" step="100"></div>
-        </div>
-        <select id="prop-endi-condition">
-          <option value="pin" ${iEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
-          <option value="rigid" ${iEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
-          <option value="spring" ${iEnd.condition === 'spring' ? 'selected' : ''}>${t('endSpring')}</option>
-        </select>
-      </div>
-      ${iEnd.condition === 'spring' ? `
-      <div class="prop-group">
-        <label>${t('propSpringSymbol')}</label>
-        <select id="prop-endi-spring">${springOptionsI}</select>
-      </div>
-      ` : ''}
-      <div class="prop-group">
-        <label>${t('propEndJ')} (${t('propEndPoint')})</label>
-        <div class="prop-row">
-          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-end-x" value="${n2 ? Math.round(n2.x) : 0}" step="100"></div>
-          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-end-y" value="${n2 ? Math.round(n2.y) : 0}" step="100"></div>
-        </div>
-        <select id="prop-endj-condition">
-          <option value="pin" ${jEnd.condition === 'pin' ? 'selected' : ''}>${t('endPin')}</option>
-          <option value="rigid" ${jEnd.condition === 'rigid' ? 'selected' : ''}>${t('endRigid')}</option>
-          <option value="spring" ${jEnd.condition === 'spring' ? 'selected' : ''}>${t('endSpring')}</option>
-        </select>
-      </div>
-      ${jEnd.condition === 'spring' ? `
-      <div class="prop-group">
-        <label>${t('propSpringSymbol')}</label>
-        <select id="prop-endj-spring">${springOptionsJ}</select>
-      </div>
-      ` : ''}
-      <div class="prop-group">
-        <label>${t('propColor')}</label>
-        <input type="color" value="${resolveMemberColor(member)}" disabled>
-      </div>
-      ${member.roofRole ? `
-      <div class="prop-group">
-        <label>${t('roofRole')}</label>
-        <input type="text" value="${escapeHtml(t(roofRoleLabelKey(member.roofRole)))}" disabled>
-      </div>
-      ` : ''}
-      <div class="prop-group">
-        <label>${t('propLength')}</label>
-        <input type="text" value="${lengthDisplay}" disabled>
-      </div>
-      ${(member.type === 'beam' || member.type === 'column') ? `
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-split-member">${t('splitAtPoint')}</button>
-      </div>
-      ` : ''}
-    `;
-
-    document.getElementById('btn-split-member')?.addEventListener('click', () => {
-      this.callbacks.onSplitMember?.(member.id);
-    });
-
-    const bind = (id, key, transform) => this._bindPropInput(id, val => {
-      this.state.updateMember(member.id, { [key]: val });
-      this.callbacks.onPropertyChange?.(member.id);
-    }, { transform });
-
-    const bindEnd = (conditionId, springId, key) => {
-      const conditionEl = document.getElementById(conditionId);
-      const springEl = document.getElementById(springId);
-      if (conditionEl) {
-        conditionEl.addEventListener('change', () => {
-          this.state.updateMember(member.id, {
-            [key]: {
-              condition: conditionEl.value,
-              springSymbol: springEl ? springEl.value : null,
-            },
-          });
-          this.callbacks.onPropertyChange?.(member.id);
-        });
-      }
-      if (springEl) {
-        springEl.addEventListener('change', () => {
-          this.state.updateMember(member.id, {
-            [key]: {
-              condition: conditionEl?.value || 'spring',
-              springSymbol: springEl.value,
-            },
-          });
-          this.callbacks.onPropertyChange?.(member.id);
-        });
-      }
-    };
-
-    bind('prop-section-name', 'sectionName');
-    const applyDraftBtn = document.getElementById('prop-apply-draft-section');
-    if (applyDraftBtn) {
-      applyDraftBtn.addEventListener('click', () => {
-        const current = this.state.getMember(member.id);
-        if (!current) return;
-        this.state.setDraftSectionName('member', current.type, current.sectionName);
-        this.state.memberDraftType = current.type;
-        const typeSel = document.getElementById('sel-member-type');
-        if (typeSel) typeSel.value = current.type;
-        this._updateMemberLayerHint();
-        this.refreshDraftSectionSelectors();
-        this.callbacks.onDraftSectionChange?.();
-      });
-    }
-    bindEnd('prop-endi-condition', 'prop-endi-spring', 'endI');
-    bindEnd('prop-endj-condition', 'prop-endj-spring', 'endJ');
-
-    // Node coordinate editing
-    const bindNodeCoord = (inputId, nodeId, key) => {
-      const el = document.getElementById(inputId);
-      if (!el || !nodeId) return;
-      el.addEventListener('change', () => {
-        const val = parseFloat(el.value);
-        if (!Number.isFinite(val)) return;
-        this.state.updateNode(nodeId, { [key]: val });
-        this.callbacks.onPropertyChange?.(member.id);
-      });
-    };
-    bindNodeCoord('prop-start-x', member.startNodeId, 'x');
-    bindNodeCoord('prop-start-y', member.startNodeId, 'y');
-    bindNodeCoord('prop-end-x', member.endNodeId, 'x');
-    bindNodeCoord('prop-end-y', member.endNodeId, 'y');
+  _renderMemberProperties(...args) {
+    return memberProperties._renderMemberProperties.apply(this, args);
   }
 
-  _renderSurfaceProperties(container) {
-    const surface = this.state.getSurface(this.state.selectedSurfaceId);
-    if (!surface) {
-      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
-      return;
-    }
-
-    const isWall = isWallSurfaceType(surface.type);
-    const isRoof = surface.type === 'roof';
-    const isGableWall = isGableWallSurfaceType(surface.type);
-    const isRectangularWall = isWall && !isGableWall;
-    const isSloped = isSlopedSurfaceType(surface.type);
-    const isWindSurface = isWall || isSloped;
-    const canGenerateRoof = (surface.type === 'floor' || surface.type === 'exteriorWall') && surface.shape !== 'line';
-    const area = computeSurfaceWeightAreaM2(this.state, surface);
-    const vertices = Array.isArray(surface.points) ? surface.points.length : 4;
-    const typeLabel = t(surface.type);
-    const level = this.state.levels.find(l => l.id === surface.levelId);
-    const levelLabel = level ? `${level.name} (z=${level.z})` : surface.levelId;
-    const range = resolveSurfaceVerticalRange(this.state, surface);
-    const wind = computeSurfaceWindProjectionM2(this.state, surface);
-    const sectionDefs = this.state.listSections('surface', surface.type);
-    const sectionOptions = sectionDefs.length > 0
-      ? sectionDefs.map(s =>
-        `<option value="${escapeHtml(s.name)}" ${s.name === surface.sectionName ? 'selected' : ''}>${escapeHtml(s.name)}</option>`
-      ).join('')
-      : `<option value="${escapeHtml(surface.sectionName || '')}" selected>${escapeHtml(surface.sectionName || '-')}</option>`;
-    const heightModeOptions = ['full', 'waist', 'hanging', 'custom']
-      .map(mode => `<option value="${mode}" ${surface.heightMode === mode ? 'selected' : ''}>${t('wallHeight' + capitalize(mode))}</option>`)
-      .join('');
-    const windProjectionFields = isWindSurface ? `
-      <div class="prop-group">
-        <label>${t('calculatedWindArea')}</label>
-        <div class="prop-row">
-          <div class="prop-group">
-            <label>${t('windAreaX')} (m²)</label>
-            <input type="text" value="${formatNumber(wind.xAreaM2)}" disabled>
-          </div>
-          <div class="prop-group">
-            <label>${t('windAreaY')} (m²)</label>
-            <input type="text" value="${formatNumber(wind.yAreaM2)}" disabled>
-          </div>
-        </div>
-      </div>
-    ` : '';
-    const roofAutoGenerationFields = canGenerateRoof ? this._surfaceRoofAutoGenHtml() : '';
-
-    container.innerHTML = `
-      <div class="prop-group">
-        <label>${t('propType')}</label>
-        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propLayer')}</label>
-        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propSection')}</label>
-        <select id="prop-surface-section">${sectionOptions}</select>
-        <button type="button" id="prop-apply-draft-surface-section" class="prop-inline-btn" title="${escapeHtml(t('applyAsDraftHint'))}">${escapeHtml(t('applyAsDraft'))}</button>
-      </div>
-      ${surface.type === 'floor' ? this._surfaceFloorHtml(surface) : ''}
-      ${roofAutoGenerationFields}
-      ${isRectangularWall ? `
-      <div class="prop-group">
-        <label>${t('wallHeightMode')}</label>
-        <select id="prop-wall-height-mode">${heightModeOptions}</select>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('wallBottomOffset')} (mm)</label>
-          <input type="number" id="prop-wall-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>${t('wallTopOffset')} (mm)</label>
-          <input type="number" id="prop-wall-top-offset" value="${Math.round(surface.topOffset || 0)}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('wallVerticalRange')}</label>
-        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
-      </div>
-      ` : ''}
-      ${isGableWall ? this._surfaceGableWallHtml(surface, range) : ''}
-      ${isSloped ? this._surfaceSlopedHtml(surface, isRoof) : ''}
-      ${windProjectionFields}
-      <div class="prop-group">
-        <label>${t('propColor')}</label>
-        <input type="color" value="${surface.color}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propArea')}</label>
-        <input type="text" value="${formatNumber(area)} m²" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propVertices')}</label>
-        <input type="text" value="${vertices}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('unitWeight')} (${t('weightUnit_surface')})</label>
-        <input type="number" id="prop-surface-unit-weight" value="${surface.unitWeight || 0}" step="100">
-      </div>
-      ${isWindSurface ? `
-      <div class="prop-group">
-        <label class="prop-check-label">
-          <input type="checkbox" id="prop-surface-include-wind" ${surface.includeWind !== false ? 'checked' : ''}>
-          <span>${t('includeWind')}</span>
-        </label>
-      </div>
-      ` : ''}
-      <div class="prop-group">
-        <label class="prop-check-label">
-          <input type="checkbox" id="prop-surface-include-seismic" ${surface.includeSeismicWeight ? 'checked' : ''}>
-          <span>${t('includeSeismicWeight')}</span>
-        </label>
-      </div>
-    `;
-
-    const bind = (id, key, transform) => this._bindPropInput(id, val => {
-      this.state.updateSurface(surface.id, { [key]: val });
-      this.callbacks.onPropertyChange?.(surface.id);
-    }, { transform });
-
-    bind('prop-surface-section', 'sectionName');
-    const applyDraftSurfaceBtn = document.getElementById('prop-apply-draft-surface-section');
-    if (applyDraftSurfaceBtn) {
-      applyDraftSurfaceBtn.addEventListener('click', () => {
-        const current = this.state.getSurface(surface.id);
-        if (!current) return;
-        this.state.setDraftSectionName('surface', current.type, current.sectionName);
-        this.state.surfaceDraftType = current.type;
-        const typeSel = document.getElementById('sel-surface-type');
-        if (typeSel) typeSel.value = current.type;
-        this._updateSurfaceSubOptions();
-        this.refreshDraftSectionSelectors();
-        this.callbacks.onDraftSectionChange?.();
-      });
-    }
-    bind('prop-surface-top-level', 'topLevelId');
-    bind('prop-load-direction', 'loadDirection');
-    bind('prop-wall-height-mode', 'heightMode');
-    bind('prop-roof-slope', 'roofSlope', (_value, el) => Math.max(0, readNumberInput(el, surface.roofSlope || 0)));
-    bind('prop-roof-direction', 'roofDirection');
-    bind('prop-roof-base-offset', 'roofBaseOffset', (_value, el) => readNumberInput(el, surface.roofBaseOffset || 0));
-    bind('prop-roof-group-id', 'roofGroupId', value => String(value || '').trim() || DEFAULT_ROOF_GROUP_ID);
-    bind('prop-surface-unit-weight', 'unitWeight', (_value, el) => Math.max(0, readNumberInput(el, surface.unitWeight || 0)));
-    bind('prop-surface-include-wind', 'includeWind');
-    bind('prop-surface-include-seismic', 'includeSeismicWeight');
-
-    this._bindRoofGenerationButtons(container, surface);
-    this._bindWallOffsetValidation(surface);
-    this._bindGableWallOffsets(surface);
+  _renderSurfaceProperties(...args) {
+    return surfaceProperties._renderSurfaceProperties.apply(this, args);
   }
 
   // Per-type surface HTML fragments. Kept as pure string builders so the
   // orchestrator above stays readable; the rectangular-wall block and the
   // calculated wind fields remain inline there because they gate shared layout.
-  _surfaceFloorHtml(surface) {
-    return `
-      <div class="prop-group">
-        <label>${t('loadDirection')}</label>
-        <select id="prop-load-direction">
-          <option value="x" ${surface.loadDirection === 'x' ? 'selected' : ''}>X</option>
-          <option value="y" ${surface.loadDirection === 'y' ? 'selected' : ''}>Y</option>
-          <option value="twoWay" ${surface.loadDirection === 'twoWay' ? 'selected' : ''}>${t('twoWay')}</option>
-        </select>
-      </div>
-    `;
+  _surfaceFloorHtml(...args) {
+    return surfaceProperties._surfaceFloorHtml.apply(this, args);
   }
 
-  _surfaceRoofAutoGenHtml() {
-    return `
-      <div class="prop-group">
-        <label>${t('roofAutoGenerate')}</label>
-        <select id="prop-auto-roof-pattern">
-          <option value="single">${t('roofPatternSingle')}</option>
-          <option value="gableX">${t('roofPatternGableX')}</option>
-          <option value="gableY">${t('roofPatternGableY')}</option>
-          <option value="hip">${t('roofPatternHip')}</option>
-        </select>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofGroupId')}</label>
-          <input type="text" id="prop-auto-roof-group-id" value="${escapeHtml(this.state.surfaceDraftRoofGroupId || DEFAULT_ROOF_GROUP_ID)}">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofSlope')}</label>
-          <input type="number" id="prop-auto-roof-slope" value="${this.state.surfaceDraftRoofSlope || 0.3}" min="0" step="0.01">
-        </div>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofBaseOffset')} (mm)</label>
-          <input type="number" id="prop-auto-roof-base-offset" value="${Math.round(this.state.surfaceDraftRoofBaseOffset || 0)}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofDirection')}</label>
-          <select id="prop-auto-roof-direction">
-            <option value="xPlus" ${this.state.surfaceDraftRoofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
-            <option value="xMinus" ${this.state.surfaceDraftRoofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
-            <option value="yPlus" ${this.state.surfaceDraftRoofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
-            <option value="yMinus" ${this.state.surfaceDraftRoofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
-          </select>
-        </div>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-auto-roof-planes">${t('roofGeneratePlanes')}</button>
-      </div>
-    `;
+  _surfaceRoofAutoGenHtml(...args) {
+    return surfaceProperties._surfaceRoofAutoGenHtml.apply(this, args);
   }
 
-  _surfaceGableWallHtml(surface, range) {
-    return `
-      <div class="prop-group">
-        <label>${t('wallBottomOffset')} (mm)</label>
-        <input type="number" id="prop-gable-bottom-offset" value="${Math.round(surface.bottomOffset || 0)}" step="100">
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('gableStartTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-start-top-offset" value="${Math.round(gableTopOffset(surface, 'gableStartTopOffset'))}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>${t('gableEndTopOffset')} (mm)</label>
-          <input type="number" id="prop-gable-end-top-offset" value="${Math.round(gableTopOffset(surface, 'gableEndTopOffset'))}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('wallVerticalRange')}</label>
-        <input type="text" value="${Math.round(range.bottom)} - ${Math.round(range.top)} mm" disabled>
-      </div>
-    `;
+  _surfaceGableWallHtml(...args) {
+    return surfaceProperties._surfaceGableWallHtml.apply(this, args);
   }
 
-  _surfaceSlopedHtml(surface, isRoof) {
-    return `
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>${t('roofSlope')}</label>
-          <input type="number" id="prop-roof-slope" value="${surface.roofSlope || 0}" min="0" step="0.01">
-        </div>
-        <div class="prop-group">
-          <label>${t('roofBaseOffset')} (mm)</label>
-          <input type="number" id="prop-roof-base-offset" value="${Math.round(surface.roofBaseOffset || 0)}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofDirection')}</label>
-        <select id="prop-roof-direction">
-          <option value="xPlus" ${surface.roofDirection === 'xPlus' ? 'selected' : ''}>${t('roofDirXPlus')}</option>
-          <option value="xMinus" ${surface.roofDirection === 'xMinus' ? 'selected' : ''}>${t('roofDirXMinus')}</option>
-          <option value="yPlus" ${surface.roofDirection === 'yPlus' ? 'selected' : ''}>${t('roofDirYPlus')}</option>
-          <option value="yMinus" ${surface.roofDirection === 'yMinus' ? 'selected' : ''}>${t('roofDirYMinus')}</option>
-        </select>
-      </div>
-      ${isRoof ? `
-      <div class="prop-group">
-        <label>${t('roofGroupId')}</label>
-        <input type="text" id="prop-roof-group-id" value="${escapeHtml(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID)}">
-      </div>
-      ` : ''}
-      ${isRoof ? `
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-edge-members">${t('roofGenerateEdgeMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofFramingSpacing')} (mm)</label>
-        <input type="number" id="prop-roof-framing-spacing" value="${DEFAULT_RAFTER_SPACING_MM}" min="1" step="10">
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-slope-members">${t('roofGenerateSlopeMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-joint-members">${t('roofGenerateJointMembers')}</button>
-      </div>
-      <div class="prop-group">
-        <label>${t('roofEaveDepth')} (mm)</label>
-        <input type="number" id="prop-roof-eave-depth" value="${DEFAULT_EAVE_DEPTH_MM}" min="1" step="50">
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-eaves">${t('roofGenerateEaves')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-gable-walls">${t('roofGenerateGableWalls')}</button>
-      </div>
-      <div class="prop-group">
-        <button type="button" class="support-preset-btn" id="btn-roof-validate-group">${t('roofValidateGroup')}</button>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <button type="button" class="support-preset-btn" id="btn-roof-remove-generated">${t('roofRemoveGenerated')}</button>
-        </div>
-        <div class="prop-group">
-          <button type="button" class="support-preset-btn" id="btn-roof-regenerate">${t('roofRegenerateGenerated')}</button>
-        </div>
-      </div>
-      ` : ''}
-    `;
+  _surfaceSlopedHtml(...args) {
+    return surfaceProperties._surfaceSlopedHtml.apply(this, args);
   }
 
   // Table-driven binder for the roof auto-generation buttons: each entry maps a
   // button element id to the click handler that drives the matching state method.
-  _bindRoofGenerationButtons(container, surface) {
-    const bindings = [
-      ['btn-roof-edge-members', () => {
-        const members = this.state.addRoofEdgeMembers(surface.id);
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, members.length, 'roofGeneratedMembers');
-      }],
-      ['btn-roof-slope-members', () => {
-        const spacingEl = document.getElementById('prop-roof-framing-spacing');
-        const spacing = Math.max(1, readNumberInput(spacingEl, DEFAULT_RAFTER_SPACING_MM));
-        if (spacingEl) spacingEl.value = String(spacing);
-        const members = this.state.addRoofSlopeMembers(surface.id, { spacing });
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, members.length, 'roofGeneratedSlopeMembers');
-      }],
-      ['btn-roof-joint-members', () => {
-        const members = this.state.addRoofJointMembers(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, members.length, 'roofGeneratedJointMembers');
-      }],
-      ['btn-roof-eaves', () => {
-        const depthEl = document.getElementById('prop-roof-eave-depth');
-        const depth = Math.max(1, readNumberInput(depthEl, DEFAULT_EAVE_DEPTH_MM));
-        if (depthEl) depthEl.value = String(depth);
-        const eaves = this.state.addEavesFromRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID, { depth });
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, eaves.length, 'roofGeneratedEaves');
-      }],
-      ['btn-roof-gable-walls', () => {
-        const walls = this.state.addGableWallsFromRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, walls.length, 'roofGeneratedGableWalls');
-      }],
-      ['btn-roof-validate-group', () => {
-        const result = this.state.validateRoofGroup(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
-        const message = result.issues.length
-          ? t('roofValidationIssues', { n: result.issues.length })
-          : t('roofValidationOk');
-        this._showInlineNotice(container, message);
-      }],
-      ['btn-roof-remove-generated', () => {
-        const removed = this.state.removeRoofGeneratedElements(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID);
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, removed.total, 'roofRemovedGenerated');
-      }],
-      ['btn-roof-regenerate', () => {
-        const spacingEl = document.getElementById('prop-roof-framing-spacing');
-        const depthEl = document.getElementById('prop-roof-eave-depth');
-        const spacing = Math.max(1, readNumberInput(spacingEl, DEFAULT_RAFTER_SPACING_MM));
-        const depth = Math.max(1, readNumberInput(depthEl, DEFAULT_EAVE_DEPTH_MM));
-        if (spacingEl) spacingEl.value = String(spacing);
-        if (depthEl) depthEl.value = String(depth);
-        const result = this.state.regenerateRoofGeneratedElements(surface.roofGroupId || DEFAULT_ROOF_GROUP_ID, { spacing, depth });
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, result.generatedTotal, 'roofRegeneratedElements');
-      }],
-      ['btn-auto-roof-planes', () => {
-        const groupEl = document.getElementById('prop-auto-roof-group-id');
-        const slopeEl = document.getElementById('prop-auto-roof-slope');
-        const baseOffsetEl = document.getElementById('prop-auto-roof-base-offset');
-        const directionEl = document.getElementById('prop-auto-roof-direction');
-        const pattern = document.getElementById('prop-auto-roof-pattern')?.value || 'single';
-        const roofGroupId = String(groupEl?.value || '').trim() || DEFAULT_ROOF_GROUP_ID;
-        const roofSlope = Math.max(0, readNumberInput(slopeEl, this.state.surfaceDraftRoofSlope || 0.3));
-        const roofBaseOffset = readNumberInput(baseOffsetEl, this.state.surfaceDraftRoofBaseOffset || 0);
-        const roofDirection = directionEl?.value || this.state.surfaceDraftRoofDirection || 'xPlus';
-        if (groupEl) groupEl.value = roofGroupId;
-        if (slopeEl) slopeEl.value = String(roofSlope);
-        if (baseOffsetEl) baseOffsetEl.value = String(roofBaseOffset);
-        this.state.surfaceDraftRoofGroupId = roofGroupId;
-        this.state.surfaceDraftRoofSlope = roofSlope;
-        this.state.surfaceDraftRoofBaseOffset = roofBaseOffset;
-        this.state.surfaceDraftRoofDirection = roofDirection;
-        const roofs = this.state.addRoofPlanesFromSurface(surface.id, {
-          pattern,
-          roofGroupId,
-          roofSlope,
-          roofBaseOffset,
-          roofDirection,
-        });
-        this.callbacks.onPropertyChange?.(surface.id);
-        this._showGenerationNotice(container, roofs.length, 'roofGeneratedPlanes');
-      }],
-    ];
-    for (const [id, handler] of bindings) {
-      document.getElementById(id)?.addEventListener('click', handler);
-    }
+  _bindRoofGenerationButtons(...args) {
+    return surfaceProperties._bindRoofGenerationButtons.apply(this, args);
   }
 
-  _bindWallOffsetValidation(surface) {
-    const bottomEl = document.getElementById('prop-wall-bottom-offset');
-    const topEl = document.getElementById('prop-wall-top-offset');
-    if (!bottomEl || !topEl) return;
-    const apply = () => {
-      const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
-      const topOffset = readNumberInput(topEl, surface.topOffset || 0);
-      if (topOffset <= bottomOffset) {
-        markInputInvalid(topEl, t('wallInvalidHeight'));
-        return;
-      }
-      clearInputInvalid(bottomEl);
-      clearInputInvalid(topEl);
-      this.state.updateSurface(surface.id, {
-        heightMode: 'custom',
-        bottomOffset,
-        topOffset,
-      });
-      this.callbacks.onPropertyChange?.(surface.id);
-    };
-    bottomEl.addEventListener('change', apply);
-    topEl.addEventListener('change', apply);
+  _bindWallOffsetValidation(...args) {
+    return surfaceProperties._bindWallOffsetValidation.apply(this, args);
   }
 
-  _bindGableWallOffsets(surface) {
-    const bottomEl = document.getElementById('prop-gable-bottom-offset');
-    const startEl = document.getElementById('prop-gable-start-top-offset');
-    const endEl = document.getElementById('prop-gable-end-top-offset');
-    if (!bottomEl || !startEl || !endEl) return;
-    const apply = () => {
-      const bottomOffset = readNumberInput(bottomEl, surface.bottomOffset || 0);
-      const gableStartTopOffset = readNumberInput(startEl, gableTopOffset(surface, 'gableStartTopOffset'));
-      const gableEndTopOffset = readNumberInput(endEl, gableTopOffset(surface, 'gableEndTopOffset'));
-      let isValid = true;
-      if (gableStartTopOffset < bottomOffset) {
-        markInputInvalid(startEl, t('gableInvalidTop'));
-        isValid = false;
-      } else {
-        clearInputInvalid(startEl);
-      }
-      if (gableEndTopOffset < bottomOffset) {
-        markInputInvalid(endEl, t('gableInvalidTop'));
-        isValid = false;
-      } else {
-        clearInputInvalid(endEl);
-      }
-      if (!isValid) return;
-      clearInputInvalid(bottomEl);
-      this.state.updateSurface(surface.id, {
-        heightMode: 'custom',
-        bottomOffset,
-        gableStartTopOffset,
-        gableEndTopOffset,
-      });
-      this.callbacks.onPropertyChange?.(surface.id);
-    };
-    bottomEl.addEventListener('change', apply);
-    startEl.addEventListener('change', apply);
-    endEl.addEventListener('change', apply);
+  _bindGableWallOffsets(...args) {
+    return surfaceProperties._bindGableWallOffsets.apply(this, args);
   }
 
-  _showInlineNotice(container, message) {
-    const notice = document.createElement('p');
-    notice.className = 'quantity-note';
-    notice.textContent = message;
-    container.appendChild(notice);
+  _showInlineNotice(...args) {
+    // A parent property notification can replace the panel contents first.
+    return this._afterModelChange(() => surfaceProperties._showInlineNotice.apply(this, args));
   }
 
-  _showGenerationNotice(container, count, messageKey) {
-    const message = count > 0
-      ? t(messageKey, { n: count })
-      : t('roofGeneratedNone');
-    this._showInlineNotice(container, message);
+  _showGenerationNotice(...args) {
+    return surfaceProperties._showGenerationNotice.apply(this, args);
   }
 
-  _renderLoadProperties(container) {
-    const load = this.state.getLoad(this.state.selectedLoadId);
-    if (!load) {
-      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
-      return;
-    }
-
-    const isArea = load.type === 'areaLoad';
-    const isLine = load.type === 'lineLoad';
-    const isPoint = load.type === 'pointLoad';
-    const typeLabel = t(load.type);
-    const level = this.state.levels.find(l => l.id === load.levelId);
-    const levelLabel = level ? `${level.name} (z=${level.z})` : load.levelId;
-
-    let coordFields = '';
-    if (isArea || isLine) {
-      coordFields = `
-        <div class="prop-row">
-          <div class="prop-group"><label>X1 (mm)</label><input type="number" id="prop-ld-x1" value="${Math.round(load.x1)}" step="100"></div>
-          <div class="prop-group"><label>Y1 (mm)</label><input type="number" id="prop-ld-y1" value="${Math.round(load.y1)}" step="100"></div>
-        </div>
-        <div class="prop-row">
-          <div class="prop-group"><label>X2 (mm)</label><input type="number" id="prop-ld-x2" value="${Math.round(load.x2)}" step="100"></div>
-          <div class="prop-group"><label>Y2 (mm)</label><input type="number" id="prop-ld-y2" value="${Math.round(load.y2)}" step="100"></div>
-        </div>`;
-    } else {
-      coordFields = `
-        <div class="prop-row">
-          <div class="prop-group"><label>X (mm)</label><input type="number" id="prop-ld-x1" value="${Math.round(load.x1)}" step="100"></div>
-          <div class="prop-group"><label>Y (mm)</label><input type="number" id="prop-ld-y1" value="${Math.round(load.y1)}" step="100"></div>
-        </div>`;
-    }
-
-    let valueFields = '';
-    if (isArea) {
-      valueFields = `
-        <div class="prop-group">
-          <label>${t('loadValue')} (${t('loadUnit_area')})</label>
-          <input type="number" id="prop-ld-value" value="${load.value}" step="100">
-        </div>`;
-    } else if (isLine) {
-      valueFields = `
-        <div class="prop-group">
-          <label>${t('loadValue')} (${t('loadUnit_line')})</label>
-          <input type="number" id="prop-ld-value" value="${load.value}" step="100">
-        </div>`;
-    } else if (isPoint) {
-      valueFields = `
-        <div class="prop-row">
-          <div class="prop-group"><label>FX (N)</label><input type="number" id="prop-ld-fx" value="${load.fx}" step="100"></div>
-          <div class="prop-group"><label>FY (N)</label><input type="number" id="prop-ld-fy" value="${load.fy}" step="100"></div>
-        </div>
-        <div class="prop-row">
-          <div class="prop-group"><label>FZ (N)</label><input type="number" id="prop-ld-fz" value="${load.fz}" step="100"></div>
-          <div class="prop-group"><label>MX (N·m)</label><input type="number" id="prop-ld-mx" value="${load.mx}" step="10"></div>
-        </div>
-        <div class="prop-row">
-          <div class="prop-group"><label>MY (N·m)</label><input type="number" id="prop-ld-my" value="${load.my}" step="10"></div>
-          <div class="prop-group"><label>MZ (N·m)</label><input type="number" id="prop-ld-mz" value="${load.mz}" step="10"></div>
-        </div>`;
-    }
-
-    const loadCaseOptions = LOAD_CASES
-      .map(c => `<option value="${c}" ${((load.loadCase || 'DL') === c) ? 'selected' : ''}>${c} - ${t('loadCase' + c)}</option>`)
-      .join('');
-
-    container.innerHTML = `
-      <div class="prop-group">
-        <label>${t('propType')}</label>
-        <input type="text" value="${escapeHtml(typeLabel)}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propLayer')}</label>
-        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('loadCaseLabel')}</label>
-        <select id="prop-ld-case">${loadCaseOptions}</select>
-      </div>
-      ${coordFields}
-      ${valueFields}
-      <div class="prop-group">
-        <label>${t('propColor')}</label>
-        <input type="color" id="prop-ld-color" value="${load.color}">
-      </div>
-    `;
-
-    const bind = (id, key, transform) => this._bindPropInput(id, val => {
-      this.state.updateLoad(load.id, { [key]: val });
-      this.callbacks.onPropertyChange?.(load.id);
-    }, { transform });
-
-    bind('prop-ld-x1', 'x1', parseFloat);
-    bind('prop-ld-y1', 'y1', parseFloat);
-    bind('prop-ld-x2', 'x2', parseFloat);
-    bind('prop-ld-y2', 'y2', parseFloat);
-    bind('prop-ld-value', 'value', parseFloat);
-    bind('prop-ld-fx', 'fx', parseFloat);
-    bind('prop-ld-fy', 'fy', parseFloat);
-    bind('prop-ld-fz', 'fz', parseFloat);
-    bind('prop-ld-mx', 'mx', parseFloat);
-    bind('prop-ld-my', 'my', parseFloat);
-    bind('prop-ld-mz', 'mz', parseFloat);
-    bind('prop-ld-color', 'color');
-    bind('prop-ld-case', 'loadCase');
+  _renderLoadProperties(...args) {
+    return loadProperties._renderLoadProperties.apply(this, args);
   }
 
-  _renderSupportProperties(container) {
-    const support = this.state.getSupport(this.state.selectedSupportId);
-    if (!support) {
-      container.innerHTML = `<p class="prop-placeholder">${t('noSelection')}</p>`;
-      return;
-    }
-
-    const level = this.state.levels.find(l => l.id === support.levelId);
-    const levelLabel = level ? `${level.name} (z=${level.z})` : support.levelId;
-
-    const chk = (id, label, checked) =>
-      `<label class="support-chk-label">
-        <input type="checkbox" id="${id}" ${checked ? 'checked' : ''}>
-        <span>${escapeHtml(label)}</span>
-      </label>`;
-
-    container.innerHTML = `
-      <div class="prop-group">
-        <label>${t('propType')}</label>
-        <input type="text" value="${escapeHtml(t('supportType'))}" disabled>
-      </div>
-      <div class="prop-group">
-        <label>${t('propLayer')}</label>
-        <input type="text" value="${escapeHtml(levelLabel)}" disabled>
-      </div>
-      <div class="prop-row">
-        <div class="prop-group">
-          <label>X (mm)</label>
-          <input type="number" id="prop-sup-x" value="${Math.round(support.x)}" step="100">
-        </div>
-        <div class="prop-group">
-          <label>Y (mm)</label>
-          <input type="number" id="prop-sup-y" value="${Math.round(support.y)}" step="100">
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('supportTranslation')}</label>
-        <div class="support-chk-row">
-          ${chk('prop-sup-dx', 'DX', support.dx)}
-          ${chk('prop-sup-dy', 'DY', support.dy)}
-          ${chk('prop-sup-dz', 'DZ', support.dz)}
-        </div>
-      </div>
-      <div class="prop-group">
-        <label>${t('supportRotation')}</label>
-        <div class="support-chk-row">
-          ${chk('prop-sup-rx', 'RX', support.rx)}
-          ${chk('prop-sup-ry', 'RY', support.ry)}
-          ${chk('prop-sup-rz', 'RZ', support.rz)}
-        </div>
-      </div>
-      <div class="support-preset-row">
-        <button type="button" class="support-preset-btn" id="btn-sup-pin">${t('supportPin')}</button>
-        <button type="button" class="support-preset-btn" id="btn-sup-rigid">${t('supportRigid')}</button>
-        <button type="button" class="support-preset-btn" id="btn-sup-free">${t('supportFree')}</button>
-      </div>
-    `;
-
-    const bind = (id, key, transform) => this._bindPropInput(id, val => {
-      this.state.updateSupport(support.id, { [key]: val });
-      this.callbacks.onPropertyChange?.(support.id);
-    }, { transform });
-
-    bind('prop-sup-x', 'x', parseFloat);
-    bind('prop-sup-y', 'y', parseFloat);
-    bind('prop-sup-dx', 'dx');
-    bind('prop-sup-dy', 'dy');
-    bind('prop-sup-dz', 'dz');
-    bind('prop-sup-rx', 'rx');
-    bind('prop-sup-ry', 'ry');
-    bind('prop-sup-rz', 'rz');
-
-    const applyPreset = (preset) => {
-      this.state.updateSupport(support.id, preset);
-      this.callbacks.onPropertyChange?.(support.id);
-      this._renderSupportProperties(container);
-    };
-
-    document.getElementById('btn-sup-pin')?.addEventListener('click', () => {
-      applyPreset({ dx: true, dy: true, dz: true, rx: false, ry: false, rz: false });
-    });
-    document.getElementById('btn-sup-rigid')?.addEventListener('click', () => {
-      applyPreset({ dx: true, dy: true, dz: true, rx: true, ry: true, rz: true });
-    });
-    document.getElementById('btn-sup-free')?.addEventListener('click', () => {
-      applyPreset({ dx: false, dy: false, dz: false, rx: false, ry: false, rz: false });
-    });
+  _renderSupportProperties(...args) {
+    return supportProperties._renderSupportProperties.apply(this, args);
   }
 
   refreshQuantitySummary({ force = false } = {}) {
@@ -1788,6 +831,8 @@ export class UI {
     this.updateStatusBar();
     this.refreshQuantitySummary({ force: true });
     this.updatePropertyPanel();
+    if (this._diagnosticSource === 'model') this.renderModelCheck();
+    else if (this._diagnosticSource === 'preflight') this.renderAnalysisPreflight(this._diagnosticPreflight);
   }
 }
 
@@ -1800,27 +845,7 @@ function formatNumber(value) {
   return n.toFixed(2);
 }
 
-function capitalize(value) {
-  const text = String(value || '');
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
-}
-
 function readNumberInput(input, fallback) {
   const n = Number(input?.value);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function gableTopOffset(surface, key) {
-  return finiteValue(surface?.[key], surface?.topOffset);
-}
-
-function finiteValue(value, fallback = 0) {
-  if (value === null || value === undefined || value === '') {
-    const fallbackNumber = Number(fallback);
-    return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
-  }
-  const n = Number(value);
-  if (Number.isFinite(n)) return n;
-  const fallbackNumber = Number(fallback);
-  return Number.isFinite(fallbackNumber) ? fallbackNumber : 0;
 }

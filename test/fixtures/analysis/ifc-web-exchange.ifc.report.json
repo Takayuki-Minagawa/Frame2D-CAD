@@ -1,0 +1,117 @@
+{
+  "format": "element-modeler-ifc-report",
+  "version": 1,
+  "schema": "IFC4",
+  "projectId": "independent-exchange-demo",
+  "modelFingerprint": "sha256:663c4bb6ad77930f1149b1041e8cf93f248a15418829bedb73f79b85114d2d27",
+  "lengthUnit": "mm",
+  "members": [
+    {
+      "elementId": 1,
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "guid": "31nUgQWGTGiOB10S00JkLb",
+      "ifcClass": "IfcBeam",
+      "levelId": "L0",
+      "start": [
+        100.0,
+        -200.0,
+        0.0
+      ],
+      "end": [
+        3100.0,
+        -200.0,
+        0.0
+      ],
+      "length": 3000.0,
+      "profile": "IfcRectangleProfileDef",
+      "profileDimensions": {
+        "XDim": 100.0,
+        "YDim": 200.0
+      },
+      "volumeMm3": 60000000.0
+    },
+    {
+      "elementId": 2,
+      "sourceId": "M2",
+      "sourceBranch": "primary",
+      "guid": "3HnoJxX9bT5hq1$bFPD5Ek",
+      "ifcClass": "IfcColumn",
+      "levelId": "L0",
+      "start": [
+        3100.0,
+        -200.0,
+        0.0
+      ],
+      "end": [
+        3100.0,
+        -200.0,
+        3000.0
+      ],
+      "length": 3000.0,
+      "profile": "IfcIShapeProfileDef",
+      "profileDimensions": {
+        "OverallWidth": 150.0,
+        "OverallDepth": 300.0,
+        "WebThickness": 8.0,
+        "FlangeThickness": 12.0
+      },
+      "volumeMm3": 17424000.0
+    },
+    {
+      "elementId": 3,
+      "sourceId": "M3",
+      "sourceBranch": "primary",
+      "guid": "1X5DZpepDRMuHZDdwrkwHd",
+      "ifcClass": "IfcBeam",
+      "levelId": "L1",
+      "start": [
+        3100.0,
+        -200.0,
+        3000.0
+      ],
+      "end": [
+        5100.0,
+        800.0,
+        4000.0
+      ],
+      "length": 2449.489742783178,
+      "profile": "IfcRectangleProfileDef",
+      "profileDimensions": {
+        "XDim": 150.0,
+        "YDim": 300.0
+      },
+      "volumeMm3": 110227038.425243
+    }
+  ],
+  "consumerWarnings": [],
+  "storeys": [
+    {
+      "levelId": "L0",
+      "guid": "2TLHTYJWDJzxNh1wdGrX2h",
+      "elevation": 0
+    },
+    {
+      "levelId": "L1",
+      "guid": "1G3gYWmVvOwfqBVs_6UtNL",
+      "elevation": 3000
+    }
+  ],
+  "limitations": [
+    "Physical beams/columns only; no structural analysis entities, loads, supports, slabs, roofs or braces.",
+    "Sharp-corner rectangle, I and hollow rectangle extrusions; no fillets, joins, eccentricity or section rotation.",
+    "IfcOpenShell round-trip/schema/geometry checks are not independent BIM-product interoperability certification."
+  ],
+  "validation": {
+    "schemaExpress": true,
+    "uniqueGuids": true,
+    "properties": true,
+    "storeyContainment": true,
+    "coordinates": true,
+    "sectionOrientation": true,
+    "profiles": true,
+    "geometryVolumes": true,
+    "reader": "IfcOpenShell"
+  },
+  "ifcopenshellVersion": "0.8.4.post1"
+}

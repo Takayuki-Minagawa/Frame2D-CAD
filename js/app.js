@@ -35,9 +35,15 @@ import { initComboModal } from './combo-modal.js';
 import { initElevationModal } from './elevation-modal.js';
 import { initJoinSplitModal } from './join-split-modal.js';
 import { initAnalysisSettingsModal } from './analysis-settings-modal.js';
-import { clearAutosave, initAutosave, readAutosave } from './autosave.js';
+import { initAutosave } from './autosave.js';
+import { mountRecoveryUI } from './persistence/recovery-ui.js';
 import { buildSampleModel } from './samples.js';
 import { buildAnalysisPreflight } from './analysis-preflight.js';
+import { executeModelCommand } from './commands/model-command.js';
+import { applyModelImport } from './persistence/model-import.js';
+import { focusIssue } from './ui/focus-issue.js';
+import { mountViewerTools } from './render/viewer-tools.js';
+import { initAnalysisWorkbench } from './analysis/workbench.js';
 
 // --- Initialize ---
 
@@ -56,6 +62,10 @@ const viewerContainer = document.getElementById('viewer-3d');
 // Lazy-load 3D viewer (avoids blocking app if three.js CDN fails)
 let viewer3d = null;
 let viewer3dLoading = false;
+let viewerTools = null;
+let viewerToolsState = null;
+let recoveryUI = null;
+let analysisWorkbench = null;
 
 async function loadViewer3D() {
   if (viewer3d) return viewer3d;
@@ -64,6 +74,9 @@ async function loadViewer3D() {
   try {
     const { Viewer3D } = await import('./viewer3d.js');
     viewer3d = new Viewer3D(viewerContainer, state);
+    viewerTools = mountViewerTools(document.getElementById('viewer-tools'), viewer3d, {
+      language: getLang(), onError: err => showNotice(err.message, 'error', 6500),
+    });
     // Click-to-select in the 3D view: share the 2D selection state so the
     // property panel follows.
     viewer3d.onPick = (pick) => {
@@ -86,24 +99,24 @@ async function loadViewer3D() {
 
 let activeView = '2d'; // '2d' | '3d'
 
-// --- Render loop ---
+// --- Change-driven rendering ---
 
 function update() {
   toolManager?.syncSplitPointSelection();
   if (activeView === '2d') {
-    canvas2d.draw();
+    canvas2d.requestDraw();
   } else if (viewer3d) {
     viewer3d.requestRebuild();
+    const toolsState = `${state.revision}:${state.activeLevelId}`;
+    if (viewerToolsState !== toolsState) {
+      viewerTools?.refresh();
+      viewerToolsState = toolsState;
+    }
   }
   ui.updatePropertyPanel();
   ui.updateZoom(canvas2d.camera.scale);
-}
-
-function renderLoop() {
-  if (activeView === '2d') {
-    canvas2d.draw();
-  }
-  requestAnimationFrame(renderLoop);
+  recoveryUI?.applyLanguage();
+  analysisWorkbench?.refresh();
 }
 
 // --- UI ---
@@ -137,6 +150,7 @@ function getIntermediateColumnLevels(member) {
 
 const ui = new UI(state, {
   onToolChange() {
+    toolManager?.cancelDrag();
     toolManager?.cancelSplitPoint({ restoreTool: false, update: false });
     update();
   },
@@ -144,6 +158,29 @@ const ui = new UI(state, {
   onGridChange() { update(); },
   onLayerChange() { update(); },
   onPropertyChange() { update(); },
+  onModelCommand(mutate) {
+    return executeModelCommand(history, state, mutate);
+  },
+  onFocusIssue(issue) {
+    if (!focusIssue(state, canvas2d, issue)) return;
+    syncSettingsControls();
+    ui.refreshLevelSelectors();
+    if (activeView === '3d') {
+      viewer3d?.requestRebuild();
+      if (!viewer3d?.focusSelection()) {
+        viewer3d?.clearIsolation();
+        viewer3d?.clearClipping();
+        viewerTools?.refresh();
+        if (!viewer3d?.focusSelection()) {
+          tab2d.click();
+          // Tab activation may resize the canvas; frame against its live size.
+          focusIssue(state, canvas2d, issue);
+        }
+      }
+    }
+    update();
+    showNotice(getLang() === 'ja' ? '対象を表示しました。必要な表示フィルタを解除しました。' : 'Target revealed; necessary visibility filters were cleared.', 'success');
+  },
   onDraftSectionChange() { showNotice(t('applyAsDraftHint'), 'success'); },
   async onJoinMembers(memberIds) {
     let validation = state.canJoinMembers(memberIds);
@@ -282,6 +319,7 @@ const ui = new UI(state, {
 history.setOnRestore(() => {
   syncSettingsControls();
   ui.refreshLevelSelectors();
+  ui.refreshToolState();
 });
 
 // --- Tools ---
@@ -319,6 +357,9 @@ tab2d.addEventListener('click', () => {
   tab3d.classList.remove('active');
   canvasEl.hidden = false;
   viewerContainer.hidden = true;
+  document.getElementById('viewer-tools').hidden = true;
+  viewer3d?.setActive(false);
+  canvas2d.setActive(true);
   canvas2d.resize();
   update();
 });
@@ -328,9 +369,14 @@ tab3d.addEventListener('click', async () => {
   tab3d.classList.add('active');
   tab2d.classList.remove('active');
   canvasEl.hidden = true;
+  canvas2d.setActive(false);
   viewerContainer.hidden = false;
+  document.getElementById('viewer-tools').hidden = false;
   const v = await loadViewer3D();
-  if (v) v.startRendering();
+  if (v && activeView === '3d') {
+    v.startRendering();
+    viewerTools?.refresh();
+  }
 });
 
 // --- Export / Import ---
@@ -380,7 +426,7 @@ document.getElementById('btn-dxf-export')?.addEventListener('click', () => {
 });
 
 document.getElementById('btn-png-export')?.addEventListener('click', () => {
-  canvas2d.draw();
+  canvas2d.draw({ force: true });
   exportCanvasPNG(canvasEl, state);
   showNotice(t('pngExported'), 'success');
 });
@@ -471,6 +517,7 @@ function syncSettingsControls() {
   if (chkAxes) chkAxes.checked = state.settings.showAxes !== false;
   const chkUnderlay = document.getElementById('chk-show-underlay');
   if (chkUnderlay) chkUnderlay.checked = state.settings.showUnderlay !== false;
+  ui.refreshToolState();
 }
 
 document.getElementById('file-import').addEventListener('change', async (e) => {
@@ -492,6 +539,7 @@ document.getElementById('file-import').addEventListener('change', async (e) => {
 
 const userDefModal = initUserDefModal({
   state,
+  history,
   onModelChange: update,
   refreshDraftSectionSelectors: () => ui.refreshDraftSectionSelectors(),
 });
@@ -532,39 +580,40 @@ const comboModal = initComboModal({
 
 const elevationModal = initElevationModal({ state });
 
+analysisWorkbench = initAnalysisWorkbench({
+  state, host: document.getElementById('analysis-tools'),
+  onSelect: pick => {
+    ui.callbacks.onFocusIssue({ elementType: 'member', elementId: pick.sourceId });
+  },
+});
+
 // --- Autosave / crash recovery ---
 
-const autosaveEntry = readAutosave();
-if (autosaveEntry) {
-  const savedAt = new Date(autosaveEntry.savedAt);
-  const timeLabel = Number.isNaN(savedAt.getTime())
-    ? '-'
-    : savedAt.toLocaleString();
-  if (confirm(t('autosaveRestorePrompt', { time: timeLabel }))) {
-    try {
-      state.loadJSON(autosaveEntry.data);
-      syncSettingsControls();
-      ui.refreshLevelSelectors();
-      update();
-      showNotice(t('autosaveRestored'), 'success');
-    } catch (err) {
-      console.error('Autosave restore failed:', err);
-      showNotice(t('autosaveRestoreFailed'), 'error', 6500);
-      clearAutosave();
-    }
-  } else {
-    clearAutosave();
+const recoveryStartupRevision = state.revision;
+const autosave = initAutosave({
+  state, history,
+  onRestore() {
+    syncSettingsControls();
+    ui.refreshLevelSelectors();
+    update();
+  },
+});
+recoveryUI = mountRecoveryUI({ autosave, host: document.getElementById('recovery-tools') });
+void autosave.ready.then(async ready => {
+  if (!ready) return;
+  try {
+    const entries = await autosave.listGenerations();
+    if (entries.length && state.revision === recoveryStartupRevision) await recoveryUI.open();
+  } catch (error) {
+    console.error('Recovery history unavailable:', error);
   }
-}
-
-initAutosave({ state });
+});
 
 // --- Sample models ---
 
 function loadSample(sampleId) {
-  history.save();
   try {
-    state.loadJSON(buildSampleModel(sampleId));
+    applyModelImport(buildSampleModel(sampleId), state, history);
     syncSettingsControls();
     ui.refreshLevelSelectors();
     hideSettingsModal();
@@ -572,7 +621,6 @@ function loadSample(sampleId) {
     showNotice(t('sampleLoaded'), 'success');
   } catch (err) {
     console.error('Sample load failed:', err);
-    history.undo();
     showNotice(t('sampleLoadFailed'), 'error', 6500);
   }
 }
@@ -603,6 +651,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem('lineframe-theme', theme);
   invalidateCssVarCache();
+  canvas2d.requestDraw();
   if (viewer3d) viewer3d.applyTheme();
   if (settingsThemeSelect) settingsThemeSelect.value = theme;
 }
@@ -616,6 +665,13 @@ function applyLang(lang) {
   userDefModal.applyLanguage();
   analysisSettingsModal.applyLanguage();
   layerModal.clearFormError();
+  analysisWorkbench?.applyLanguage();
+  if (viewer3d) {
+    viewerTools?.dispose();
+    viewerTools = mountViewerTools(document.getElementById('viewer-tools'), viewer3d, {
+      language: lang, onError: err => showNotice(err.message, 'error', 6500),
+    });
+  }
 }
 
 function showSettingsModal() {
@@ -726,7 +782,6 @@ window.addEventListener('keydown', (e) => {
 // --- Start ---
 
 // Expose for testing/debugging
-window._app = { state, history, canvas2d, ui };
+window._app = { state, history, canvas2d, ui, autosave, update, get viewer3d() { return viewer3d; } };
 
-renderLoop();
 update();

@@ -6,9 +6,9 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Element Modeler - Ver.1.1.0</title>
+  <title>Element Modeler - Ver.1.2.0</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="stylesheet" href="style.css?v=1.1.0">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
   <!-- Left Toolbar -->
@@ -272,6 +272,9 @@
     <button id="btn-export" title="Save CAD data">&#128190; <span data-i18n="export">CAD保存</span></button>
     <button id="btn-import-trigger" title="Load CAD data">&#128194; <span data-i18n="import">CAD読込</span></button>
     <input type="file" id="file-import" accept=".json" hidden>
+    <div id="recovery-tools" class="extension-tools"></div>
+    <div id="viewer-tools" class="extension-tools" hidden></div>
+    <div id="analysis-tools" class="extension-tools"></div>
     <hr>
     <button id="btn-analysis-settings" title="Configure analysis export">&#9881; <span data-i18n="analysisSettingsOpen">解析出力設定</span></button>
     <button id="btn-analysis-export" title="Export analysis model (JSON)">&#128640; <span data-i18n="analysisExport">解析JSON出力</span></button>
@@ -308,7 +311,7 @@
       <span id="status-snap" data-i18n="snapOn">スナップ: ON</span>
       <span id="status-zoom">Zoom: 100%</span>
       <span id="status-tool" data-i18n="toolMember">ツール: 線材</span>
-      <span id="status-version">Ver.1.1.0</span>
+      <span id="status-version">Ver.1.2.0</span>
     </footer>
   </main>
   <div id="property-resizer" class="side-resizer side-resizer-right" role="separator" aria-label="Resize properties" aria-orientation="vertical">
@@ -797,6 +800,6 @@
     }
   }
   </script>
-  <script type="module" src="js/app.js?v=1.1.0"></script>
+  <script type="module" src="js/app.js?v=1.2.0"></script>
 </body>
 </html>

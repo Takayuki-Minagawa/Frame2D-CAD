@@ -1,5 +1,5 @@
+import { uiHarness } from './helpers/ui-harness.js';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import { ToolManager, projectSplitPoint } from '../js/tools.js';
@@ -158,20 +158,72 @@ test('Escape and selection replacement cancel split-point mode without history',
   assert.equal(selectionHarness.transactions, 0);
 });
 
-test('join and split controls are wired to modal, history, and point preview paths', async () => {
-  const [uiSource, appSource, canvasSource] = await Promise.all([
-    readFile(new URL('../js/ui.js', import.meta.url), 'utf8'),
-    readFile(new URL('../js/app.js', import.meta.url), 'utf8'),
-    readFile(new URL('../js/canvas2d.js', import.meta.url), 'utf8'),
-  ]);
+test('join and split buttons deliver selected IDs to parent callbacks', context => {
+  const joined = [], split = [];
+  const { ui, state, get, history } = uiHarness(context, undefined, {
+    onJoinMembers: ids => joined.push(ids), onSplitMember: id => split.push(id),
+  });
+  const a = state.addNode(0, 0), b = state.addNode(1000, 0), c = state.addNode(2000, 0);
+  const first = state.addMember(a.id, b.id), second = state.addMember(b.id, c.id);
+  state.selectMembers([first.id, second.id]); ui.updatePropertyPanel();
+  get('btn-join-members').click();
+  assert.deepEqual(joined, [[first.id, second.id]]);
+  state.select('member', first.id); ui.updatePropertyPanel();
+  get('btn-split-member').click();
+  assert.deepEqual(split, [first.id]);
+  assert.equal(history.undoStack.length, 0);
+});
 
-  assert.match(uiSource, /id="btn-join-members"/);
-  assert.match(uiSource, /onJoinMembers\?\.\(selectedIds\(\)\)/);
-  assert.match(uiSource, /id="btn-split-member"/);
-  assert.match(uiSource, /onSplitMember\?\.\(member\.id\)/);
-  assert.match(appSource, /state\.canJoinMembers\(memberIds\)/);
-  assert.match(appSource, /joinSplitModal\.choose\(/);
-  assert.match(appSource, /history\.transact\(\(\) =>/);
-  assert.match(appSource, /state\.splitColumnAtLevel\(memberId, \{ levelId \}\)/);
-  assert.match(canvasSource, /this\.preview\.mode === 'point'/);
+test('joining matching sections records only the parent transaction and undoes/redoes in one step', context => {
+  const { ui, state, get, history } = uiHarness(context);
+  const a = state.addNode(0, 0), b = state.addNode(1000, 0), c = state.addNode(2000, 0);
+  const first = state.addMember(a.id, b.id), second = state.addMember(b.id, c.id);
+  // Like the app callback: async, but with no await when sections match.
+  ui.callbacks.onJoinMembers = async ids => {
+    let result;
+    history.transact(() => {
+      result = state.joinMembers(ids);
+      return Boolean(result);
+    });
+    state.select('member', result.memberId);
+    ui.updatePropertyPanel();
+  };
+  state.selectMembers([first.id, second.id]); ui.updatePropertyPanel();
+  get('btn-join-members').click();
+  assert.equal(state.members.length, 1);
+  const joinedId = state.members[0].id;
+  assert.equal(history.undoStack.length, 1);
+  assert.equal(history.undo(), true);
+  assert.deepEqual(state.members.map(member => member.id), [first.id, second.id]);
+  assert.equal(history.undo(), false);
+  assert.equal(history.redo(), true);
+  assert.equal(state.members[0].id, joinedId);
+  assert.equal(history.redo(), false);
+});
+
+test('column splitting with one intermediate level records only the parent transaction', context => {
+  const { ui, state, get, history } = uiHarness(context);
+  const top = state.addLevel('3F', 6000);
+  const node = state.addNode(0, 0);
+  const column = state.addMember(node.id, node.id, { type: 'column', levelId: 'L0', topLevelId: top.id });
+  ui.callbacks.onSplitMember = async id => {
+    let result;
+    history.transact(() => {
+      result = state.splitColumnAtLevel(id, { levelId: 'L1' });
+      return Boolean(result);
+    });
+    state.selectMembers(result.createdMemberIds);
+    ui.updatePropertyPanel();
+  };
+  state.select('member', column.id); ui.updatePropertyPanel();
+  get('btn-split-member').click();
+  assert.equal(state.members.length, 2);
+  assert.equal(history.undoStack.length, 1);
+  assert.equal(history.undo(), true);
+  assert.equal(state.members.length, 1);
+  assert.equal(state.members[0].id, column.id);
+  assert.equal(history.undo(), false);
+  assert.equal(history.redo(), true);
+  assert.equal(state.members.length, 2);
+  assert.equal(history.redo(), false);
 });

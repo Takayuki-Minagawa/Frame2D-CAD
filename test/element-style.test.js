@@ -1,6 +1,6 @@
+import { uiHarness } from './helpers/ui-harness.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 
 import {
   resolveMemberColor,
@@ -27,15 +27,11 @@ test('member color resolution gives roof roles display priority', () => {
   assert.equal(resolveMemberColor({}), '#666666');
 });
 
-test('2D/3D/member panel renderers use member color resolver', async () => {
-  const canvas2dSource = await readFile(new URL('../js/canvas2d.js', import.meta.url), 'utf8');
-  const viewer3dSource = await readFile(new URL('../js/viewer3d.js', import.meta.url), 'utf8');
-  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
-
-  assert.match(canvas2dSource, /import\s+\{[^}]*resolveMemberColor[^}]*\}\s+from\s+'\.\/element-style\.js';/);
-  assert.match(viewer3dSource, /import\s+\{[^}]*resolveMemberColor[^}]*\}\s+from\s+'\.\/element-style\.js';/);
-  assert.match(uiSource, /import\s+\{[^}]*resolveMemberColor[^}]*roofRoleLabelKey[^}]*\}\s+from\s+'\.\/element-style\.js';/);
-  assert.match(canvas2dSource, /resolveMemberColor\(m\)/);
-  assert.match(viewer3dSource, /resolveMemberColor\(member\)/);
-  assert.match(uiSource, /resolveMemberColor\(member\)/);
+test('member property panel displays roof role color over section color', context => {
+  const { ui, state, container } = uiHarness(context);
+  const a = state.addNode(0, 0), b = state.addNode(1000, 0);
+  const member = state.addMember(a.id, b.id, { roofRole: 'roofValley' });
+  state.select('member', member.id); ui.updatePropertyPanel();
+  assert.match(container.innerHTML, /#3f9b72/);
+  assert.ok(container.innerHTML.includes('谷'));
 });

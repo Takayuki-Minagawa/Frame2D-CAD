@@ -1,4 +1,4 @@
-# Element Modeler (Ver.1.1.0)
+# Element Modeler (Ver.1.2.0)
 
 ブラウザ上で動作する **2D CAD + 3D Viewer** Webアプリケーションです。
 建築の柱・梁・ブレースなどの線材に加えて、床・壁の面材を2D平面上で配置・編集し、同じデータを3Dで可視化できます。
@@ -7,7 +7,9 @@
 
 ## Demo
 
-GitHub Pages URL: _(デプロイ後にURLを記載)_
+GitHub Pages: [Element Modeler](https://takayuki-minagawa.github.io/element-modeler/)
+
+公開更新はGitHub Actionsの「Deploy to GitHub Pages」を手動実行します。push・PR・マージだけでは公開されません。
 
 ## Features
 
@@ -70,7 +72,7 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - 荷重ケース（DL/LL/EQX/EQY/WX/WY）を荷重ごとに設定、荷重組合せ（ケース×係数）を管理
 - DXF下絵インポート（LINE/POLYLINE/CIRCLE/ARC を下絵表示、表示切替・クリア）
 - 軸組図ビュー（通り芯を選んで構面の立面を表示。柱・梁・ブレース・レベル線・直交通り芯）
-- 自動保存とクラッシュ復元（localStorageへ定期保存、起動時に復元確認）
+- 自動保存とクラッシュ復元（IndexedDBへ最新5世代を定期保存、保存状態表示・世代選択）
 - サンプルモデル（平屋+切妻屋根 / 2階建フレーム）を設定モーダルからワンクリック読込
 - 階高・X/Yスパンのリストから、レベル・通り芯・柱・梁・支点を持つ初期格子フレームを一括生成（階別に階高・断面を設定でき、床・外壁も選択生成）
 - 初期格子フレームの基礎生成（GL 下に基礎レベル `FDN` を追加し、地中梁・基礎柱型を生成して支点を `FDN` へ配置）
@@ -90,6 +92,16 @@ GitHub Pages URL: _(デプロイ後にURLを記載)_
 - OrbitControls によるカメラ操作（回転 / パン / ズーム）
 - グリッド床・座標軸・ライティング
 - CDNからThree.jsの読み込みに失敗した場合はユーザーにエラー通知
+
+## 保存・診断・解析連携の追加機能
+
+- CAD読込は事前検証後に適用します。読込失敗時はモデル・選択・Undo/Redoを保持します。
+- 自動保存はIndexedDBへ最新5世代を保存します。ツールバーの「復元履歴」で保存状態・最終成功時刻を確認し、世代を選んで復元できます。未使用のカスタム定義も復元対象です。
+- モデルチェックは重要度・対象種別で絞り込み、全件を閲覧できます。対象ボタンから階・選択・カメラを移動します。表示に必要なフィルタは解除されます。
+- 3Dタブでは「3D表示・出力」からX/Y/Z切断、位置・反転、選択要素の単独表示、選択への移動、GLB出力を操作します。切断面は開いたままで、GLBは表示対象をm単位で出力します。
+- 「解析結果・荷重配分」で線形静的解析結果JSONを読み込み、変形倍率・表示面を選び、変位と反力を確認できます。対応するモデル内容が変わった結果は受け付けません。
+- 単一部材上の線荷重と一方向の矩形面荷重は、支持部材と荷重方向を明示して配分を確認できます。解析JSON出力は元の荷重を配分荷重で置き換え、二重計上しません。端点への静的な集中化は合力・モーメントを保存しますが、分布荷重による部材内曲げを再現する等価節点荷重ではありません。
+- 外部PythonツールでOpenSeesPyの線形静的解析とIFC4の柱・梁出力を行えます。バックエンドは不要です。対応範囲・手順は [解析・IFCツール](docs/analysis-tools.md) を参照してください。
 
 ## Roof Workflow
 
@@ -185,11 +197,11 @@ CADデータ（図面情報）とユーザー定義（材料・断面・バネ�
 ## Project Structure
 
 ```
-Frame2D-CAD/
+element-modeler/
 ├── index.html          # Entry point / Layout / importmap
 ├── style.css           # Dark/Light themes / CSS Grid layout / Modal
 ├── favicon.svg         # Favicon
-├── package.json        # Dev dependencies (lint tools)
+├── package.json        # Local checks, browser tests, benchmarks
 ├── LICENSE             # MIT License
 ├── THIRD_PARTY_LICENSES.md  # Third-party license details
 ├── js/
@@ -203,29 +215,37 @@ Frame2D-CAD/
 │   ├── viewer3d.js     # 3D scene (three.js, BoxGeometry, OrbitControls)
 │   ├── ui.js           # Toolbar / Property panel / Status bar / i18n apply
 │   ├── io.js           # JSON export/import
-│   └── i18n.js         # i18n dictionary (ja/en) / t() helper
+│   ├── i18n.js         # i18n dictionary (ja/en) / t() helper
+│   ├── domain/, state/, commands/  # Model contracts and edit transactions
+│   ├── persistence/   # Validated imports and recovery generations
+│   ├── ui/, tools/    # Feature-specific controls and interaction handlers
+│   ├── render/        # Scheduling, indexes, clipping and GLB
+│   └── analysis/      # Load assignment and result inspection
+├── scripts/           # Local benchmarks, solver and IFC CLIs
+├── test/, tests/e2e/   # Unit and browser tests
+├── docs/              # Contracts and verification reports
 └── README.md
 ```
 
 ### Architecture
 
-```
-app.js ─┬─ state.js      Data model (AppState)
-        ├─ history.js    Undo/Redo snapshots
-        ├─ canvas2d.js ── grid.js    2D rendering
-        ├─ tools.js ──── grid.js     Input handling
-        ├─ viewer3d.js               3D rendering (three.js)
-        ├─ ui.js ──────── i18n.js    UI controls + i18n
-        ├─ io.js                     File I/O
-        └─ i18n.js                   Language dictionary
-```
+公開APIは `AppState` / `UI` / `ToolManager` を維持し、次の責務に分離しています。
 
-- **state.js** がノード・線材・面材・荷重・支点・レベルなど全データを保持する中心モジュール
-- **canvas2d.js** は Canvas 2D API による描画のみを担当し、入力処理は **tools.js** に委譲
-- **viewer3d.js** は2Dデータを mm→m 変換して three.js シーンに描画
-- **i18n.js** が全UIテキストの日本語/英語辞書を管理し、`t(key)` で取得
-- 各モジュールは ES Modules の import/export で疎結合に接続
-- テーマ・言語設定は `localStorage` に永続化
+| 配置 | 責務 |
+|---|---|
+| `js/domain/` | モデルの純粋な既定値・正規化、診断形式 |
+| `js/commands/` | 実変更の判定、1操作1履歴の編集コマンド |
+| `js/persistence/` | 読込の事前検証、内部履歴、非同期世代保存、復元UI |
+| `js/ui/properties/` | 線材・面材・荷重・支点のプロパティパネル |
+| `js/ui/user-def/` | カスタム定義のフォーム・一覧・編集コマンド |
+| `js/tools/` | 選択・配置・荷重・計測などのツール動作 |
+| `js/render/` | 変更時描画、表示用索引、切断、GLB出力、資源解放 |
+| `js/analysis/` | 荷重配分、モデル照合、結果表示と操作パネル |
+| `scripts/analysis_*.py` | ソルバー・IFCの外部CLI |
+
+CAD保存は使用中の定義を中心にまとめ、CAD読込は既存カスタム定義を維持します。
+Undoは全内部状態を復元し、自動保存は未使用定義も含む復元データを保存します。この3つの保持範囲を分け、ファイル読込のマージ規則がUndoへ入り込まないようにしています。
+描画は変更時に要求し、選択色の変更だけでは3D形状を全再生成しません。テーマ・言語はlocalStorageへ、復元世代はIndexedDBへ保存します。
 
 ## Data Format (JSON)
 
@@ -369,8 +389,8 @@ A/Iy/Iz/J、断面形状（矩形・H形鋼・ボックス断面）、せん断�
 
 ```bash
 # Clone
-git clone https://github.com/<your-username>/Frame2D-CAD.git
-cd Frame2D-CAD
+git clone https://github.com/Takayuki-Minagawa/element-modeler.git
+cd element-modeler
 
 # Create a Python environment with uv
 uv venv --python 3.13
@@ -385,13 +405,22 @@ python -m http.server 8080
 
 ## Testing
 
-```bash
-# Unit/Smoke tests (node:test)
-npm test
+開発用Node.jsは24 LTS（`.nvmrc`）、互換確認対象は22以降です。アプリの実行自体にNode.jsは不要です。
 
-# Lint (JS/HTML/CSS)
-npm run lint:all
+```bash
+npm ci
+npm run check
+
+# ローカルのブラウザ検証（初回のみブラウザをインストール）
+npx playwright install chromium firefox webkit
+npm run test:e2e
+
+# 固定モデル100/1,000/10,000部材の性能測定
+npm run benchmark
 ```
+
+E2Eでは固定版Three.jsをローカル配信し、CDN通信に依存しない検証を行います。
+性能計測方法・測定結果は [性能検証](docs/performance.md)、保存の契約は [保存・復元](docs/persistence.md)、状態管理は [モジュール契約](docs/phase1-module-contracts.md) を参照してください。
 
 主なテスト対象:
 - 断面/バネの命名ルール（先頭`_`禁止、既定名重複禁止）
@@ -424,9 +453,14 @@ npm run version:check
 
 ## Deploy to GitHub Pages
 
-1. GitHubにリポジトリをpush
-2. **Settings > Pages > Source** で `main` ブランチ / `/ (root)` を選択
-3. 数分後に `https://<username>.github.io/Frame2D-CAD/` で公開
+1. GitHubの **Settings > Pages > Source** を **GitHub Actions** に設定します。
+2. ローカルで `npm ci`、`npm run check`、`npm run test:e2e` を実行します。
+3. 変更をレビューしてmainへマージします。
+4. 公開が必要な時だけ **Actions > Deploy to GitHub Pages > Run workflow** でmainを選びます。
+
+Actionsの利用量を抑えるため、CIと配信はともに `workflow_dispatch` のみです。
+配信ワークフローはmain以外では実行せず、同一チェックアウトの検証に成功してから配信ファイルを作成します。
+日常の修正・レビューにはローカル検証を使用します。CIだけをGitHub上で確認したい場合は **CI > Run workflow** を実行します。
 
 ## Browser Support
 
@@ -441,6 +475,7 @@ MIT License - 詳細は [LICENSE](LICENSE) を参照
 | ライブラリ | バージョン | ライセンス | 用途 |
 |-----------|-----------|-----------|------|
 | [three.js](https://github.com/mrdoob/three.js) | 0.170.0 | MIT | 3D Viewer (CDN) |
+| [Playwright](https://github.com/microsoft/playwright) | ^1.63.0 | Apache-2.0 | Browser tests (dev) |
 | [ESLint](https://github.com/eslint/eslint) | ^9.0.0 | MIT | JS Lint (dev) |
 | [HTMLHint](https://github.com/htmlhint/HTMLHint) | ^1.1.0 | MIT | HTML Lint (dev) |
 | [Stylelint](https://github.com/stylelint/stylelint) | ^16.0.0 | MIT | CSS Lint (dev) |

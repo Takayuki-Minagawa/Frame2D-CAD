@@ -1,29 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { AppState } from '../js/state.js';
+import { t } from '../js/i18n.js';
+import { uiHarness } from './helpers/ui-harness.js';
 
-test('roof property panel exposes roof group eave generation controls', async () => {
-  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
-  const i18nSource = await readFile(new URL('../js/i18n.js', import.meta.url), 'utf8');
-
-  assert.match(uiSource, /id="prop-roof-eave-depth"/);
-  assert.match(uiSource, /id="btn-roof-eaves"/);
-  assert.match(uiSource, /addEavesFromRoofGroup\(surface\.roofGroupId \|\| DEFAULT_ROOF_GROUP_ID,\s*\{ depth \}\)/);
-  assert.match(uiSource, /roofGeneratedEaves/);
-  assert.match(i18nSource, /roofEaveDepth/);
-  assert.match(i18nSource, /roofGenerateEaves/);
-  assert.match(i18nSource, /roofGeneratedEaves/);
+test('roof eave control uses entered depth and repeated generation reports no-op', context => {
+  const { ui, state, get, history, container } = uiHarness(context);
+  const roof = state.addSurfaceRect(0, 0, 6000, 4000, { type: 'roof' });
+  state.select('surface', roof.id); ui.updatePropertyPanel();
+  get('prop-roof-eave-depth').value = '700';
+  get('btn-roof-eaves').click();
+  assert.equal(state.surfaces.filter(s => s.type === 'eave').length, 4);
+  assert.equal(history.undoStack.length, 1);
+  get('btn-roof-eaves').click();
+  assert.equal(history.undoStack.length, 1);
+  assert.equal(container.children.at(-1).textContent, t('roofGeneratedNone'));
 });
 
-test('roof generation buttons show an explicit notice when nothing is generated', async () => {
-  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
-  const i18nSource = await readFile(new URL('../js/i18n.js', import.meta.url), 'utf8');
-
-  assert.match(uiSource, /_showGenerationNotice\(container,\s*members\.length,\s*'roofGeneratedMembers'\)/);
-  assert.match(uiSource, /_showGenerationNotice\(container,\s*members\.length,\s*'roofGeneratedSlopeMembers'\)/);
-  assert.match(uiSource, /_showGenerationNotice\(container,\s*members\.length,\s*'roofGeneratedJointMembers'\)/);
-  assert.match(uiSource, /_showGenerationNotice\(container,\s*eaves\.length,\s*'roofGeneratedEaves'\)/);
-  assert.match(uiSource, /_showGenerationNotice\(container,\s*walls\.length,\s*'roofGeneratedGableWalls'\)/);
-  assert.match(uiSource, /count > 0[\s\S]*t\('roofGeneratedNone'\)/);
-  assert.match(i18nSource, /roofGeneratedNone/);
+test('every generation action explains an empty result without adding history', context => {
+  const { ui, state, get, history, container } = uiHarness(context);
+  const roof = state.addSurfaceRect(0, 0, 6000, 4000, { type: 'roof' });
+  for (const method of ['addRoofEdgeMembers', 'addRoofSlopeMembers', 'addRoofJointMembers', 'addEavesFromRoofGroup', 'addGableWallsFromRoofGroup']) context.mock.method(AppState.prototype, method, () => []);
+  state.select('surface', roof.id); ui.updatePropertyPanel();
+  for (const id of ['btn-roof-edge-members', 'btn-roof-slope-members', 'btn-roof-joint-members', 'btn-roof-eaves', 'btn-roof-gable-walls']) {
+    get(id).click();
+    assert.equal(container.children.at(-1).textContent, t('roofGeneratedNone'));
+    assert.equal(history.undoStack.length, 0);
+  }
 });

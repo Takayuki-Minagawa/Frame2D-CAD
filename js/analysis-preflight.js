@@ -1,3 +1,4 @@
+import { diagnosticTargets } from './domain/diagnostics.js';
 // analysis-preflight.js - Solver-facing validation performed immediately
 // before analysis JSON/CSV export. The checks are intentionally limited to
 // conditions that can be established without assembling an element stiffness
@@ -113,18 +114,22 @@ function restraintRank(component, model, nodeById) {
   };
 }
 
-function issue(severity, code, messageKey, params = {}) {
-  return { severity, code, messageKey, params };
+function issue(severity, code, messageKey, params = {}, targets = []) {
+  const unique = [...new Map(targets.map(ref => [`${ref.elementType}:${ref.elementId}`, ref])).values()];
+  return { severity, code, messageKey, params, targets: unique, ...(unique[0] || {}) };
 }
 
 export function buildAnalysisPreflight(state, options = {}) {
   const model = options.model || buildAnalysisModel(state, options);
   const issues = [];
+  const memberTargets = elements => elements.filter(element => element.sourceId !== null && element.sourceId !== undefined)
+    .map(element => ({ elementType: 'member', elementId: element.sourceId }));
   const sourceErrors = state.validateModel().filter(item => item.severity === 'error');
   if (sourceErrors.length) {
     issues.push(issue('error', 'source-model-errors', 'analysisPreflightSourceErrors', {
       count: sourceErrors.length,
-    }));
+    }, sourceErrors.flatMap(diagnosticTargets)));
+    issues.push(...sourceErrors);
   }
   if (!model.elements.length) {
     issues.push(issue('error', 'no-elements', 'analysisPreflightNoElements'));
@@ -139,14 +144,20 @@ export function buildAnalysisPreflight(state, options = {}) {
     if (!model.meta.warnings[flag]) continue;
     issues.push(issue('error', code, messageKey, {
       values: model.meta.warnings[values].join(', '),
-    }));
+    }, code === 'undefined-mass-sources'
+      ? state.loads.filter(load => model.meta.warnings[values].includes(load.loadCase))
+        .map(load => ({ elementType: 'load', elementId: load.id }))
+      : state.members.filter(member => code === 'undefined-materials'
+        ? model.meta.warnings[values].includes(member.material)
+        : [member.endI, member.endJ].some(end => end?.condition === 'spring' && model.meta.warnings[values].includes(end.springSymbol)))
+        .map(member => ({ elementType: 'member', elementId: member.id }))));
   }
 
   const undefinedSections = model.elements.filter(element => element.sectionId === null);
   if (undefinedSections.length) {
     issues.push(issue('error', 'undefined-sections', 'analysisPreflightUndefinedSections', {
       count: undefinedSections.length,
-    }));
+    }, memberTargets(undefinedSections)));
   }
 
   const components = connectedComponents(model);
@@ -158,20 +169,20 @@ export function buildAnalysisPreflight(state, options = {}) {
       component: index + 1,
       elements: component.elementIds.length,
       modes: RIGID_BODY_DOF_COUNT - restraint.rank,
-    }));
+    }, memberTargets(model.elements.filter(element => component.elementIds.includes(element.id)))));
   });
 
   if (components.length > 1) {
     issues.push(issue('warning', 'multiple-components', 'analysisPreflightMultipleComponents', {
       count: components.length,
-    }));
+    }, memberTargets(model.elements)));
   }
   const elementNodeIds = new Set(components.flatMap(component => component.nodeIds));
   const orphanSupports = model.supports.filter(support => !elementNodeIds.has(support.nodeId));
   if (orphanSupports.length) {
     issues.push(issue('warning', 'orphan-supports', 'analysisPreflightOrphanSupports', {
       count: orphanSupports.length,
-    }));
+    }, orphanSupports.map(support => ({ elementType: 'support', elementId: support.sourceId }))));
   }
 
   return {

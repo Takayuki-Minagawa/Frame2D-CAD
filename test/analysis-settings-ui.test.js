@@ -29,7 +29,7 @@ test('analysis export settings UI exposes mass factors and self-weight mode', as
 test('user definition UI exposes material, section-property, and spring-stiffness inputs', async () => {
   const [html, source, css] = await Promise.all([
     readProjectFile('index.html'),
-    readProjectFile('js/user-def-modal.js'),
+    Promise.all(['form', 'list', 'fields'].map(name => readProjectFile(`js/ui/user-def/${name}.js`))).then(parts => parts.join('\n')),
     readProjectFile('style.css'),
   ]);
 
@@ -55,9 +55,9 @@ test('user definition UI exposes material, section-property, and spring-stiffnes
   ]) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(source, /state\.addMaterial/);
-  assert.match(source, /state\.updateMaterial/);
-  assert.match(source, /state\.updateSpring\(symbol, \{ kr:/);
+  assert.match(source, /commands\.addMaterial/);
+  assert.match(source, /commands\.updateMaterial/);
+  assert.match(source, /commands\.updateSpring\(symbol, \{ kr:/);
   assert.match(source, /patch\[property\] = result\.value/);
   assert.match(source, /calculateSectionPropertiesFromShape/);
   assert.match(source, /Math\.round\(value\)/);

@@ -1,0 +1,6 @@
+# External only: do not install into the web application runtime.
+# Tested Python 3.9 macOS: OpenSees under x86_64/Rosetta, IFC natively arm64.
+openseespy==3.7.1.2
+ifcopenshell==0.8.4.post1
+# IfcOpenShell 0.8.4.post1 EXPRESS-rule execution imports _pytest internals.
+pytest==8.4.2

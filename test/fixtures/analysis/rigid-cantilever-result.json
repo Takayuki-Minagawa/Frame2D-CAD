@@ -1,0 +1,166 @@
+{
+  "format": "element-modeler-analysis-result",
+  "version": 1,
+  "modelFingerprint": "sha256:cc1ed5d928d871ec4b4149e95d171a9cf79c972bdc5ded143648502f7a18b06e",
+  "fingerprintVersion": "typed-json-binary64-v1",
+  "generatedAt": "2026-09-07T01:33:43.001819+00:00",
+  "solver": {
+    "name": "OpenSeesPy",
+    "version": "3.4.0",
+    "analysis": "linear-static-3d-frame"
+  },
+  "loadCase": "LL",
+  "status": "success",
+  "warnings": [],
+  "units": {
+    "translation": "mm",
+    "rotation": "rad",
+    "force": "N",
+    "moment": "N*mm"
+  },
+  "coordinates": {
+    "verticalAxis": "z",
+    "handedness": "right"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "displacement": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reaction": [
+        0.0,
+        0.0,
+        1000.0000000000002,
+        0.0,
+        -3000000.0000000014,
+        0.0
+      ]
+    },
+    {
+      "id": 2,
+      "position": [
+        3000.0,
+        0.0,
+        0.0
+      ],
+      "displacement": [
+        0.0,
+        0.0,
+        -0.658536585365854,
+        0.0,
+        0.000329268292682927,
+        0.0
+      ],
+      "reaction": [
+        0.0,
+        0.0,
+        -2.2737367544323206e-13,
+        0.0,
+        2.3283064365386963e-10,
+        0.0
+      ]
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "nodeI": 1,
+      "nodeJ": 2,
+      "axes": {
+        "x": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "y": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "z": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "length": 3000.0
+      },
+      "localEndForces": [
+        0.0,
+        0.0,
+        1000.0000000000002,
+        -0.0,
+        -3000000.0000000014,
+        0.0,
+        0.0,
+        0.0,
+        -1000.0000000000002,
+        0.0,
+        2.3283064365386963e-10,
+        0.0
+      ]
+    }
+  ],
+  "loadAssignments": [
+    {
+      "loadId": 1,
+      "sourceId": "DEMO-P1",
+      "nodeId": 2,
+      "values": [
+        0.0,
+        0.0,
+        -1000.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "equilibrium": {
+    "applied": [
+      0.0,
+      0.0,
+      -1000.0,
+      0.0,
+      3000000.0,
+      0.0
+    ],
+    "reactions": [
+      0.0,
+      0.0,
+      1000.0,
+      0.0,
+      -3000000.0000000005,
+      0.0
+    ],
+    "residual": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -4.656612873077393e-10,
+      0.0
+    ],
+    "tolerance": [
+      1.1000000000000001e-05,
+      1.1000000000000001e-05,
+      1.1000000000000001e-05,
+      0.030100000000000002,
+      0.030100000000000002,
+      0.030100000000000002
+    ],
+    "passed": true
+  }
+}

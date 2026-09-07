@@ -1,4 +1,5 @@
 // history.js - Undo/Redo with snapshot approach
+import { captureSnapshot, restoreSnapshot } from './persistence/snapshot.js';
 
 const MAX_HISTORY = 50;
 
@@ -15,7 +16,7 @@ export class History {
   }
 
   save() {
-    this.undoStack.push(this.state.snapshot());
+    this.undoStack.push(captureSnapshot(this.state));
     if (this.undoStack.length > MAX_HISTORY) {
       this.undoStack.shift();
     }
@@ -26,8 +27,20 @@ export class History {
   // model actually changed). A no-op leaves undo AND redo untouched, unlike
   // save() + undo(), which would reset selection/tool state and clear redo.
   transact(fn) {
-    const snap = this.state.snapshot();
-    const changed = fn();
+    if (fn.constructor?.name === 'AsyncFunction') {
+      throw new Error('History.transact requires a synchronous callback');
+    }
+    const snap = captureSnapshot(this.state);
+    let changed;
+    try {
+      changed = fn();
+      if (changed && typeof changed.then === 'function') {
+        throw new Error('History.transact requires a synchronous callback');
+      }
+    } catch (error) {
+      restoreSnapshot(this.state, snap, { rollback: true });
+      throw error;
+    }
     if (changed) {
       this.undoStack.push(snap);
       if (this.undoStack.length > MAX_HISTORY) {
@@ -40,18 +53,20 @@ export class History {
 
   undo() {
     if (this.undoStack.length === 0) return false;
-    this.redoStack.push(this.state.snapshot());
-    const snap = this.undoStack.pop();
-    this.state.restoreSnapshot(snap);
+    const current = captureSnapshot(this.state);
+    restoreSnapshot(this.state, this.undoStack.at(-1));
+    this.undoStack.pop();
+    this.redoStack.push(current);
     this.onRestore?.();
     return true;
   }
 
   redo() {
     if (this.redoStack.length === 0) return false;
-    this.undoStack.push(this.state.snapshot());
-    const snap = this.redoStack.pop();
-    this.state.restoreSnapshot(snap);
+    const current = captureSnapshot(this.state);
+    restoreSnapshot(this.state, this.redoStack.at(-1));
+    this.redoStack.pop();
+    this.undoStack.push(current);
     this.onRestore?.();
     return true;
   }

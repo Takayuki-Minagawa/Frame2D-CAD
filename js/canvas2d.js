@@ -1,6 +1,8 @@
 // canvas2d.js - 2D CAD canvas with pan/zoom
 
 import { drawGrid } from './grid.js';
+import { FrameScheduler } from './render/frame-scheduler.js';
+import { RenderIndex, selectedElements, displayStamp } from './render/model-index.js';
 import { cssVar } from './dom-utils.js';
 import {
   resolveMemberColor,
@@ -32,6 +34,25 @@ export class Canvas2D {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
     this.state = state;
+    this._disposed = false;
+    this._dirty = true;
+    this._index = new RenderIndex();
+    this._frames = new FrameScheduler(() => this.draw());
+    this.stats = { frames: 0 };
+    // Legacy tools assign these before onUpdate, and sometimes mutate a field
+    // in place. Assignments and input events both invalidate the next frame.
+    for (const key of ['preview', 'measure', 'marquee']) {
+      let value = null;
+      Object.defineProperty(this, key, {
+        get: () => value,
+        set: next => { value = next; this.requestDraw(); },
+      });
+    }
+    this._onInput = () => this.requestDraw();
+    this._inputEvents = ['pointermove', 'mousemove', 'pointerdown', 'pointerup', 'pointercancel', 'wheel'];
+    for (const event of this._inputEvents) this.canvas.addEventListener(event, this._onInput);
+    window.addEventListener('keydown', this._onInput);
+    window.addEventListener('keyup', this._onInput);
 
     // Camera: world-to-screen transform
     // screenX = worldX * scale + offsetX
@@ -53,6 +74,7 @@ export class Canvas2D {
   }
 
   resize() {
+    if (this._disposed) return;
     const parent = this.canvas.parentElement;
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = parent.clientWidth * dpr;
@@ -66,6 +88,7 @@ export class Canvas2D {
     if (!this._cameraInitialized && this.logicalWidth > 0 && this.logicalHeight > 0) {
       this._setInitialOriginNearBottomLeft();
     }
+    this.requestDraw();
   }
 
   _setInitialOriginNearBottomLeft() {
@@ -96,14 +119,61 @@ export class Canvas2D {
     this.camera.offsetX = sx - (sx - this.camera.offsetX) * ratio;
     this.camera.offsetY = sy - (sy - this.camera.offsetY) * ratio;
     this.camera.scale = newScale;
+    this.requestDraw();
   }
 
   pan(dx, dy) {
     this.camera.offsetX += dx;
     this.camera.offsetY += dy;
+    this.requestDraw();
   }
 
-  draw() {
+  requestDraw() {
+    if (this._disposed) return;
+    this._dirty = true;
+    if (this.canvas.hidden) this._frames.setActive(false);
+    this._frames.invalidate();
+  }
+
+  setActive(active) {
+    this._frames.setActive(active);
+    if (active) this.requestDraw();
+  }
+
+  dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._frames.dispose();
+    this._resizeObserver.disconnect();
+    for (const event of this._inputEvents) this.canvas.removeEventListener(event, this._onInput);
+    window.removeEventListener('keydown', this._onInput);
+    window.removeEventListener('keyup', this._onInput);
+    this._index = null;
+  }
+
+  draw({ force = false } = {}) {
+    if (this._disposed || (!force && (!this._frames.active || this.canvas.hidden))) return;
+    const indexed = this._index.update(this.state, force);
+    const selection = selectedElements(this.state);
+    const stamp = JSON.stringify([displayStamp(this.state), [...selection.keys()], this.camera,
+      this.preview, this.measure, this.marquee]);
+    // PNG export needs a current bitmap even when the view is inactive/hidden.
+    // A forced synchronous draw bypasses caches without activating the view or
+    // requesting a frame; normal idle calls still do no canvas work.
+    if (!force && !this._dirty && !indexed && this._drawStamp === stamp) return;
+    this._dirty = false;
+    this._drawStamp = stamp;
+    this._selectedMemberIds = new Set([...selection.values()].filter(p => p.kind === 'member').map(p => p.id));
+    this._selectedNodeIds = new Set();
+    if (this.state.selectedNodeId !== null && this.state.selectedNodeId !== undefined) this._selectedNodeIds.add(this.state.selectedNodeId);
+    for (const id of this._selectedMemberIds) {
+      const member = this._index.membersById.get(id);
+      if (member) {
+        this._selectedNodeIds.add(member.startNodeId);
+        this._selectedNodeIds.add(member.endNodeId);
+      }
+    }
+    this.stats.frames++;
     const ctx = this.ctx;
     const w = this.logicalWidth;
     const h = this.logicalHeight;
@@ -279,11 +349,11 @@ export class Canvas2D {
     for (const m of this.state.members) {
       if (!this.state.isMemberVisible(m, '2d')) continue;
       const layerStyle = this.state.getPlanLayerStyle(m.levelId);
-      const n1 = this.state.getNode(m.startNodeId);
-      const n2 = this.state.getNode(m.endNodeId);
+      const n1 = this._index.nodesById.get(m.startNodeId);
+      const n2 = this._index.nodesById.get(m.endNodeId);
       if (!n1 || !n2) continue;
 
-      const isSelected = this.state.isMemberSelected(m.id);
+      const isSelected = this._selectedMemberIds.has(m.id);
       const alpha = isSelected ? 1 : layerStyle.alpha;
       visibleNodeAlpha.set(n1.id, Math.max(visibleNodeAlpha.get(n1.id) || 0, alpha));
       visibleNodeAlpha.set(n2.id, Math.max(visibleNodeAlpha.get(n2.id) || 0, alpha));
@@ -324,18 +394,12 @@ export class Canvas2D {
     for (const n of this.state.nodes) {
       let nodeAlpha = visibleNodeAlpha.get(n.id);
       if (!nodeAlpha) {
-        const isMemberNode = this.state.members.some(
-          m => m.startNodeId === n.id || m.endNodeId === n.id
-        );
+        const isMemberNode = this._index.memberNodeIds.has(n.id);
         if (isMemberNode) continue;
         nodeAlpha = 1;
       }
       const s = this.worldToScreen(n.x, n.y);
-      const isEndOfSelected = this.state.selectedMemberId &&
-        (() => {
-          const m = this.state.getMember(this.state.selectedMemberId);
-          return m && (m.startNodeId === n.id || m.endNodeId === n.id);
-        })();
+      const isEndOfSelected = this._selectedNodeIds.has(n.id);
 
       ctx.save();
       ctx.globalAlpha *= isEndOfSelected ? 1 : nodeAlpha;
@@ -433,7 +497,7 @@ export class Canvas2D {
   }
 
   _drawMemberEndSymbols(ctx, member, n1, n2, selectedColor) {
-    const color = member.id === this.state.selectedMemberId ? selectedColor : resolveMemberColor(member);
+    const color = this._selectedMemberIds.has(member.id) ? selectedColor : resolveMemberColor(member);
     const draw = (node, end, label) => {
       const p = this.worldToScreen(node.x, node.y);
       const symbol = endSymbol(end);

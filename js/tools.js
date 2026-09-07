@@ -1,15 +1,17 @@
+import { executeModelCommand } from './commands/model-command.js';
+import { finishDrag } from './tools/drag-edit.js';
+import { selectionTool } from './tools/selection.js';
+import { memberTool } from './tools/member.js';
+import { surfaceTool } from './tools/surface.js';
+import { loadTool } from './tools/load.js';
+import { measureTool } from './tools/measure.js';
+import { supportTool } from './tools/support.js';
 // tools.js - Select / Member / Surface tools
 
-import {
-  MEMBER_SPLIT_TOLERANCE_MM,
-  PICK_TOLERANCE_PX,
-  POLYLINE_CLOSE_TOLERANCE_PX,
-  WIDE_PICK_TOLERANCE_PX,
-} from './constants.js';
+import { MEMBER_SPLIT_TOLERANCE_MM, PICK_TOLERANCE_PX, WIDE_PICK_TOLERANCE_PX } from './constants.js';
 import { segmentParameter } from './geometry-utils.js';
 import { applySnap } from './grid.js';
 import { t } from './i18n.js';
-import { isSlopedSurfaceType, isWallSurfaceType } from './state.js';
 
 function projectSplitPointTarget(member) {
   return Boolean(
@@ -137,6 +139,28 @@ export class ToolManager {
     return true;
   }
 
+  _runModelCommand(mutate) {
+    if (this._modelCommandActive) return mutate();
+    this._modelCommandActive = true;
+    try {
+      return executeModelCommand(this.history, this.state, mutate).result;
+    } finally {
+      this._modelCommandActive = false;
+    }
+  }
+
+  cancelDrag() {
+    if (!this._dragTarget && !this._marqueeStart) return false;
+    finishDrag(this, false);
+    this._dragTarget = null;
+    this._dragStartPos = null;
+    this._isDragging = false;
+    this._marqueeStart = null;
+    this.canvas2d.marquee = null;
+    this.onUpdate();
+    return true;
+  }
+
   _setupEvents() {
     const el = this.canvas2d.canvas;
 
@@ -148,6 +172,10 @@ export class ToolManager {
 
     window.addEventListener('keydown', e => this._onKeyDown(e));
     window.addEventListener('keyup', e => this._onKeyUp(e));
+    window.addEventListener('blur', () => this.cancelDrag());
+    window.addEventListener('mouseup', e => {
+      if (this._dragTarget || this._marqueeStart) this._selectUp(e);
+    });
   }
 
   _getScreenPos(e) {
@@ -306,6 +334,7 @@ export class ToolManager {
 
     // Esc: cancel or deselect
     if (e.key === 'Escape') {
+      if (this.cancelDrag()) return;
       if (this.state.currentTool === 'splitPoint' || this._splitPointMemberId) {
         e.preventDefault();
         this.cancelSplitPoint();
@@ -330,6 +359,7 @@ export class ToolManager {
 
     // Delete (skip when focused on input/select)
     if ((e.key === 'Delete' || e.key === 'Backspace') && !isEditableTarget) {
+      this.cancelDrag();
       if (this.state.selectedSupportId) {
         const support = this.state.getSupport(this.state.selectedSupportId);
         if (!this.state.isSupportSelectable(support)) return;
@@ -365,9 +395,11 @@ export class ToolManager {
     if ((e.ctrlKey || e.metaKey) && !isEditableTarget) {
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
+        this.cancelDrag();
         if (this.history.undo()) this.onUpdate();
       } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
         e.preventDefault();
+        this.cancelDrag();
         if (this.history.redo()) this.onUpdate();
       }
     }
@@ -388,237 +420,45 @@ export class ToolManager {
 
   // --- Select Tool ---
 
-  _selectDown(e) {
-    const world = this._getWorldPos(e);
-    const tolerance = this._pickTolerance();
-
-    // Shift+click toggles members in/out of the multi-selection.
-    if (e.shiftKey) {
-      const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
-      if (member) {
-        this.state.toggleMemberSelection(member.id);
-        this._dragTarget = null;
-        this.onUpdate();
-        return;
-      }
-      // Shift+drag on empty space: additive marquee.
-      this._marqueeStart = { x: world.x, y: world.y };
-      this._marqueeAdditive = true;
-      return;
-    }
-
-    // Click-only hits, in priority order: support (small target) > load >
-    // surface. The first hit wins and becomes the exclusive selection.
-    const hitTests = [
-      { kind: 'support', find: () => this._findSelectableSupportAt(world.x, world.y, tolerance) },
-      { kind: 'load', find: () => this._findSelectableLoadAt(world.x, world.y) },
-      { kind: 'surface', find: () => this._findSelectableSurfaceAt(world.x, world.y) },
-    ];
-    for (const { kind, find } of hitTests) {
-      const hit = find();
-      if (!hit) continue;
-      this.state.select(kind, hit.id);
-      this._dragTarget = null;
-      this.onUpdate();
-      return;
-    }
-
-    // Node hit: select the member and start dragging its endpoint
-    const nodeHit = this._findSelectableMemberNodeAt(world.x, world.y, tolerance);
-    if (nodeHit) {
-      const { member, node } = nodeHit;
-      this.state.select('member', member.id);
-      this._dragTarget = { type: 'node', id: node.id };
-      this._isDragging = false;
-      this._dragStartPos = { x: world.x, y: world.y };
-      this.onUpdate();
-      return;
-    }
-
-    // Member hit: select and start dragging. Clicking a member of the current
-    // multi-selection drags the whole group.
-    const member = this._findSelectableMemberAt(world.x, world.y, tolerance);
-    if (member) {
-      if (this.state.selectedMemberIds.length > 1 && this.state.isMemberSelected(member.id)) {
-        this._dragTarget = this._buildGroupDragTarget();
-      } else {
-        this.state.select('member', member.id);
-        const n1 = this.state.getNode(member.startNodeId);
-        const n2 = this.state.getNode(member.endNodeId);
-        this._dragTarget = {
-          type: 'member',
-          id: member.id,
-          offsetStartX: n1.x - world.x,
-          offsetStartY: n1.y - world.y,
-          offsetEndX: n2.x - world.x,
-          offsetEndY: n2.y - world.y,
-        };
-      }
-      this._isDragging = false;
-      this._dragStartPos = { x: world.x, y: world.y };
-      this.onUpdate();
-      return;
-    }
-
-    // Empty space: begin a marquee selection (selection is replaced on
-    // mouseup; a plain click still clears it there).
-    this._marqueeStart = { x: world.x, y: world.y };
-    this._marqueeAdditive = false;
-    this._dragTarget = null;
+  _selectDown(...args) {
+    return selectionTool._selectDown.apply(this, args);
   }
 
   // Snapshot of every node in the multi-selection for group dragging.
-  _buildGroupDragTarget() {
-    const nodeStart = new Map();
-    for (const id of this.state.selectedMemberIds) {
-      const member = this.state.getMember(id);
-      if (!member) continue;
-      for (const nodeId of [member.startNodeId, member.endNodeId]) {
-        if (nodeStart.has(nodeId)) continue;
-        const node = this.state.getNode(nodeId);
-        if (node) nodeStart.set(nodeId, { x: node.x, y: node.y });
-      }
-    }
-    return { type: 'group', nodeStart };
+  _buildGroupDragTarget(...args) {
+    return selectionTool._buildGroupDragTarget.apply(this, args);
   }
 
-  _findSelectableMemberNodeAt(x, y, tolerance) {
-    let best = null;
-    let bestDist = tolerance;
-    for (const member of this.state.members) {
-      if (!this.state.isMemberSelectable(member)) continue;
-      for (const nodeId of [member.startNodeId, member.endNodeId]) {
-        const node = this.state.getNode(nodeId);
-        if (!node) continue;
-        const dist = Math.hypot(node.x - x, node.y - y);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = { member, node };
-        }
-      }
-    }
-    return best;
+  _findSelectableMemberNodeAt(...args) {
+    return selectionTool._findSelectableMemberNodeAt.apply(this, args);
   }
 
-  _findSelectableSupportAt(x, y, tolerance) {
-    if (this.state.settings.showSupports === false) return null;
-    return this.state.findSupportAt(x, y, tolerance, support => this.state.isSupportSelectable(support));
+  _findSelectableSupportAt(...args) {
+    return selectionTool._findSelectableSupportAt.apply(this, args);
   }
 
-  _findSelectableLoadAt(x, y) {
-    return this.state.findLoadAt(x, y, load => this.state.isLoadSelectable(load));
+  _findSelectableLoadAt(...args) {
+    return selectionTool._findSelectableLoadAt.apply(this, args);
   }
 
-  _findSelectableSurfaceAt(x, y) {
-    return this.state.findSurfaceAt(x, y, surface => this.state.isSurfaceSelectable(surface));
+  _findSelectableSurfaceAt(...args) {
+    return selectionTool._findSelectableSurfaceAt.apply(this, args);
   }
 
-  _findSelectableMemberAt(x, y, tolerance) {
-    return this.state.findMemberAt(x, y, tolerance, member => this.state.isMemberSelectable(member));
+  _findSelectableMemberAt(...args) {
+    return selectionTool._findSelectableMemberAt.apply(this, args);
   }
 
-  _selectMove(e) {
-    if (this._marqueeStart) {
-      const world = this._getWorldPos(e);
-      this.canvas2d.marquee = {
-        x1: this._marqueeStart.x,
-        y1: this._marqueeStart.y,
-        x2: world.x,
-        y2: world.y,
-      };
-      this.onUpdate();
-      return;
-    }
-
-    if (!this._dragTarget || !this._dragStartPos) return;
-
-    const world = this._getWorldPos(e);
-    const dx = world.x - this._dragStartPos.x;
-    const dy = world.y - this._dragStartPos.y;
-
-    if (!this._isDragging && Math.hypot(dx, dy) * this.canvas2d.camera.scale > 3) {
-      this._isDragging = true;
-      this.history.save();
-    }
-
-    if (!this._isDragging) return;
-
-    const snapped = applySnap(world.x, world.y, this.state, this.canvas2d.camera);
-
-    if (this._dragTarget.type === 'node') {
-      this.state.updateNode(this._dragTarget.id, { x: snapped.x, y: snapped.y });
-    } else if (this._dragTarget.type === 'member') {
-      const dt = this._dragTarget;
-      const member = this.state.getMember(dt.id);
-      if (member) {
-        const newStartX = snapped.x + dt.offsetStartX;
-        const newStartY = snapped.y + dt.offsetStartY;
-        const newEndX = snapped.x + dt.offsetEndX;
-        const newEndY = snapped.y + dt.offsetEndY;
-        this.state.updateNode(member.startNodeId, { x: newStartX, y: newStartY });
-        this.state.updateNode(member.endNodeId, { x: newEndX, y: newEndY });
-      }
-    } else if (this._dragTarget.type === 'group') {
-      // Snap the drag delta to grid steps so the whole group keeps its shape.
-      let gdx = dx;
-      let gdy = dy;
-      if (this.state.settings.snap) {
-        const gridSize = this.state.settings.gridSize || 1;
-        gdx = Math.round(dx / gridSize) * gridSize;
-        gdy = Math.round(dy / gridSize) * gridSize;
-      }
-      for (const [nodeId, start] of this._dragTarget.nodeStart) {
-        this.state.updateNode(nodeId, { x: start.x + gdx, y: start.y + gdy });
-      }
-    }
-
-    this.onUpdate();
+  _selectMove(...args) {
+    return selectionTool._selectMove.apply(this, args);
   }
 
-  _selectUp(e) {
-    if (this._marqueeStart) {
-      this._finishMarquee(e);
-      return;
-    }
-    this._dragTarget = null;
-    this._isDragging = false;
-    this._dragStartPos = null;
+  _selectUp(...args) {
+    return selectionTool._selectUp.apply(this, args);
   }
 
-  _finishMarquee(e) {
-    const world = this._getWorldPos(e);
-    const start = this._marqueeStart;
-    this._marqueeStart = null;
-    this.canvas2d.marquee = null;
-
-    const movedPx = Math.hypot(world.x - start.x, world.y - start.y) * this.canvas2d.camera.scale;
-    if (movedPx <= 3) {
-      // Plain click on empty space
-      if (!this._marqueeAdditive) this.state.clearSelection();
-      this.onUpdate();
-      return;
-    }
-
-    const minX = Math.min(start.x, world.x);
-    const maxX = Math.max(start.x, world.x);
-    const minY = Math.min(start.y, world.y);
-    const maxY = Math.max(start.y, world.y);
-    const inside = (x, y) => x >= minX && x <= maxX && y >= minY && y <= maxY;
-
-    const hitIds = [];
-    for (const member of this.state.members) {
-      if (!this.state.isMemberSelectable(member)) continue;
-      const n1 = this.state.getNode(member.startNodeId);
-      const n2 = this.state.getNode(member.endNodeId);
-      if (!n1 || !n2) continue;
-      if (inside(n1.x, n1.y) && inside(n2.x, n2.y)) hitIds.push(member.id);
-    }
-
-    const ids = this._marqueeAdditive
-      ? [...new Set([...this.state.selectedMemberIds, ...hitIds])]
-      : hitIds;
-    this.state.selectMembers(ids);
-    this.onUpdate();
+  _finishMarquee(...args) {
+    return selectionTool._finishMarquee.apply(this, args);
   }
 
   // --- Split Point Tool ---
@@ -672,446 +512,90 @@ export class ToolManager {
 
   // --- Member Tool ---
 
-  _memberDown(e) {
-    const snapped = this._getSnappedPos(e);
-
-    if (this.state.memberDraftType === 'column') {
-      this._placeColumn(snapped);
-      return;
-    }
-
-    if (!this._memberStart) {
-      this._memberStart = { x: snapped.x, y: snapped.y };
-      return;
-    }
-
-    const start = this._memberStart;
-    const end = snapped;
-
-    if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
-
-    // 水平ブレースは斜め配置のみ（X軸・Y軸に平行な配置は不可）
-    if (this.state.memberDraftType === 'hbrace') {
-      const dx = Math.abs(end.x - start.x);
-      const dy = Math.abs(end.y - start.y);
-      if (dx < 1 || dy < 1) {
-        alert(t('hbraceNeedsDiagonal'));
-        return;
-      }
-    }
-
-    // 垂直ブレースは上レイヤーが必要
-    let topLevelId = null;
-    if (this.state.memberDraftType === 'vbrace') {
-      topLevelId = this._getAutoTopLevelId();
-      if (!topLevelId) {
-        this._cancelDraft('noLevelAbove');
-        return;
-      }
-    }
-
-    this.history.save();
-
-    let startNode = this.state.findNodeAt(start.x, start.y, 1);
-    if (!startNode) startNode = this.state.addNode(start.x, start.y);
-
-    let endNode = this.state.findNodeAt(end.x, end.y, 1);
-    if (!endNode) endNode = this.state.addNode(end.x, end.y);
-
-    const memberType = this.state.memberDraftType || 'beam';
-    const member = this.state.addMember(startNode.id, endNode.id, {
-      type: memberType,
-      levelId: this.state.activeLevelId || 'L0',
-      topLevelId,
-      sectionName: this.state.getDraftSectionName('member', memberType),
-    });
-
-    this.state.selectDrawn('member', member.id);
-    this._memberStart = null;
-    this.canvas2d.preview = null;
-    this.onUpdate();
+  _memberDown(...args) {
+    return this._runModelCommand(() => memberTool._memberDown.apply(this, args));
   }
 
-  _placeColumn(snapped) {
-    const sortedLevels = [...this.state.levels].sort((a, b) => a.z - b.z);
-    const activeIdx = sortedLevels.findIndex(l => l.id === this.state.activeLevelId);
-    if (activeIdx < 0 || activeIdx >= sortedLevels.length - 1) {
-      alert(t('noLevelAbove'));
-      return;
-    }
-    const topLevel = sortedLevels[activeIdx + 1];
-
-    this.history.save();
-    let node = this.state.findNodeAt(snapped.x, snapped.y, 1);
-    if (!node) node = this.state.addNode(snapped.x, snapped.y);
-
-    const member = this.state.addMember(node.id, node.id, {
-      type: 'column',
-      levelId: this.state.activeLevelId,
-      topLevelId: topLevel.id,
-      sectionName: this.state.getDraftSectionName('member', 'column'),
-    });
-    this.state.selectDrawn('member', member.id);
-    this.onUpdate();
+  _placeColumn(...args) {
+    return this._runModelCommand(() => memberTool._placeColumn.apply(this, args));
   }
 
-  _memberMove(e) {
-    if (!this._memberStart) return;
-    if (this.state.memberDraftType === 'column') return;
-
-    const snapped = this._getSnappedPos(e);
-    this.canvas2d.preview = {
-      startX: this._memberStart.x,
-      startY: this._memberStart.y,
-      endX: snapped.x,
-      endY: snapped.y,
-      mode: 'line',
-      label: this._memberPreviewLabel(this._memberStart, snapped),
-    };
-    this.onUpdate();
+  _memberMove(...args) {
+    return memberTool._memberMove.apply(this, args);
   }
 
-  _memberPreviewLabel(start, end) {
-    const type = this.state.memberDraftType || 'beam';
-    const sectionName = this.state.getDraftSectionName('member', type) || '-';
-    const length = Math.round(Math.hypot(end.x - start.x, end.y - start.y));
-    const level = this.state.levels.find(l => l.id === this.state.activeLevelId);
-    const levelLabel = level ? level.name : (this.state.activeLevelId || '-');
-    if (type === 'vbrace') {
-      const top = this.state.levels.find(l => l.id === this._getAutoTopLevelId());
-      return `${t(type)} ${levelLabel}->${top?.name || '-'} ${sectionName} ${length}mm`;
-    }
-    return `${t(type)} ${levelLabel} ${sectionName} ${length}mm`;
+  _memberPreviewLabel(...args) {
+    return memberTool._memberPreviewLabel.apply(this, args);
   }
 
   // --- Surface Tool ---
 
-  _getEffectiveSurfaceMode() {
-    const type = this.state.surfaceDraftType;
-    if (type === 'exteriorWall') return 'polyline';
-    if (type === 'wall' || type === 'gableWall') return 'line';
-    return this.state.surfaceDraftMode;
+  _getEffectiveSurfaceMode(...args) {
+    return surfaceTool._getEffectiveSurfaceMode.apply(this, args);
   }
 
-  _getAutoTopLevelId() {
-    return this.state.getNextLevelId(this.state.activeLevelId);
+  _getAutoTopLevelId(...args) {
+    return surfaceTool._getAutoTopLevelId.apply(this, args);
   }
 
   // Resolves the top level for a new surface of the given type. Returns null
   // for wall types when there is no level above the active one.
-  _resolveSurfaceTopLevelId(type) {
-    if (isWallSurfaceType(type)) return this._getAutoTopLevelId();
-    if (isSlopedSurfaceType(type)) return this.state.activeLevelId || 'L0';
-    return this.state.surfaceDraftTopLevelId || this.state.activeLevelId || 'L0';
+  _resolveSurfaceTopLevelId(...args) {
+    return surfaceTool._resolveSurfaceTopLevelId.apply(this, args);
   }
 
-  _getWallHeightOptions(topLevelId) {
-    const type = this.state.surfaceDraftType;
-    if (!isWallSurfaceType(type)) return {};
-    return this.state.getSurfaceHeightOffsets({
-      heightMode: this.state.surfaceDraftHeightMode,
-      levelId: this.state.activeLevelId || 'L0',
-      topLevelId,
-      bottomOffset: this.state.surfaceDraftBottomOffset,
-      topOffset: this.state.surfaceDraftTopOffset,
-    });
+  _getWallHeightOptions(...args) {
+    return surfaceTool._getWallHeightOptions.apply(this, args);
   }
 
-  _getRoofOptions() {
-    if (!isSlopedSurfaceType(this.state.surfaceDraftType)) return {};
-    const options = {
-      roofSlope: this.state.surfaceDraftRoofSlope,
-      roofDirection: this.state.surfaceDraftRoofDirection,
-      roofBaseOffset: this.state.surfaceDraftRoofBaseOffset,
-      includeWind: true,
-    };
-    if (this.state.surfaceDraftType === 'roof') {
-      options.roofGroupId = this.state.surfaceDraftRoofGroupId || 'RG1';
-    }
-    return options;
+  _getRoofOptions(...args) {
+    return surfaceTool._getRoofOptions.apply(this, args);
   }
 
-  _surfaceDown(e) {
-    const snapped = this._getSnappedPos(e);
-    const mode = this._getEffectiveSurfaceMode();
-    const type = this.state.surfaceDraftType;
-
-    if (mode === 'polyline') {
-      this._surfaceStart = null;
-      this._surfacePolylineDown(snapped);
-      return;
-    }
-
-    this._surfacePolyline = [];
-
-    if (!this._surfaceStart) {
-      this._surfaceStart = { x: snapped.x, y: snapped.y };
-      return;
-    }
-
-    const start = this._surfaceStart;
-    const end = snapped;
-
-    // Wall line: check distance; Rect: check width/height
-    if (mode === 'line') {
-      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
-    } else {
-      if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
-    }
-
-    const topLevelId = this._resolveSurfaceTopLevelId(type);
-    if (!topLevelId) {
-      this._cancelDraft('noLevelAbove');
-      return;
-    }
-
-    this.history.save();
-
-    let surface;
-    const heightOptions = this._getWallHeightOptions(topLevelId);
-    const roofOptions = this._getRoofOptions();
-    if (mode === 'line') {
-      surface = this.state.addSurfaceLine(start.x, start.y, end.x, end.y, {
-        type: type || 'wall',
-        levelId: this.state.activeLevelId || 'L0',
-        topLevelId,
-        sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
-        ...heightOptions,
-        ...roofOptions,
-      });
-    } else {
-      surface = this.state.addSurfaceRect(start.x, start.y, end.x, end.y, {
-        type: type || 'floor',
-        levelId: this.state.activeLevelId || 'L0',
-        topLevelId,
-        loadDirection: this.state.surfaceDraftLoadDir || 'twoWay',
-        sectionName: this.state.getDraftSectionName('surface', type || 'floor'),
-        ...heightOptions,
-        ...roofOptions,
-      });
-    }
-    this.state.selectDrawn('surface', surface.id);
-
-    this._surfaceStart = null;
-    this.canvas2d.preview = null;
-    this.onUpdate();
+  _surfaceDown(...args) {
+    return this._runModelCommand(() => surfaceTool._surfaceDown.apply(this, args));
   }
 
-  _surfaceMove(e) {
-    const mode = this._getEffectiveSurfaceMode();
-
-    if (mode === 'polyline') {
-      this._surfacePolylineMove(e);
-      return;
-    }
-
-    if (!this._surfaceStart) return;
-
-    const snapped = this._getSnappedPos(e);
-    this.canvas2d.preview = {
-      startX: this._surfaceStart.x,
-      startY: this._surfaceStart.y,
-      endX: snapped.x,
-      endY: snapped.y,
-      mode: mode === 'line' ? 'line' : 'rect',
-      label: `${t(this.state.surfaceDraftType || 'surface')} ${t(mode === 'line' ? 'lineLoad' : 'rectMode')}`,
-    };
-    this.onUpdate();
+  _surfaceMove(...args) {
+    return surfaceTool._surfaceMove.apply(this, args);
   }
 
-  _surfacePolylineDown(snapped) {
-    if (this._surfacePolyline.length === 0) {
-      // exteriorWall: 入力開始時に既存チェック
-      if (this.state.surfaceDraftType === 'exteriorWall') {
-        const levelId = this.state.activeLevelId || 'L0';
-        const existing = this.state.surfaces.find(
-          s => s.type === 'exteriorWall' && s.levelId === levelId
-        );
-        if (existing) {
-          if (!confirm(t('exteriorWallConfirmReplace'))) return;
-          this.history.save();
-          this.state.removeSurface(existing.id);
-        }
-      }
-      this._surfacePolyline.push({ x: snapped.x, y: snapped.y });
-      this.state.clearSelection();
-      this.onUpdate();
-      return;
-    }
-
-    const first = this._surfacePolyline[0];
-    const closeTol = POLYLINE_CLOSE_TOLERANCE_PX / this.canvas2d.camera.scale;
-    if (this._surfacePolyline.length >= 3 &&
-        Math.hypot(snapped.x - first.x, snapped.y - first.y) <= closeTol) {
-      this._finishSurfacePolyline();
-      return;
-    }
-
-    const last = this._surfacePolyline[this._surfacePolyline.length - 1];
-    if (Math.hypot(snapped.x - last.x, snapped.y - last.y) < 1) return;
-    this._surfacePolyline.push({ x: snapped.x, y: snapped.y });
-    this.onUpdate();
+  _surfacePolylineDown(...args) {
+    return this._runModelCommand(() => surfaceTool._surfacePolylineDown.apply(this, args));
   }
 
-  _surfacePolylineMove(e) {
-    if (this._surfacePolyline.length === 0) return;
-    const snapped = this._getSnappedPos(e);
-    const points = [...this._surfacePolyline, { x: snapped.x, y: snapped.y }];
-    this.canvas2d.preview = {
-      mode: 'polyline',
-      points,
-      closeHint: this._surfacePolyline.length >= 3,
-      label: `${t(this.state.surfaceDraftType || 'surface')} ${points.length}pt`,
-    };
-    this.onUpdate();
+  _surfacePolylineMove(...args) {
+    return surfaceTool._surfacePolylineMove.apply(this, args);
   }
 
-  _finishSurfacePolyline() {
-    if (this._surfacePolyline.length < 3) return;
-    const type = this.state.surfaceDraftType;
-    const isWallType = isWallSurfaceType(type);
-
-    const topLevelId = this._resolveSurfaceTopLevelId(type);
-    if (!topLevelId) {
-      this._cancelDraft('noLevelAbove');
-      return;
-    }
-
-    this.history.save();
-
-    const surface = this.state.addSurfacePolygon(this._surfacePolyline, {
-      type: type || 'wall',
-      levelId: this.state.activeLevelId || 'L0',
-      topLevelId,
-      loadDirection: isWallType ? 'twoWay' : (this.state.surfaceDraftLoadDir || 'twoWay'),
-      sectionName: this.state.getDraftSectionName('surface', type || 'wall'),
-      ...this._getWallHeightOptions(topLevelId),
-      ...this._getRoofOptions(),
-    });
-    if (surface) {
-      this.state.selectDrawn('surface', surface.id);
-    }
-    this._surfacePolyline = [];
-    this._surfaceStart = null;
-    this.canvas2d.preview = null;
-    this.onUpdate();
+  _finishSurfacePolyline(...args) {
+    return this._runModelCommand(() => surfaceTool._finishSurfacePolyline.apply(this, args));
   }
 
   // --- Load Tool ---
 
-  _loadDown(e) {
-    const snapped = this._getSnappedPos(e);
-    const type = this.state.loadDraftType;
-
-    if (type === 'pointLoad') {
-      this.history.save();
-      const load = this.state.addLoad('pointLoad', {
-        x1: snapped.x, y1: snapped.y,
-        levelId: this.state.activeLevelId || 'L0',
-      });
-      this.state.selectDrawn('load', load.id);
-      this.canvas2d.preview = null;
-      this.onUpdate();
-      return;
-    }
-
-    // areaLoad / lineLoad: two-click
-    if (!this._loadStart) {
-      this._loadStart = { x: snapped.x, y: snapped.y };
-      return;
-    }
-
-    const start = this._loadStart;
-    const end = snapped;
-
-    if (type === 'areaLoad') {
-      if (Math.abs(end.x - start.x) < 1 || Math.abs(end.y - start.y) < 1) return;
-    } else {
-      if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return;
-    }
-
-    this.history.save();
-    const load = this.state.addLoad(type, {
-      x1: start.x, y1: start.y, x2: end.x, y2: end.y,
-      levelId: this.state.activeLevelId || 'L0',
-    });
-    this.state.selectDrawn('load', load.id);
-    this._loadStart = null;
-    this.canvas2d.preview = null;
-    this.onUpdate();
+  _loadDown(...args) {
+    return this._runModelCommand(() => loadTool._loadDown.apply(this, args));
   }
 
-  _loadMove(e) {
-    if (!this._loadStart) return;
-    if (this.state.loadDraftType === 'pointLoad') return;
-
-    const snapped = this._getSnappedPos(e);
-    this.canvas2d.preview = {
-      startX: this._loadStart.x,
-      startY: this._loadStart.y,
-      endX: snapped.x,
-      endY: snapped.y,
-      mode: this.state.loadDraftType === 'areaLoad' ? 'rect' : 'line',
-      label: t(this.state.loadDraftType || 'load'),
-    };
-    this.onUpdate();
+  _loadMove(...args) {
+    return loadTool._loadMove.apply(this, args);
   }
 
   // --- Measure Tool ---
 
-  _measureDown(e) {
-    const snapped = this._getSnappedPos(e);
-    if (!this._measureStart) {
-      this._measureStart = { x: snapped.x, y: snapped.y };
-      this.canvas2d.measure = null;
-      this.onUpdate();
-      return;
-    }
-    this.canvas2d.measure = {
-      x1: this._measureStart.x,
-      y1: this._measureStart.y,
-      x2: snapped.x,
-      y2: snapped.y,
-      done: true,
-    };
-    this._measureStart = null;
-    this.onUpdate();
+  _measureDown(...args) {
+    return measureTool._measureDown.apply(this, args);
   }
 
-  _measureMove(e) {
-    if (!this._measureStart) return;
-    const snapped = this._getSnappedPos(e);
-    this.canvas2d.measure = {
-      x1: this._measureStart.x,
-      y1: this._measureStart.y,
-      x2: snapped.x,
-      y2: snapped.y,
-      done: false,
-    };
-    this.onUpdate();
+  _measureMove(...args) {
+    return measureTool._measureMove.apply(this, args);
   }
 
   // --- Support Tool ---
 
-  _supportDown(e) {
-    const snapped = this._getSnappedPos(e);
-    const tolerance = this._pickTolerance();
-
-    // Check if clicking on an existing support
-    const existing = this._findSelectableSupportAt(snapped.x, snapped.y, tolerance);
-    if (existing) {
-      this.state.select('support', existing.id);
-      this.onUpdate();
-      return;
-    }
-
-    // Place a new support
-    this.history.save();
-    const support = this.state.addSupport(snapped.x, snapped.y, {
-      levelId: this.state.activeLevelId || 'L0',
-    });
-    this.state.select('support', support.id);
-    this.onUpdate();
+  _supportDown(...args) {
+    return this._runModelCommand(() => supportTool._supportDown.apply(this, args));
   }
 
   // --- Status ---

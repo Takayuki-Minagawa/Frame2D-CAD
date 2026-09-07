@@ -1,3 +1,4 @@
+import { uiHarness } from './helpers/ui-harness.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -58,28 +59,19 @@ test('2D/3D renderers both use shared surface color resolver (smoke)', async () 
   assert.match(viewer3dSource, /resolveSurfaceColor\(/);
 });
 
-test('gable wall UI and 3D paths preserve zero top offsets', async () => {
-  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
-  const viewer3dSource = await readFile(new URL('../js/viewer3d.js', import.meta.url), 'utf8');
-  const stateSource = await readFile(new URL('../js/state.js', import.meta.url), 'utf8');
-
-  assert.doesNotMatch(uiSource, /gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
-  assert.doesNotMatch(viewer3dSource, /gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
-  assert.doesNotMatch(stateSource, /gable(?:Start|End)TopOffset,\s*surface\.gable(?:Start|End)TopOffset\s*\|\|\s*surface\.topOffset/);
-  assert.match(uiSource, /gableTopOffset\(surface,\s*'gableStartTopOffset'\)/);
-  assert.match(viewer3dSource, /finiteNumber\(surface\.gableStartTopOffset,\s*topFallback\)/);
-});
-
-test('surface property panel separates gable wall height controls and calculated wind fields', async () => {
-  const uiSource = await readFile(new URL('../js/ui.js', import.meta.url), 'utf8');
-  const i18nSource = await readFile(new URL('../js/i18n.js', import.meta.url), 'utf8');
-
-  assert.match(uiSource, /const isRectangularWall = isWall && !isGableWall;/);
-  assert.match(uiSource, /\$\{isRectangularWall \? `/);
-  assert.match(uiSource, /id="prop-gable-bottom-offset"/);
-  assert.match(uiSource, /bindGableWallOffsets/);
-  assert.match(uiSource, /const windProjectionFields = isWindSurface \? `/);
-  assert.match(uiSource, /\$\{windProjectionFields\}/);
-  assert.match(i18nSource, /calculatedWindArea/);
-  assert.match(i18nSource, /gableInvalidTop/);
+test('gable property inputs preserve zero offsets and reject invalid heights', context => {
+  const { ui, state, get, history, container } = uiHarness(context);
+  const wall = state.addSurfaceLine(0, 0, 4000, 0, { type: 'gableWall',
+    bottomOffset: -1000, topOffset: 2000, gableStartTopOffset: 0, gableEndTopOffset: 2000 });
+  state.select('surface', wall.id); ui.updatePropertyPanel();
+  assert.equal(get('prop-gable-start-top-offset').value, '0');
+  assert.equal(get('prop-wall-top-offset'), null);
+  assert.ok(container.innerHTML.includes('風圧'));
+  get('prop-gable-bottom-offset').change(3000);
+  assert.equal(state.getSurface(wall.id).bottomOffset, -1000);
+  assert.equal(history.undoStack.length, 0);
+  get('prop-gable-bottom-offset').change(-500);
+  assert.equal(state.getSurface(wall.id).bottomOffset, -500);
+  assert.equal(state.getSurface(wall.id).gableStartTopOffset, 0);
+  assert.equal(history.undoStack.length, 1);
 });
