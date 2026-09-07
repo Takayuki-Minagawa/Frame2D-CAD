@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Persistence browser regression tests</title></head>
+<body>
+<h1>Persistence browser regression tests</h1>
+<pre id="results">Running…</pre>
+<footer id="status-bar"></footer>
+<script type="module">
+import { IndexedDBGenerationStore } from '../../js/persistence/indexeddb-store.js';
+import { AppState } from '../../js/state.js';
+import { History } from '../../js/history.js';
+import { initAutosave } from '../../js/autosave.js';
+import { mountRecoveryUI } from '../../js/persistence/recovery-ui.js';
+
+const assert = (condition, message) => { if (!condition) throw new Error(message); };
+const equal = (actual, expected, message) => assert(JSON.stringify(actual) === JSON.stringify(expected), message);
+const results = [];
+const stores = [];
+const makeStore = name => {
+  const store = new IndexedDBGenerationStore({ name });
+  stores.push(store);
+  return store;
+};
+const prefix = `persistence-test-${crypto.randomUUID()}`;
+const test = async (name, run) => {
+  try { await run(); results.push({ name, passed: true }); }
+  catch (error) { results.push({ name, passed: false, error: error.stack }); }
+  document.getElementById('results').textContent = JSON.stringify(results, null, 2);
+};
+const data = new AppState().toJSON();
+const entry = n => ({ data: { ...data, meta: { ...data.meta, name: `Generation ${n}` } }, revision: n, savedAt: new Date().toISOString() });
+
+await test('native IndexedDB stores exactly the newest five committed generations', async () => {
+  const store = makeStore(`${prefix}-five`);
+  let head = null;
+  for (let i = 1; i <= 7; i++) head = (await store.append(entry(i), { expectedHead: head })).id;
+  const list = await store.list();
+  equal(list.map(e => e.revision), [7, 6, 5, 4, 3], 'wrong retention order/count');
+  await store.close();
+  equal((await store.list()).map(e => e.id), list.map(e => e.id), 'reopening changed committed data');
+});
+
+await test('two database connections serialize compare-and-swap; stale writer cannot prune data', async () => {
+  const a = makeStore(`${prefix}-race`);
+  const b = makeStore(`${prefix}-race`);
+  const writes = await Promise.allSettled([
+    a.append(entry(1), { expectedHead: null }), b.append(entry(2), { expectedHead: null }),
+  ]);
+  equal(writes.map(w => w.status).sort(), ['fulfilled', 'rejected'], 'both writers committed');
+  assert(writes.find(w => w.status === 'rejected').reason.name === 'AutosaveConflictError', 'wrong conflict type');
+  assert((await a.list()).length === 1, 'stale writer changed recovery generations');
+});
+
+await test('aborting after prune rolls back both the new generation and removed old generation', async () => {
+  const store = makeStore(`${prefix}-abort`);
+  let head = null;
+  for (let i = 1; i <= 5; i++) head = (await store.append(entry(i), { expectedHead: head })).id;
+  const before = await store.list();
+  const db = await store.open();
+  const open = store.open.bind(store);
+  store.open = async () => ({
+    transaction(...args) {
+      const tx = db.transaction(...args);
+      const objectStore = tx.objectStore.bind(tx);
+      tx.objectStore = name => {
+        const object = objectStore(name);
+        if (name === 'generations') {
+          const remove = object.delete.bind(object);
+          object.delete = key => {
+            const request = remove(key);
+            request.onsuccess = () => tx.abort();
+            return request;
+          };
+        }
+        return object;
+      };
+      return tx;
+    },
+  });
+  let rejected = false;
+  try { await store.append(entry(6), { expectedHead: head }); } catch { rejected = true; }
+  assert(rejected, 'aborted transaction reported success');
+  store.open = open;
+  equal(await store.list(), before, 'abort damaged previous generations');
+  // CAS metadata must have rolled back too.
+  assert((await store.append(entry(7), { expectedHead: head })).revision === 7, 'head did not roll back');
+});
+
+await test('uncommitted writes are absent from the recovery list', async () => {
+  const store = makeStore(`${prefix}-commit`);
+  const db = await store.open();
+  const tx = db.transaction('generations', 'readwrite');
+  tx.objectStore('generations').add(entry(1));
+  const aborted = new Promise(resolve => { tx.onabort = resolve; });
+  const listing = store.list();
+  tx.abort();
+  await aborted;
+  equal(await listing, [], 'list exposed an uncommitted generation');
+});
+
+await test('simultaneous legacy migrations create only one committed generation', async () => {
+  const a = makeStore(`${prefix}-migration`);
+  const b = makeStore(`${prefix}-migration`);
+  const [first, second] = await Promise.all([a.migrate(entry(1), 'same-legacy'), b.migrate(entry(1), 'same-legacy')]);
+  assert(first.id === second.id, 'migration was duplicated');
+  equal((await a.list()).map(e => e.id), [first.id], 'unexpected migration history');
+  equal(await b.get(first.id), first, 'migration could not be read back');
+});
+
+await test('clone failures preserve the last good native generation', async () => {
+  const store = makeStore(`${prefix}-clone`);
+  const first = await store.append(entry(1), { expectedHead: null });
+  let rejected = false;
+  try { await store.append({ ...entry(2), data: () => {} }, { expectedHead: first.id }); }
+  catch { rejected = true; }
+  assert(rejected, 'uncloneable data accepted');
+  equal(await store.list(), [first], 'failed clone changed generations');
+});
+
+await test('recovery UI is bilingual, escapes model names, restores by selection and supports undo', async () => {
+  const state = new AppState();
+  const history = new History(state);
+  const store = makeStore(`${prefix}-ui`);
+  let restored;
+  const didRestore = new Promise(resolve => { restored = resolve; });
+  const autosave = initAutosave({ state, history, store, storage: null, intervalMs: 0, onRestore: restored });
+  let language = 'en';
+  const ui = mountRecoveryUI({ autosave, language: () => language });
+  try {
+    await autosave.ready;
+    state.addNode(1, 1);
+    state.meta.name = '<img src=x onerror=alert(1)>';
+    ui.applyLanguage();
+    assert(document.querySelector('[role=status]').textContent.includes('Unsaved changes'), 'initial edit status remained idle');
+    await autosave.saveNow();
+    state.addNode(2, 2);
+    await autosave.saveNow();
+    await ui.open();
+    const dialog = document.querySelector('dialog');
+    const select = dialog.querySelector('select');
+    assert(dialog.open && select.options.length === 2, 'picker missing generations');
+    assert(!dialog.querySelector('img'), 'model name rendered as HTML');
+    language = 'ja';
+    document.documentElement.lang = 'ja';
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert(dialog.querySelector('h2').textContent.includes('復元履歴'), 'language did not update');
+    let bubbled = 0;
+    const shortcut = () => { bubbled++; };
+    document.addEventListener('keydown', shortcut);
+    const restoreButton = dialog.querySelector('button');
+    restoreButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    restoreButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', bubbles: true }));
+    document.removeEventListener('keydown', shortcut);
+    assert(bubbled === 0, 'dialog keys reached underlying CAD shortcuts');
+    select.value = select.options[1].value;
+    [...dialog.querySelectorAll('button')].find(button => button.textContent === '選択した世代を復元').click();
+    await didRestore;
+    assert(state.nodes.length === 1 && history.undoStack.length === 1, 'selected generation not restored');
+    history.undo();
+    assert(state.nodes.length === 2, 'recovery undo lost current work');
+    language = 'en';
+    ui.applyLanguage();
+    assert(dialog.querySelector('h2').textContent.includes('Recovery history'), 'English missing');
+  } finally {
+    ui.destroy();
+    await autosave.stop();
+  }
+});
+
+for (const store of stores) await store.close();
+for (const name of new Set(stores.map(store => store.name))) {
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name);
+    request.onsuccess = resolve;
+    request.onerror = () => reject(request.error);
+  });
+}
+window.persistenceTestResults = results;
+document.body.dataset.testStatus = results.every(result => result.passed) ? 'passed' : 'failed';
+</script>
+</body>
+</html>

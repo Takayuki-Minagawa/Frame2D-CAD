@@ -1,3 +1,4 @@
+import { createDiagnostic } from './domain/diagnostics.js';
 // model-ops.js - Cross-cutting model operations (validation, level copy,
 // node merge, member split and copy transforms) extracted from state.js.
 // Functions take the AppState instance as their first argument; AppState
@@ -19,48 +20,50 @@ import {
   isRoofSurfaceType,
   isWallSurfaceType,
   sanitizeRoofGroupId,
-} from './state.js';
+} from './domain/model.js';
 
 export function validateModel(state) {
   const issues = [];
-  const addIssue = (severity, code, message, ref = {}) => {
-    issues.push({ severity, code, message, ...ref });
+  const addIssue = (severity, code, params, ref = {}) => {
+    issues.push(createDiagnostic(severity, code, params, ref));
   };
   const levelIds = new Set(state.levels.map(l => l.id));
-  const nodeIds = new Set(state.nodes.map(n => n.id));
+  const nodeById = new Map();
+  for (const node of state.nodes) if (!nodeById.has(node.id)) nodeById.set(node.id, node);
+  const nodeIds = new Set(nodeById.keys());
   const levelZ = new Map();
   for (const level of state.levels) {
     const zKey = String(Number(level.z));
     if (levelZ.has(zKey)) {
-      addIssue('warning', 'duplicate-level-z', `階 ${level.name} は ${levelZ.get(zKey)} と同じz値です`, { elementType: 'level', elementId: level.id });
+      addIssue('warning', 'duplicate-level-z', { name: level.name, other: levelZ.get(zKey) }, { elementType: 'level', elementId: level.id });
     } else {
       levelZ.set(zKey, level.name);
     }
   }
 
   for (const member of state.members) {
-    const n1 = state.getNode(member.startNodeId);
-    const n2 = state.getNode(member.endNodeId);
+    const n1 = nodeById.get(member.startNodeId);
+    const n2 = nodeById.get(member.endNodeId);
     if (!nodeIds.has(member.startNodeId) || !nodeIds.has(member.endNodeId) || !n1 || !n2) {
-      addIssue('error', 'missing-node', `線材 ${member.id} の参照ノードが見つかりません`, { elementType: 'member', elementId: member.id });
+      addIssue('error', 'missing-node', { id: member.id }, { elementType: 'member', elementId: member.id });
       continue;
     }
     if (!levelIds.has(member.levelId)) {
-      addIssue('error', 'missing-level', `線材 ${member.id} の管理レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
+      addIssue('error', 'missing-level', { id: member.id, type: 'member' }, { elementType: 'member', elementId: member.id });
     }
     if ((member.type === 'column' || member.type === 'vbrace') && !levelIds.has(member.topLevelId)) {
-      addIssue('error', 'missing-top-level', `線材 ${member.id} の上端レイヤーが見つかりません`, { elementType: 'member', elementId: member.id });
+      addIssue('error', 'missing-top-level', { id: member.id, type: 'member' }, { elementType: 'member', elementId: member.id });
     }
     const startZ = member.geometryMode === 'explicit3d' ? state._memberEndpointZ(member, 'startZ') : state.getLevelZ(member.levelId);
     const endZ = member.geometryMode === 'explicit3d' ? state._memberEndpointZ(member, 'endZ') : state.getLevelZ(member.levelId);
     if (member.type !== 'column' && Math.hypot(n2.x - n1.x, n2.y - n1.y, endZ - startZ) < 1) {
-      addIssue('warning', 'zero-length-member', `線材 ${member.id} の長さが0です`, { elementType: 'member', elementId: member.id });
+      addIssue('warning', 'zero-length-member', { id: member.id }, { elementType: 'member', elementId: member.id });
     }
     if (member.sectionName && !state._getSectionRef('member', member.type, member.sectionName)) {
-      addIssue('warning', 'missing-section', `線材 ${member.id} の断面 ${member.sectionName} が見つかりません`, { elementType: 'member', elementId: member.id });
+      addIssue('warning', 'missing-section', { id: member.id, type: 'member', section: member.sectionName }, { elementType: 'member', elementId: member.id });
     }
     if ((member.type === 'column' || member.type === 'vbrace') && member.topLevelId === member.levelId) {
-      addIssue('warning', 'same-top-level', `線材 ${member.id} の下端/上端レイヤーが同一です`, { elementType: 'member', elementId: member.id });
+      addIssue('warning', 'same-top-level', { id: member.id }, { elementType: 'member', elementId: member.id });
     }
   }
 
@@ -71,14 +74,14 @@ export function validateModel(state) {
   }
   for (const node of state.nodes) {
     if (!usedNodes.has(node.id)) {
-      addIssue('info', 'orphan-node', `孤立ノード ${node.id} があります`, { elementType: 'node', elementId: node.id });
+      addIssue('info', 'orphan-node', { id: node.id }, { elementType: 'node', elementId: node.id });
     }
   }
 
   const memberKeys = new Map();
   for (const member of state.members) {
-    const n1 = state.getNode(member.startNodeId);
-    const n2 = state.getNode(member.endNodeId);
+    const n1 = nodeById.get(member.startNodeId);
+    const n2 = nodeById.get(member.endNodeId);
     if (!n1 || !n2) continue;
     const startZ = member.geometryMode === 'explicit3d' ? state._memberEndpointZ(member, 'startZ') : state.getLevelZ(member.levelId);
     const endZ = member.geometryMode === 'explicit3d' ? state._memberEndpointZ(member, 'endZ') : state.getLevelZ(member.levelId);
@@ -88,7 +91,7 @@ export function validateModel(state) {
     ].sort();
     const key = [member.type, member.levelId, member.topLevelId || '', ...points].join('|');
     if (memberKeys.has(key)) {
-      addIssue('warning', 'duplicate-member', `線材 ${member.id} は ${memberKeys.get(key)} と重複しています`, { elementType: 'member', elementId: member.id });
+      addIssue('warning', 'duplicate-member', { id: member.id, other: memberKeys.get(key) }, { elementType: 'member', elementId: member.id });
     } else {
       memberKeys.set(key, member.id);
     }
@@ -96,16 +99,16 @@ export function validateModel(state) {
 
   for (const surface of state.surfaces) {
     if (!levelIds.has(surface.levelId)) {
-      addIssue('error', 'missing-level', `面材 ${surface.id} の管理レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
+      addIssue('error', 'missing-level', { id: surface.id, type: 'surface' }, { elementType: 'surface', elementId: surface.id });
     }
     if (isWallSurfaceType(surface.type) && surface.topLevelId && !levelIds.has(surface.topLevelId)) {
-      addIssue('error', 'missing-top-level', `面材 ${surface.id} の上端レイヤーが見つかりません`, { elementType: 'surface', elementId: surface.id });
+      addIssue('error', 'missing-top-level', { id: surface.id, type: 'surface' }, { elementType: 'surface', elementId: surface.id });
     }
     if (surface.shape === 'rect' && (Math.abs(surface.x2 - surface.x1) < 1 || Math.abs(surface.y2 - surface.y1) < 1)) {
-      addIssue('warning', 'zero-area-surface', `面材 ${surface.id} の面積が0です`, { elementType: 'surface', elementId: surface.id });
+      addIssue('warning', 'zero-area-surface', { id: surface.id }, { elementType: 'surface', elementId: surface.id });
     }
     if (surface.sectionName && !state._getSectionRef('surface', surface.type, surface.sectionName)) {
-      addIssue('warning', 'missing-section', `面材 ${surface.id} の断面 ${surface.sectionName} が見つかりません`, { elementType: 'surface', elementId: surface.id });
+      addIssue('warning', 'missing-section', { id: surface.id, type: 'surface', section: surface.sectionName }, { elementType: 'surface', elementId: surface.id });
     }
   }
 

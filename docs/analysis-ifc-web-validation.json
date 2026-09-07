@@ -1,0 +1,239 @@
+{
+  "format": "element-modeler-independent-ifc-validation",
+  "version": 2,
+  "passed": true,
+  "exchangeFieldsPassed": true,
+  "geometryFailures": [],
+  "consumer": {
+    "name": "web-ifc",
+    "version": "0.0.77",
+    "publisher": "That Open Company",
+    "runtime": "v22.18.0"
+  },
+  "sourceIfcSha256": "e39c2d488507ea88e42bbf78f591d322175d5ee8f5140ebc88998dcf0c93c232",
+  "modelFingerprint": "sha256:663c4bb6ad77930f1149b1041e8cf93f248a15418829bedb73f79b85114d2d27",
+  "exporterValidation": {
+    "schemaExpress": true,
+    "uniqueGuids": true,
+    "properties": true,
+    "storeyContainment": true,
+    "coordinates": true,
+    "sectionOrientation": true,
+    "profiles": true,
+    "geometryVolumes": true,
+    "reader": "IfcOpenShell"
+  },
+  "consumerWarnings": [],
+  "counts": {
+    "beams": 2,
+    "columns": 1,
+    "storeys": 2,
+    "members": 3
+  },
+  "checks": [
+    "IFC4 parsing",
+    "mm units",
+    "unique GUIDs",
+    "member classes",
+    "storey elevations and containment",
+    "source properties",
+    "profiles and dimensions",
+    "recursive global placements",
+    "section axes independently derived from report endpoints",
+    "world tessellation bounds in report-derived axes and volume"
+  ],
+  "tolerances": {
+    "parsedCoordinatesMm": 0.000001,
+    "sectionAxisComponents": 1e-9,
+    "tessellatedBoundsMm": 0.001,
+    "volumeRelative": 0.00001
+  },
+  "members": [
+    {
+      "guid": "31nUgQWGTGiOB10S00JkLb",
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcBeam",
+      "levelId": "L0",
+      "profile": "IfcRectangleProfileDef",
+      "parsedProfileDimensions": {
+        "XDim": 100,
+        "YDim": 200
+      },
+      "expectedSectionBasis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        100,
+        -200,
+        0
+      ],
+      "worldEndMm": [
+        3100,
+        -200,
+        0
+      ],
+      "vertexCount": 34,
+      "volumeMm3": 59999999.99999999,
+      "exchangeFieldsPassed": true,
+      "volumePassed": true
+    },
+    {
+      "guid": "3HnoJxX9bT5hq1$bFPD5Ek",
+      "sourceId": "M2",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcColumn",
+      "levelId": "L0",
+      "profile": "IfcIShapeProfileDef",
+      "parsedProfileDimensions": {
+        "OverallWidth": 150,
+        "OverallDepth": 300,
+        "WebThickness": 8,
+        "FlangeThickness": 12
+      },
+      "expectedSectionBasis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        3100,
+        -200,
+        0
+      ],
+      "worldEndMm": [
+        3100,
+        -200,
+        3000
+      ],
+      "vertexCount": 98,
+      "volumeMm3": 17424000.000000037,
+      "exchangeFieldsPassed": true,
+      "volumePassed": true
+    },
+    {
+      "guid": "1X5DZpepDRMuHZDdwrkwHd",
+      "sourceId": "M3",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcBeam",
+      "levelId": "L1",
+      "profile": "IfcRectangleProfileDef",
+      "parsedProfileDimensions": {
+        "XDim": 150,
+        "YDim": 300
+      },
+      "expectedSectionBasis": [
+        [
+          -0.4472135954999579,
+          0.8944271909999159,
+          0
+        ],
+        [
+          -0.3651483716701107,
+          -0.18257418583505536,
+          0.9128709291752768
+        ],
+        [
+          0.816496580927726,
+          0.408248290463863,
+          0.408248290463863
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          -0.447213595499958,
+          0.894427190999916,
+          0
+        ],
+        [
+          -0.3651483716701107,
+          -0.18257418583505536,
+          0.9128709291752768
+        ],
+        [
+          0.8164965809277263,
+          0.40824829046386313,
+          0.40824829046386313
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        3100,
+        -200,
+        3000
+      ],
+      "worldEndMm": [
+        5100.000000000002,
+        800.0000000000011,
+        4000.000000000001
+      ],
+      "vertexCount": 34,
+      "volumeMm3": 110227038.5742188,
+      "exchangeFieldsPassed": true,
+      "volumePassed": true
+    }
+  ],
+  "scope": "Independent web-ifc Node/WASM consumer. Not a Revit, Archicad or other BIM desktop import test."
+}

@@ -1,0 +1,250 @@
+{
+  "format": "element-modeler-independent-ifc-validation",
+  "version": 2,
+  "passed": false,
+  "exchangeFieldsPassed": true,
+  "geometryFailures": [
+    {
+      "guid": "1X5DZpepDRMuHZDdwrkwHd",
+      "profile": "IfcRectangleHollowProfileDef",
+      "expectedVolumeMm3": 21065611.78793533,
+      "actualVolumeMm3": 10777754.882812448,
+      "message": "Independent tessellated volume differs; the exported profile is not approved for rendering in this consumer."
+    }
+  ],
+  "consumer": {
+    "name": "web-ifc",
+    "version": "0.0.77",
+    "publisher": "That Open Company",
+    "runtime": "v22.18.0"
+  },
+  "sourceIfcSha256": "ccc4eba3f99083fcfc7d761a9becd8ae423ae83daedb4e039f78123eb8ed1f37",
+  "modelFingerprint": "sha256:8dff91a0cf695ac758b3831f1663e8fc84c89fd57831b50cf34e20641433710d",
+  "exporterValidation": {
+    "schemaExpress": true,
+    "uniqueGuids": true,
+    "properties": true,
+    "storeyContainment": true,
+    "coordinates": true,
+    "sectionOrientation": true,
+    "profiles": true,
+    "geometryVolumes": true,
+    "reader": "IfcOpenShell"
+  },
+  "consumerWarnings": [
+    "web-ifc 0.0.77 correctly parses IfcRectangleHollowProfileDef WallThickness, but tessellates half the declared wall thickness. Hollow-section rendering in that consumer is not validated; keep the correct IFC thickness. See docs/analysis-tools.md."
+  ],
+  "counts": {
+    "beams": 2,
+    "columns": 1,
+    "storeys": 2,
+    "members": 3
+  },
+  "checks": [
+    "IFC4 parsing",
+    "mm units",
+    "unique GUIDs",
+    "member classes",
+    "storey elevations and containment",
+    "source properties",
+    "profiles and dimensions",
+    "recursive global placements",
+    "section axes independently derived from report endpoints",
+    "world tessellation bounds in report-derived axes and volume"
+  ],
+  "tolerances": {
+    "parsedCoordinatesMm": 0.000001,
+    "sectionAxisComponents": 1e-9,
+    "tessellatedBoundsMm": 0.001,
+    "volumeRelative": 0.00001
+  },
+  "members": [
+    {
+      "guid": "31nUgQWGTGiOB10S00JkLb",
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcBeam",
+      "levelId": "L0",
+      "profile": "IfcRectangleProfileDef",
+      "parsedProfileDimensions": {
+        "XDim": 100,
+        "YDim": 200
+      },
+      "expectedSectionBasis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          0,
+          0
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        100,
+        -200,
+        0
+      ],
+      "worldEndMm": [
+        3100,
+        -200,
+        0
+      ],
+      "vertexCount": 34,
+      "volumeMm3": 59999999.99999999,
+      "exchangeFieldsPassed": true,
+      "volumePassed": true
+    },
+    {
+      "guid": "3HnoJxX9bT5hq1$bFPD5Ek",
+      "sourceId": "M2",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcColumn",
+      "levelId": "L0",
+      "profile": "IfcIShapeProfileDef",
+      "parsedProfileDimensions": {
+        "OverallWidth": 150,
+        "OverallDepth": 300,
+        "WebThickness": 8,
+        "FlangeThickness": 12
+      },
+      "expectedSectionBasis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        3100,
+        -200,
+        0
+      ],
+      "worldEndMm": [
+        3100,
+        -200,
+        3000
+      ],
+      "vertexCount": 98,
+      "volumeMm3": 17424000.000000037,
+      "exchangeFieldsPassed": true,
+      "volumePassed": true
+    },
+    {
+      "guid": "1X5DZpepDRMuHZDdwrkwHd",
+      "sourceId": "M3",
+      "sourceBranch": "primary",
+      "ifcClass": "IfcBeam",
+      "levelId": "L1",
+      "profile": "IfcRectangleHollowProfileDef",
+      "parsedProfileDimensions": {
+        "XDim": 150,
+        "YDim": 300,
+        "WallThickness": 10
+      },
+      "expectedSectionBasis": [
+        [
+          -0.4472135954999579,
+          0.8944271909999159,
+          0
+        ],
+        [
+          -0.3651483716701107,
+          -0.18257418583505536,
+          0.9128709291752768
+        ],
+        [
+          0.816496580927726,
+          0.408248290463863,
+          0.408248290463863
+        ]
+      ],
+      "parsedSectionBasis": [
+        [
+          -0.447213595499958,
+          0.894427190999916,
+          0
+        ],
+        [
+          -0.3651483716701107,
+          -0.18257418583505536,
+          0.9128709291752768
+        ],
+        [
+          0.8164965809277263,
+          0.40824829046386313,
+          0.40824829046386313
+        ]
+      ],
+      "sectionOrientationPassed": true,
+      "worldStartMm": [
+        3100,
+        -200,
+        3000
+      ],
+      "worldEndMm": [
+        5100.000000000002,
+        800.0000000000011,
+        4000.000000000001
+      ],
+      "vertexCount": 68,
+      "volumeMm3": 10777754.882812448,
+      "exchangeFieldsPassed": true,
+      "volumePassed": false
+    }
+  ],
+  "scope": "Independent web-ifc Node/WASM consumer. Not a Revit, Archicad or other BIM desktop import test."
+}

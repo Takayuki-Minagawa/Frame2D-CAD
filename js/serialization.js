@@ -27,7 +27,7 @@ import {
   sanitizeOptionalNumber,
   sanitizeRoofGroupId,
   stripSurfaceFieldsForType,
-} from './state.js';
+} from './domain/model.js';
 
 function sanitizeText(value) {
   return typeof value === 'string' ? value.trim() : '';

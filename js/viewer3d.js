@@ -2,6 +2,10 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { FrameScheduler } from './render/frame-scheduler.js';
+import { RenderIndex, selectedElements, displayStamp } from './render/model-index.js';
+import { clippingEquation, isVisibleHit } from './render/clipping.js';
+import { disposeObjects } from './render/dispose.js';
 import {
   resolveMemberColor,
   resolveSurfaceColor,
@@ -79,7 +83,18 @@ export class Viewer3D {
     this.originAxes = null;
 
     this._initialized = false;
-    this._isAnimating = false;
+    this._disposed = false;
+    this._frames = new FrameScheduler(() => this.animate(), { active: false });
+    this._index = new RenderIndex();
+    this._visuals = new Map();
+    this._baseMaterials = new Map();
+    this._highlightMaterials = new Map();
+    this._selection = new Map();
+    this._isolation = null;
+    this.clipping = null;
+    this._clipPlane = null;
+    this._displayStamp = null;
+    this.stats = { frames: 0, rebuilds: 0, selectionUpdates: 0 };
     this._sceneDirty = true;
     this._pendingInitialCamera = true;
 
@@ -103,7 +118,9 @@ export class Viewer3D {
   }
 
   init() {
+    if (this._disposed) throw new Error('Viewer3D has been disposed');
     if (this._initialized) return;
+    if (THREE.REVISION !== '170') throw new Error('Viewer3D requires Three.js 0.170.0');
     this._initialized = true;
 
     this.scene = new THREE.Scene();
@@ -112,13 +129,16 @@ export class Viewer3D {
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+    this.renderer.clippingPlanes = this._clipPlane ? [this._clipPlane] : [];
     this.container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.1;
     this.controls.enablePan = false;
+    this._onControlsChange = () => this.requestRender();
+    this.controls.addEventListener('change', this._onControlsChange);
     this._setFallbackObliqueView();
 
     this.ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -152,16 +172,20 @@ export class Viewer3D {
     this._resizeObserver.observe(this.container);
 
     this._raycaster = new THREE.Raycaster();
-    this.renderer.domElement.addEventListener('pointerdown', e => {
+    this._onPointerDown = e => {
       if (e.button === 0) this._pointerDownPos = { x: e.clientX, y: e.clientY };
-    });
-    this.renderer.domElement.addEventListener('pointerup', e => {
+    };
+    this._onPointerUp = e => {
       const down = this._pointerDownPos;
       this._pointerDownPos = null;
       if (!down || e.button !== 0) return;
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > PICK_CLICK_MAX_PX) return;
       this._pickAt(e.clientX, e.clientY);
-    });
+    };
+    this._onPointerCancel = () => { this._pointerDownPos = null; };
+    this.renderer.domElement.addEventListener('pointerdown', this._onPointerDown);
+    this.renderer.domElement.addEventListener('pointerup', this._onPointerUp);
+    this.renderer.domElement.addEventListener('pointercancel', this._onPointerCancel);
   }
 
   // Raycasts the member/surface groups at the given client position and
@@ -169,13 +193,18 @@ export class Viewer3D {
   _pickAt(clientX, clientY) {
     if (!this.onPick || !this._raycaster) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    this._syncScene();
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
     const ndc = new THREE.Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1
     );
     this._raycaster.setFromCamera(ndc, this.camera);
-    const hits = this._raycaster.intersectObjects([this.memberGroup, this.surfaceGroup], true);
+    const hits = this._raycaster.intersectObjects(this._contentGroups(), true);
     for (const hit of hits) {
+      if (!isVisibleHit(hit, this._clipPlane)) continue;
       let obj = hit.object;
       while (obj && !obj.userData?.pick) obj = obj.parent;
       if (obj?.userData?.pick) {
@@ -262,6 +291,7 @@ export class Viewer3D {
       const edges = new THREE.EdgesGeometry(geometry);
       const lineMat = this._lineMaterial({ color: 0x000000, opacity: edgeOpacity });
       const seg = new THREE.LineSegments(edges, lineMat);
+      seg.userData.outline = true;
       seg.position.copy(mesh.position);
       seg.quaternion.copy(mesh.quaternion);
       group.add(seg);
@@ -384,16 +414,16 @@ export class Viewer3D {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.requestRender();
   }
 
   _clearGroup(group) {
-    // Dispose per-object geometries only. Materials are shared/cached and are
-    // released together by _disposeMaterialCache().
-    while (group.children.length) {
-      const child = group.children[0];
-      child.geometry?.dispose();
-      group.remove(child);
-    }
+    disposeObjects([group], { materials: false });
+    group.clear();
+  }
+
+  _contentGroups() {
+    return [this.surfaceGroup, this.memberGroup, this.nodeGroup, this.loadGroup, this.supportGroup].filter(Boolean);
   }
 
   // Builds the per-rebuild lookups so the surface/member/node/load/support
@@ -430,6 +460,12 @@ export class Viewer3D {
   rebuildScene() {
     if (!this._initialized) return;
     this._sceneDirty = false;
+    this.stats.rebuilds++;
+    this._visuals.clear();
+    this._baseMaterials.clear();
+    this._selection = new Map();
+    this._index.update(this.state, true);
+    this._displayStamp = displayStamp(this.state);
 
     this._clearGroup(this.surfaceGroup);
     this._clearGroup(this.memberGroup);
@@ -445,6 +481,9 @@ export class Viewer3D {
     this._buildLoads();
     this._buildSupports();
 
+    this._pruneMaterials();
+    this.updateSelection();
+    this._applyIsolation();
     const bounds = this._computeContentBounds();
     this._positionOriginAxes(bounds);
 
@@ -456,18 +495,28 @@ export class Viewer3D {
 
   // Selection-aware colors shared by every member / surface builder.
   _memberColor(member) {
-    return this.state.isMemberSelected(member.id) ? SELECTED_COLOR_3D : resolveMemberColor(member);
+    return resolveMemberColor(member);
   }
 
   _surfaceColor(surface) {
-    return surface.id === this.state.selectedSurfaceId ? SELECTED_COLOR_3D : resolveSurfaceColor(surface);
+    return resolveSurfaceColor(surface);
   }
 
   // Tags every object added to `group` after index `fromIndex` with pick
   // metadata so raycast hits resolve back to the model element.
   _tagPickRange(group, fromIndex, pick) {
     for (let i = fromIndex; i < group.children.length; i++) {
-      group.children[i].userData.pick = pick;
+      const object = group.children[i];
+      object.userData.pick = pick;
+      object.name = `${pick.kind}:${pick.id}`;
+      const source = this._index[`${pick.kind === 'surface' ? 'surfaces' : pick.kind + 's'}ById`]?.get(pick.id);
+      object.userData.element = { kind: pick.kind, id: pick.id,
+        type: source?.type, levelId: source?.levelId, sectionName: source?.sectionName };
+      const key = `${pick.kind}:${pick.id}`;
+      const objects = this._visuals.get(key) || [];
+      objects.push(object);
+      this._visuals.set(key, objects);
+      if (object.material) this._baseMaterials.set(object, object.material);
     }
   }
 
@@ -534,8 +583,78 @@ export class Viewer3D {
     });
   }
 
-  requestRebuild() {
-    this._sceneDirty = true;
+  requestRebuild({ force = false } = {}) {
+    if (this._disposed) return;
+    const changed = this._index.update(this.state, force);
+    this._sceneDirty ||= force || changed || this._displayStamp !== displayStamp(this.state);
+    this.requestRender();
+  }
+
+  requestRender() {
+    if (this._disposed) return;
+    if (this.container.hidden) this._frames.setActive(false);
+    this._frames.invalidate();
+  }
+
+  requestSelectionUpdate() {
+    // Also checks model revision, so a selection immediately following an edit
+    // cannot accidentally suppress its geometry update.
+    this.requestRebuild();
+  }
+
+  requestDisplayUpdate() {
+    this.requestRebuild();
+  }
+
+  _syncScene() {
+    if (this._index.update(this.state) || this._displayStamp !== displayStamp(this.state)) this._sceneDirty = true;
+    if (this._sceneDirty) this.rebuildScene();
+    else this.updateSelection();
+  }
+
+  updateSelection() {
+    const next = selectedElements(this.state);
+    const changed = new Set([...this._selection.keys(), ...next.keys()]);
+    let updated = false;
+    for (const key of changed) {
+      if (this._selection.has(key) === next.has(key)) continue;
+      for (const object of this._visuals.get(key) || []) {
+        const base = this._baseMaterials.get(object);
+        if (!base) continue;
+        // Keep black edge outlines black; highlight colored member lines too.
+        if (object.userData.outline) continue;
+        if (!next.has(key)) object.material = base;
+        else {
+          let highlighted = this._highlightMaterials.get(base);
+          if (!highlighted) {
+            highlighted = base.clone();
+            highlighted.color.set(SELECTED_COLOR_3D);
+            this._highlightMaterials.set(base, highlighted);
+          }
+          object.material = highlighted;
+        }
+        updated = true;
+      }
+    }
+    this._selection = next;
+    if (updated) this.stats.selectionUpdates++;
+  }
+
+  _pruneMaterials() {
+    const used = new Set();
+    for (const group of this._contentGroups()) group.traverse(object => {
+      if (object.material) used.add(object.material);
+    });
+    for (const cache of [this._matCache, this._lineMatCache]) {
+      for (const [key, material] of cache) if (!used.has(material)) {
+        material.dispose();
+        cache.delete(key);
+      }
+    }
+    for (const [base, material] of this._highlightMaterials) if (!used.has(base)) {
+      material.dispose();
+      this._highlightMaterials.delete(base);
+    }
   }
 
   // Draws one wall segment as an oriented box + edges between two plan points.
@@ -598,7 +717,9 @@ export class Viewer3D {
     const outline = [...vertices, vertices[0]];
     const outlineGeo = new THREE.BufferGeometry().setFromPoints(outline);
     const outlineMat = this._lineMaterial({ color: 0x000000, opacity: GABLE_OUTLINE_OPACITY * opacityMultiplier });
-    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
+    const outlineObject = new THREE.Line(outlineGeo, outlineMat);
+    outlineObject.userData.outline = true;
+    this.surfaceGroup.add(outlineObject);
   }
 
   _buildMembers() {
@@ -614,7 +735,7 @@ export class Viewer3D {
 
   _buildMemberVisual(m, visibleMemberNodeIds) {
     const layerAlpha = this.state.getPlanLayerStyle(m.levelId, { view: '3d' }).alpha;
-    const n1 = this.state.getNode(m.startNodeId);
+    const n1 = this._index.nodesById.get(m.startNodeId);
     if (!n1) return;
     visibleMemberNodeIds.add(m.startNodeId);
     visibleMemberNodeIds.add(m.endNodeId);
@@ -624,7 +745,7 @@ export class Viewer3D {
       return;
     }
 
-    const n2 = this.state.getNode(m.endNodeId);
+    const n2 = this._index.nodesById.get(m.endNodeId);
     if (!n2) return;
 
     if (m.type === 'vbrace') {
@@ -667,7 +788,7 @@ export class Viewer3D {
   }
 
   _buildNodes(visibleMemberNodeIds) {
-    if (!this.showNodes) return;
+    if (!this.showNodes || !visibleMemberNodeIds.size) return;
     const sphereGeo = new THREE.SphereGeometry(NODE_SPHERE_RADIUS_M, 8, 8);
     const material = this._standardMaterial({ color: 0x89b4fa, opacity: 1 });
 
@@ -677,13 +798,16 @@ export class Viewer3D {
       const y = levelId === undefined ? 0 : this._levelZm(levelId);
       const sphere = new THREE.Mesh(sphereGeo, material);
       sphere.position.copy(this._sceneAt(n, y));
+      const from = this.nodeGroup.children.length;
       this.nodeGroup.add(sphere);
+      this._tagPickRange(this.nodeGroup, from, { kind: 'node', id: n.id });
     }
   }
 
   _buildLoads() {
     for (const ld of this.state.loads || []) {
       if (!this.state.isLoadVisible(ld, '3d')) continue;
+      const from = this.loadGroup.children.length;
       const layerAlpha = this.state.getPlanLayerStyle(ld.levelId, { view: '3d' }).alpha;
       const y = this._levelZm(ld.levelId) + LOAD_PLANE_LIFT_M;
       const color = resolveLoadColor(ld);
@@ -710,6 +834,7 @@ export class Viewer3D {
         mesh.position.copy(this._sceneAt({ x: ld.x1, y: ld.y1 }, y));
         this.loadGroup.add(mesh);
       }
+      this._tagPickRange(this.loadGroup, from, { kind: 'load', id: ld.id });
     }
   }
 
@@ -719,7 +844,9 @@ export class Viewer3D {
       if (!this.state.isSupportVisible(sup, '3d')) continue;
       const layerAlpha = this.state.getPlanLayerStyle(sup.levelId, { view: '3d' }).alpha;
       const y = this._levelZm(sup.levelId);
+      const from = this.supportGroup.children.length;
       this._addSupport3D(sup, y, layerAlpha);
+      this._tagPickRange(this.supportGroup, from, { kind: 'support', id: sup.id });
     }
   }
 
@@ -859,7 +986,7 @@ export class Viewer3D {
   }
 
   _addPolygonSurface3D(surface, base, top, opacityMultiplier = 1) {
-    const points = surface.points.map(p => new THREE.Vector2(p.x * MM_TO_M, -p.y * MM_TO_M));
+    const points = surface.points.map(p => new THREE.Vector2(p.x * MM_TO_M, p.y * MM_TO_M));
     const shape = new THREE.Shape(points);
     const isWallType = isWallSurfaceType(surface.type);
     const color = this._surfaceColor(surface);
@@ -947,7 +1074,9 @@ export class Viewer3D {
     outlinePoints.push(outlinePoints[0].clone());
     const outlineGeo = new THREE.BufferGeometry().setFromPoints(outlinePoints);
     const outlineMat = this._lineMaterial({ color: 0x000000, opacity: ROOF_OUTLINE_OPACITY * opacityMultiplier });
-    this.surfaceGroup.add(new THREE.Line(outlineGeo, outlineMat));
+    const outlineObject = new THREE.Line(outlineGeo, outlineMat);
+    outlineObject.userData.outline = true;
+    this.surfaceGroup.add(outlineObject);
   }
 
   _addSupport3D(sup, y, opacityMultiplier = 1) {
@@ -981,51 +1110,178 @@ export class Viewer3D {
   }
 
   animate() {
-    if (!this._initialized) {
-      this._isAnimating = false;
+    if (!this._initialized || this._disposed || !this._frames.active) return;
+    if (this.container.hidden) {
+      this.stopRendering();
       return;
     }
-
-    if (!this.container.hidden) {
-      if (this._sceneDirty) {
-        this.rebuildScene();
-      }
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
-    }
-
-    requestAnimationFrame(() => this.animate());
+    this._syncScene();
+    // r170 update emits change while damping is moving. The listener schedules
+    // the next frame; when it settles there is no outstanding RAF.
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+    this.stats.frames++;
   }
 
   startRendering() {
     this.init();
+    this._frames.setActive(true);
     this.resize();
-    this._pendingInitialCamera = true;
     this.requestRebuild();
-    if (this._isAnimating) return;
-    this._isAnimating = true;
-    this.animate();
+  }
+
+  setActive(active) {
+    if (active) this.startRendering();
+    else this.stopRendering();
+  }
+
+  stopRendering() {
+    this._frames.setActive(false);
   }
 
   toggleWireframe() {
     this.showWireframe = !this.showWireframe;
-    this.requestRebuild();
+    this.requestRebuild({ force: true });
   }
 
   toggleNodes() {
     this.showNodes = !this.showNodes;
-    this.requestRebuild();
+    this.requestRebuild({ force: true });
+  }
+
+  setClipping(axis, positionMm, flipped = false) {
+    const equation = clippingEquation(axis, positionMm, flipped);
+    this.clipping = { axis: axis.toUpperCase(), positionMm, flipped };
+    this._clipPlane = new THREE.Plane(new THREE.Vector3(...equation.normal), equation.constant);
+    if (this.renderer) this.renderer.clippingPlanes = [this._clipPlane];
+    this.requestRender();
+  }
+
+  clearClipping() {
+    this.clipping = null;
+    this._clipPlane = null;
+    if (this.renderer) this.renderer.clippingPlanes = [];
+    this.requestRender();
+  }
+
+  getClippingRange(axis) {
+    this.init();
+    this._syncScene();
+    const { box, hasContent } = this._computeContentBounds();
+    if (!hasContent) return { min: 0, max: 1000 };
+    const ranges = { X: [box.min.x, box.max.x], Y: [-box.max.z, -box.min.z], Z: [box.min.y, box.max.y] };
+    const range = ranges[String(axis).toUpperCase()];
+    if (!range) throw new TypeError('Invalid clipping axis');
+    return { min: range[0] / MM_TO_M, max: range[1] / MM_TO_M };
+  }
+
+  isolateSelection() {
+    this.init();
+    this._syncScene();
+    const selected = selectedElements(this.state);
+    const visible = [...selected.keys()].filter(key => this._visuals.has(key));
+    if (!visible.length) return false;
+    // Snapshot: subsequent selection changes must not silently replace isolation.
+    this._isolation = new Set(visible);
+    this._applyIsolation();
+    this.requestRender();
+    return true;
+  }
+
+  clearIsolation() {
+    this._isolation = null;
+    this._applyIsolation();
+    this.requestRender();
+  }
+
+  _applyIsolation() {
+    for (const [key, objects] of this._visuals) {
+      for (const object of objects) object.visible = !this._isolation || this._isolation.has(key);
+    }
+  }
+
+  focusSelection() {
+    return this.focusElements([...selectedElements(this.state).values()]);
+  }
+
+  focusElements(picks) {
+    this.init();
+    this._syncScene();
+    const box = new THREE.Box3();
+    for (const pick of picks) {
+      for (const object of this._visuals.get(`${pick.kind}:${pick.id}`) || []) {
+        if (object.visible) box.union(new THREE.Box3().setFromObject(object));
+      }
+    }
+    if (box.isEmpty()) return false;
+    // Bound the retained part of this axis-aligned half-space as well.
+    if (this.clipping) {
+      const { normal, constant } = clippingEquation(this.clipping.axis, this.clipping.positionMm, this.clipping.flipped);
+      const index = normal.findIndex(n => n !== 0);
+      const axis = ['x', 'y', 'z'][index];
+      const cut = -constant / normal[index];
+      if (normal[index] > 0) box.min[axis] = Math.max(box.min[axis], cut);
+      else box.max[axis] = Math.min(box.max[axis], cut);
+      if (box.isEmpty()) return false;
+    }
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 0.25);
+    const halfFov = Math.min(THREE.MathUtils.degToRad(this.camera.fov / 2),
+      Math.atan(Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.camera.aspect));
+    const distance = radius / Math.sin(halfFov) * 1.15;
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    if (!direction.lengthSq()) direction.set(1, 0.8, 1).normalize();
+    // Flush old damping deltas before setting a precise new target.
+    const damping = this.controls.enableDamping;
+    this.controls.enableDamping = false;
+    this.controls.update();
+    this.camera.position.copy(center).addScaledVector(direction, distance);
+    this.controls.target.copy(center);
+    this.camera.near = Math.max(0.001, distance / 10000);
+    this.camera.far = Math.max(1000, distance + radius * 4);
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+    this.controls.enableDamping = damping;
+    this.requestRender();
+    return true;
+  }
+
+  async exportGLB() {
+    this.init();
+    this._syncScene();
+    const { exportViewerGLB } = await import('./render/glb-export.js');
+    if (this._disposed) throw new Error('Viewer3D has been disposed');
+    this._syncScene();
+    return exportViewerGLB(this);
   }
 
   dispose() {
-    this._disposeMaterialCache();
-    if (this.surfaceGroup) this._clearGroup(this.surfaceGroup);
-    if (this.memberGroup) this._clearGroup(this.memberGroup);
-    if (this.nodeGroup) this._clearGroup(this.nodeGroup);
-    if (this.loadGroup) this._clearGroup(this.loadGroup);
-    if (this.supportGroup) this._clearGroup(this.supportGroup);
+    if (this._disposed) return;
+    this._disposed = true;
+    this._frames.dispose();
     this._resizeObserver?.disconnect();
+    this.controls?.removeEventListener('change', this._onControlsChange);
+    this.controls?.dispose();
+    const canvas = this.renderer?.domElement;
+    canvas?.removeEventListener('pointerdown', this._onPointerDown);
+    canvas?.removeEventListener('pointerup', this._onPointerUp);
+    canvas?.removeEventListener('pointercancel', this._onPointerCancel);
+    disposeObjects(this._contentGroups(), { materials: false });
+    disposeObjects([this.gridHelper, this.originAxes]);
+    this._disposeMaterialCache();
+    for (const material of this._highlightMaterials.values()) material.dispose();
+    this._highlightMaterials.clear();
+    this._baseMaterials.clear();
+    this._visuals.clear();
+    this._selection.clear();
+    this._index = null;
+    this._levelZMm = this._maxBeamHMByLevel = this._nodeLevelId = null;
+    this.scene?.clear();
+    for (const group of this._contentGroups()) group.clear();
     this.renderer?.dispose();
+    canvas?.remove();
+    this.onPick = null;
+    this._initialized = false;
   }
 
   applyTheme() {
@@ -1070,5 +1326,6 @@ export class Viewer3D {
       mat.depthWrite = false;
     }
     this.scene.add(this.gridHelper);
+    this.requestRender();
   }
 }

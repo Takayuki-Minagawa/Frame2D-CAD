@@ -1,7 +1,45 @@
+import { catalogState } from './state/catalog.js';
+import { runtimeState } from './state/runtime.js';
+import { createIdIndex, indexedItem } from './domain/id-index.js';
+import {
+  createDefaultLevels,
+  normalizeLoadCase,
+  normalizeLoadFactors,
+  createDefaultLoadCombinations,
+  hasOwn,
+  sanitizePatchFields,
+  stripSurfaceFieldsForType,
+  sanitizeOptionalNumber,
+  sanitizeText,
+  sanitizeRoofGroupId,
+  defaultSurfaceDrawColor,
+  normalizeSurfaceHeightMode,
+  normalizeMemberGeometryMode,
+  isWallSurfaceType,
+  isRoofSurfaceType,
+  isGableWallSurfaceType,
+  isSlopedSurfaceType,
+} from './domain/model.js';
+export {
+  createDefaultLevels,
+  normalizeLoadCase,
+  normalizeLoadFactors,
+  createDefaultLoadCombinations,
+  normalizeAxisEntry,
+  stripSurfaceFieldsForType,
+  sanitizeOptionalNumber,
+  sanitizeRoofGroupId,
+  defaultSurfaceDrawColor,
+  normalizeMemberGeometryMode,
+  isWallSurfaceType,
+  isRoofSurfaceType,
+  isGableWallSurfaceType,
+  isEaveSurfaceType,
+  isSlopedSurfaceType,
+} from './domain/model.js';
 // state.js - Data model and state management
 
 import {
-  DEFAULT_LOAD_CASE,
   DEFAULT_ROOF_GROUP_ID,
   DEFAULT_ROOF_SLOPE_RATIO,
   DEFAULT_SECTION_B_MM,
@@ -9,7 +47,6 @@ import {
   DEFAULT_STORY_HEIGHT_MM,
   HANGING_WALL_DEPTH_MM,
   HIT_TOLERANCE_MM,
-  LOAD_CASES,
   WAIST_WALL_TOP_OFFSET_MM,
   WALL_DISPLAY_OFFSET_MM,
 } from './constants.js';
@@ -35,34 +72,12 @@ import {
   normalizeAnalysisSettings,
 } from './analysis-settings.js';
 import {
-  cloneSection,
   createDefaultMaterialCatalog,
   createDefaultSectionCatalog,
   createDefaultSpringCatalog,
-  DEFAULT_MATERIAL_DEFINITIONS,
-  DEFAULT_MATERIAL_NAME_SET,
-  DEFAULT_SECTION_NAME_SET,
-  DEFAULT_SPRING_SYMBOL_SET,
-  defaultColorForSection,
-  isSameMaterialDefinition,
-  normalizeCatalogSectionEntry,
-  normalizeMaterialEntry,
-  normalizeMemberEndInfo,
-  normalizeSectionType,
-  normalizeSpringEntry,
-  sanitizeColor,
 } from './section-catalog.js';
 import { CURRENT_SCHEMA_VERSION, loadModelJSON, serializeModel } from './serialization.js';
 
-const MEMBER_GEOMETRY_MODES = new Set(['level', 'explicit3d']);
-const SURFACE_HEIGHT_MODES = new Set(['full', 'waist', 'hanging', 'custom']);
-const SELECTION_FIELDS = {
-  node: 'selectedNodeId',
-  member: 'selectedMemberId',
-  surface: 'selectedSurfaceId',
-  load: 'selectedLoadId',
-  support: 'selectedSupportId',
-};
 // Re-exported for API compatibility (implementations in display-settings.js)
 export {
   createDefaultSettings,
@@ -148,11 +163,36 @@ export class AppState {
     this._supportCounter = 0;
     this._axisCounter = 0;
     this._loadComboCounter = this.loadCombinations.length;
+    this.invalidateDerivedCaches();
   }
 
   // Bumps the model revision. Called by every mutating public method.
   _touch() {
     this.revision += 1;
+    this.invalidateDerivedCaches();
+  }
+
+  // Derived lookup data is never part of CAD or history payloads. Snapshot
+  // restore calls this hook; array identity/length also guard direct edits.
+  invalidateDerivedCaches() {
+    this._idIndexes = null;
+  }
+
+  _getById(collection, id) {
+    const items = this[collection];
+    this._idIndexes ||= new Map();
+    let index = this._idIndexes.get(collection);
+    if (!index || index.items !== items || index.length !== items.length) {
+      index = createIdIndex(items);
+      this._idIndexes.set(collection, index);
+      return index.entries.get(id)?.item;
+    }
+    const item = indexedItem(index, items, id);
+    if (item && index.entries.get(id)?.item !== item) {
+      index = createIdIndex(items);
+      this._idIndexes.set(collection, index);
+    }
+    return item;
   }
 
   // Settings are persisted with the model, so edits must bump the revision —
@@ -182,32 +222,8 @@ export class AppState {
   // Resets selection, tool, and draft state to the initial defaults.
   // activeLevelId / surfaceDraftTopLevelId are intentionally excluded: they
   // are derived from the level list by the constructor and loadJSON.
-  resetRuntimeState() {
-    this.selectedNodeId = null;
-    this.selectedMemberId = null;
-    this.selectedMemberIds = [];
-    this.selectedSurfaceId = null;
-    this.selectedLoadId = null;
-    this.selectedSupportId = null;
-    this.currentTool = 'member';
-    this.loadDraftCase = DEFAULT_LOAD_CASE;
-    this.memberDraftType = 'beam';
-    // Sticky ("paste") section per type: once a section is chosen for a type,
-    // newly drawn members/surfaces of that type reuse it instead of reverting
-    // to the built-in default. Keyed by normalized section type.
-    this.memberDraftSections = {};
-    this.surfaceDraftSections = {};
-    this.surfaceDraftType = 'floor';
-    this.surfaceDraftMode = 'rect';
-    this.surfaceDraftLoadDir = 'twoWay';
-    this.surfaceDraftHeightMode = 'full';
-    this.surfaceDraftBottomOffset = 0;
-    this.surfaceDraftTopOffset = WAIST_WALL_TOP_OFFSET_MM;
-    this.surfaceDraftRoofSlope = DEFAULT_ROOF_SLOPE_RATIO;
-    this.surfaceDraftRoofDirection = 'xPlus';
-    this.surfaceDraftRoofBaseOffset = 0;
-    this.surfaceDraftRoofGroupId = DEFAULT_ROOF_GROUP_ID;
-    this.loadDraftType = 'areaLoad';
+  resetRuntimeState(...args) {
+    return runtimeState.resetRuntimeState.apply(this, args);
   }
 
   // --- Selection ---
@@ -215,133 +231,78 @@ export class AppState {
   // Selects a single element, clearing every other selection first.
   // kind: 'node' | 'member' | 'surface' | 'load' | 'support'.
   // Passing a null/undefined id (or kind) clears all selections.
-  select(kind, id = null) {
-    this.clearSelection();
-    if (id === null || id === undefined) return null;
-    const field = SELECTION_FIELDS[kind];
-    if (!field) return null;
-    this[field] = id;
-    if (kind === 'member') this.selectedMemberIds = [id];
-    return id;
+  select(...args) {
+    return runtimeState.select.apply(this, args);
   }
 
-  clearSelection() {
-    this.selectedNodeId = null;
-    this.selectedMemberId = null;
-    this.selectedMemberIds = [];
-    this.selectedSurfaceId = null;
-    this.selectedLoadId = null;
-    this.selectedSupportId = null;
+  clearSelection(...args) {
+    return runtimeState.clearSelection.apply(this, args);
   }
 
   // Selection applied after a draw tool creates an element: the new element
   // becomes the only selection of any kind (single- and multi-select member
   // fields stay in sync). Clearing the support selection too keeps Delete
   // acting on the element the user just drew, never on a stale support.
-  selectDrawn(kind, id) {
-    this.clearSelection();
-    this.selectedMemberId = kind === 'member' ? id : null;
-    this.selectedMemberIds = kind === 'member' ? [id] : [];
-    this.selectedSurfaceId = kind === 'surface' ? id : null;
-    this.selectedLoadId = kind === 'load' ? id : null;
+  selectDrawn(...args) {
+    return runtimeState.selectDrawn.apply(this, args);
   }
 
   // --- Multi-selection (members) ---
 
   // Replaces the member selection with the given ids (other kinds cleared).
-  selectMembers(ids) {
-    this.clearSelection();
-    const valid = (Array.isArray(ids) ? ids : []).filter(id => this.getMember(id));
-    this.selectedMemberIds = [...new Set(valid)];
-    this.selectedMemberId = this.selectedMemberIds.length === 1 ? this.selectedMemberIds[0] : null;
-    return this.selectedMemberIds;
+  selectMembers(...args) {
+    return runtimeState.selectMembers.apply(this, args);
   }
 
   // Adds or removes one member from the multi-selection (Shift+click).
-  toggleMemberSelection(id) {
-    if (!this.getMember(id)) return this.selectedMemberIds;
-    const ids = new Set(this.selectedMemberIds);
-    if (ids.has(id)) {
-      ids.delete(id);
-    } else {
-      ids.add(id);
-    }
-    return this.selectMembers([...ids]);
+  toggleMemberSelection(...args) {
+    return runtimeState.toggleMemberSelection.apply(this, args);
   }
 
-  isMemberSelected(id) {
-    return this.selectedMemberId === id || this.selectedMemberIds.includes(id);
+  isMemberSelected(...args) {
+    return runtimeState.isMemberSelected.apply(this, args);
   }
 
   // --- Section & Spring catalogs ---
 
-  _normalizeSectionType(target, type) {
-    return normalizeSectionType(target, type);
+  _normalizeSectionType(...args) {
+    return catalogState._normalizeSectionType.apply(this, args);
   }
 
-  _getSectionRef(target, type, name) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    return this.sectionCatalog.find(s => s.target === target && s.type === normalizedType && s.name === name) || null;
+  _getSectionRef(...args) {
+    return catalogState._getSectionRef.apply(this, args);
   }
 
-  getSection(target, type, name) {
-    const section = this._getSectionRef(target, type, name);
-    return section ? cloneSection(section) : null;
+  getSection(...args) {
+    return catalogState.getSection.apply(this, args);
   }
 
-  listSections(target, type) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    return this.sectionCatalog
-      .filter(s => s.target === target && s.type === normalizedType)
-      .sort((a, b) => {
-        if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      })
-      .map(s => cloneSection(s));
+  listSections(...args) {
+    return catalogState.listSections.apply(this, args);
   }
 
-  getDefaultSectionName(target, type) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    const section = this.sectionCatalog.find(
-      s => s.target === target && s.type === normalizedType && s.isDefault
-    );
-    return section?.name || null;
+  getDefaultSectionName(...args) {
+    return catalogState.getDefaultSectionName.apply(this, args);
   }
 
-  getDefaultSection(target, type) {
-    const name = this.getDefaultSectionName(target, type);
-    return name ? this.getSection(target, type, name) : null;
+  getDefaultSection(...args) {
+    return catalogState.getDefaultSection.apply(this, args);
   }
 
-  _draftSectionStore(target) {
-    return target === 'surface' ? this.surfaceDraftSections : this.memberDraftSections;
+  _draftSectionStore(...args) {
+    return runtimeState._draftSectionStore.apply(this, args);
   }
 
   // Returns the sticky ("paste") section for a type if one is set and still
   // exists, otherwise falls back to the built-in default section.
-  getDraftSectionName(target, type) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    const store = this._draftSectionStore(target);
-    const sticky = store ? store[normalizedType] : null;
-    if (sticky && this._getSectionRef(target, normalizedType, sticky)) {
-      return sticky;
-    }
-    return this.getDefaultSectionName(target, normalizedType);
+  getDraftSectionName(...args) {
+    return runtimeState.getDraftSectionName.apply(this, args);
   }
 
   // Sets (or clears) the sticky section for a type. Passing a falsy/unknown
   // name clears it so subsequent draws revert to the built-in default.
-  setDraftSectionName(target, type, name) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    const store = this._draftSectionStore(target);
-    if (!store) return null;
-    const sanitized = sanitizeText(name);
-    if (sanitized && this._getSectionRef(target, normalizedType, sanitized)) {
-      store[normalizedType] = sanitized;
-    } else {
-      delete store[normalizedType];
-    }
-    return this.getDraftSectionName(target, normalizedType);
+  setDraftSectionName(...args) {
+    return runtimeState.setDraftSectionName.apply(this, args);
   }
 
   getLevelZ(levelId) {
@@ -475,372 +436,112 @@ export class AppState {
     };
   }
 
-  addSection(entry) {
-    const normalized = normalizeCatalogSectionEntry(entry);
-    if (!normalized) return null;
-    if (normalized.name.startsWith('_')) return null;
-    if (DEFAULT_SECTION_NAME_SET.has(normalized.name)) return null;
-    if (this._getSectionRef(normalized.target, normalized.type, normalized.name)) return null;
-    const section = { ...normalized, isDefault: false };
-    this._normalizeSectionEndDefaults(section);
-    this.sectionCatalog.push(section);
-    this._touch();
-    return cloneSection(section);
+  addSection(...args) {
+    return catalogState.addSection.apply(this, args);
   }
 
-  updateSection(target, type, name, props = {}) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    const section = this.sectionCatalog.find(
-      s => s.target === target && s.type === normalizedType && s.name === name
-    );
-    if (!section || section.isDefault) return null;
-
-    if (target === 'member') {
-      // Use the same complete normalizer as add/load. This keeps shape
-      // dimensions, effective shear-area ratios, and legacy b/h/property
-      // edits mutually consistent instead of applying field patches that can
-      // leave an invalid H or box section in the catalog.
-      const candidate = {
-        ...section,
-        ...props,
-        target: 'member',
-        type: normalizedType,
-        name: section.name,
-      };
-      for (const dimension of ['b', 'h']) {
-        if (hasOwn(props, dimension) && (props[dimension] === '' || props[dimension] === null || props[dimension] === undefined)) {
-          candidate[dimension] = section[dimension];
-        }
-      }
-      let normalized;
-      try {
-        normalized = normalizeCatalogSectionEntry(candidate);
-      } catch {
-        return null;
-      }
-      if (!normalized) return null;
-      Object.assign(section, normalized);
-      this._normalizeSectionEndDefaults(section);
-    } else {
-      if (hasOwn(props, 'color')) {
-        section.color = sanitizeColor(props.color, defaultColorForSection(target, normalizedType));
-      }
-      if (hasOwn(props, 'memo')) {
-        section.memo = sanitizeText(props.memo) || '';
-      }
-    }
-
-    if (target === 'member') {
-      for (const member of this.members) {
-        if (this._normalizeSectionType('member', member.type) === normalizedType && member.sectionName === name) {
-          this._applyMemberSection(member, name);
-        }
-      }
-    } else {
-      for (const surface of this.surfaces) {
-        if (this._normalizeSectionType('surface', surface.type) === normalizedType && surface.sectionName === name) {
-          this._ensureSurfaceSection(surface, name);
-        }
-      }
-    }
-
-    this._touch();
-    return cloneSection(section);
+  updateSection(...args) {
+    return catalogState.updateSection.apply(this, args);
   }
 
-  removeSection(target, type, name) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    const idx = this.sectionCatalog.findIndex(
-      s => s.target === target && s.type === normalizedType && s.name === name
-    );
-    if (idx < 0) return false;
-    if (this.sectionCatalog[idx].isDefault) return false;
-
-    if (target === 'member') {
-      const inUse = this.members.some(
-        m => this._normalizeSectionType('member', m.type) === normalizedType && m.sectionName === name
-      );
-      if (inUse) return false;
-    } else {
-      const inUse = this.surfaces.some(
-        s => this._normalizeSectionType('surface', s.type) === normalizedType && s.sectionName === name
-      );
-      if (inUse) return false;
-    }
-
-    this.sectionCatalog.splice(idx, 1);
-    this._touch();
-    return true;
+  removeSection(...args) {
+    return catalogState.removeSection.apply(this, args);
   }
 
-  _getSpringRef(symbol) {
-    return this.springCatalog.find(s => s.symbol === symbol) || null;
+  _getSpringRef(...args) {
+    return catalogState._getSpringRef.apply(this, args);
   }
 
-  getSpring(symbol) {
-    const spring = this._getSpringRef(symbol);
-    return spring ? { ...spring } : null;
+  getSpring(...args) {
+    return catalogState.getSpring.apply(this, args);
   }
 
-  listSprings() {
-    return this.springCatalog
-      .slice()
-      .sort((a, b) => {
-        if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
-        return a.symbol.localeCompare(b.symbol);
-      })
-      .map(s => ({ ...s }));
+  listSprings(...args) {
+    return catalogState.listSprings.apply(this, args);
   }
 
-  addSpring(entry) {
-    const normalized = normalizeSpringEntry(entry);
-    if (!normalized) return null;
-    if (normalized.symbol.startsWith('_')) return null;
-    if (DEFAULT_SPRING_SYMBOL_SET.has(normalized.symbol)) return null;
-    if (this._getSpringRef(normalized.symbol)) return null;
-    const spring = { ...normalized, isDefault: false };
-    this.springCatalog.push(spring);
-    this._touch();
-    return { ...spring };
+  addSpring(...args) {
+    return catalogState.addSpring.apply(this, args);
   }
 
-  updateSpring(symbol, props = {}) {
-    const spring = this._getSpringRef(symbol);
-    if (!spring || spring.isDefault) return null;
-    if (hasOwn(props, 'kr')) {
-      spring.kr = sanitizeOptionalPositiveNumber(props.kr);
-    }
-    if (hasOwn(props, 'kt')) {
-      spring.kt = sanitizeOptionalPositiveNumber(props.kt);
-    }
-    if (hasOwn(props, 'memo')) {
-      spring.memo = sanitizeText(props.memo) || '';
-    }
-    this._touch();
-    return { ...spring };
+  updateSpring(...args) {
+    return catalogState.updateSpring.apply(this, args);
   }
 
-  removeSpring(symbol) {
-    const idx = this.springCatalog.findIndex(s => s.symbol === symbol);
-    if (idx < 0) return false;
-    if (this.springCatalog[idx].isDefault) return false;
-    const inUse = this.members.some(m =>
-      (m.endI?.condition === 'spring' && m.endI.springSymbol === symbol) ||
-      (m.endJ?.condition === 'spring' && m.endJ.springSymbol === symbol)
-    );
-    if (inUse) return false;
-    const inSectionPreset = this.sectionCatalog.some(s =>
-      s.target === 'member' && (
-        (s.defaultEndI?.condition === 'spring' && s.defaultEndI.springSymbol === symbol) ||
-        (s.defaultEndJ?.condition === 'spring' && s.defaultEndJ.springSymbol === symbol)
-      )
-    );
-    if (inSectionPreset) return false;
-    this.springCatalog.splice(idx, 1);
-    this._touch();
-    return true;
+  removeSpring(...args) {
+    return catalogState.removeSpring.apply(this, args);
   }
 
-  _getMaterialRef(name) {
-    return this.materialCatalog.find(material => material.name === name) || null;
+  _getMaterialRef(...args) {
+    return catalogState._getMaterialRef.apply(this, args);
   }
 
-  getMaterial(name) {
-    const material = this._getMaterialRef(name);
-    return material ? { ...material } : null;
+  getMaterial(...args) {
+    return catalogState.getMaterial.apply(this, args);
   }
 
-  listMaterials() {
-    return this.materialCatalog
-      .slice()
-      .sort((a, b) => {
-        const aDefaultIndex = DEFAULT_MATERIAL_DEFINITIONS.findIndex(item => item.name === a.name);
-        const bDefaultIndex = DEFAULT_MATERIAL_DEFINITIONS.findIndex(item => item.name === b.name);
-        if (aDefaultIndex >= 0 || bDefaultIndex >= 0) {
-          if (aDefaultIndex < 0) return 1;
-          if (bDefaultIndex < 0) return -1;
-          return aDefaultIndex - bDefaultIndex;
-        }
-        return a.name.localeCompare(b.name);
-      })
-      .map(material => ({ ...material }));
+  listMaterials(...args) {
+    return catalogState.listMaterials.apply(this, args);
   }
 
-  addMaterial(entry) {
-    const normalized = normalizeMaterialEntry(entry);
-    if (!normalized || normalized.name.startsWith('_')) return null;
-    if (this._getMaterialRef(normalized.name)) return null;
-    const material = { ...normalized, isDefault: false };
-    this.materialCatalog.push(material);
-    this._touch();
-    return { ...material };
+  addMaterial(...args) {
+    return catalogState.addMaterial.apply(this, args);
   }
 
-  updateMaterial(name, props = {}) {
-    const material = this._getMaterialRef(name);
-    if (!material) return null;
-    const normalized = normalizeMaterialEntry({ ...material, ...props, name });
-    if (!normalized) return null;
-    const defaultDefinition = DEFAULT_MATERIAL_DEFINITIONS.find(item => item.name === name);
-    Object.assign(material, normalized, {
-      isDefault: Boolean(defaultDefinition && isSameMaterialDefinition(defaultDefinition, normalized)),
-    });
-    this._touch();
-    return { ...material };
+  updateMaterial(...args) {
+    return catalogState.updateMaterial.apply(this, args);
   }
 
-  removeMaterial(name) {
-    if (DEFAULT_MATERIAL_NAME_SET.has(name)) return false;
-    const index = this.materialCatalog.findIndex(material => material.name === name);
-    if (index < 0) return false;
-    const inUse = this.sectionCatalog.some(
-      section => section.target === 'member' && section.material === name
-    );
-    if (inUse) return false;
-    this.materialCatalog.splice(index, 1);
-    this._touch();
-    return true;
+  removeMaterial(...args) {
+    return catalogState.removeMaterial.apply(this, args);
   }
 
-  _nextCustomSectionName(target, type) {
-    const normalizedType = this._normalizeSectionType(target, type);
-    let idx = 1;
-    while (idx < 100000) {
-      const candidate = `U${idx}`;
-      const exists = this.sectionCatalog.some(
-        s => s.target === target && s.type === normalizedType && s.name === candidate
-      );
-      if (!exists && !DEFAULT_SECTION_NAME_SET.has(candidate)) return candidate;
-      idx++;
-    }
-    return `U${Date.now()}`;
+  _nextCustomSectionName(...args) {
+    return catalogState._nextCustomSectionName.apply(this, args);
   }
 
-  _findMemberSectionBySpec(memberType, material, b, h, color = null) {
-    const normalizedType = this._normalizeSectionType('member', memberType);
-    const targetMaterial = sanitizeText(material) || 'steel';
-    const targetB = sanitizePositiveNumber(b, DEFAULT_SECTION_B_MM);
-    const targetH = sanitizePositiveNumber(h, DEFAULT_SECTION_H_MM);
-    const targetColor = sanitizeColor(color, defaultColorForSection('member', normalizedType));
-    return this.sectionCatalog.find(s =>
-      s.target === 'member' &&
-      s.type === normalizedType &&
-      (s.material || 'steel') === targetMaterial &&
-      sanitizePositiveNumber(s.b, DEFAULT_SECTION_B_MM) === targetB &&
-      sanitizePositiveNumber(s.h, DEFAULT_SECTION_H_MM) === targetH &&
-      sanitizeColor(s.color, defaultColorForSection('member', normalizedType)) === targetColor
-    ) || null;
+  _findMemberSectionBySpec(...args) {
+    return catalogState._findMemberSectionBySpec.apply(this, args);
   }
 
-  _createImportedMemberSection(memberType, material, b, h, color = null) {
-    const normalizedType = this._normalizeSectionType('member', memberType);
-    const section = {
-      target: 'member',
-      type: normalizedType,
-      name: this._nextCustomSectionName('member', normalizedType),
-      material: sanitizeText(material) || 'steel',
-      b: sanitizePositiveNumber(b, DEFAULT_SECTION_B_MM),
-      h: sanitizePositiveNumber(h, DEFAULT_SECTION_H_MM),
-      color: sanitizeColor(color, defaultColorForSection('member', normalizedType)),
-      defaultEndI: { condition: 'pin', springSymbol: null },
-      defaultEndJ: { condition: 'pin', springSymbol: null },
-      isDefault: false,
-    };
-    this.sectionCatalog.push(section);
-    return section;
+  _createImportedMemberSection(...args) {
+    return catalogState._createImportedMemberSection.apply(this, args);
   }
 
   // Applies a catalog section to a member (name, material, b/h, color).
   // The single write path for section-driven member fields.
-  _applyMemberSection(member, sectionName) {
-    const section = this._getSectionRef('member', member.type, sectionName);
-    if (!section) return false;
-    member.sectionName = section.name;
-    member.material = section.material || 'steel';
-    member.section = {
-      b: sanitizePositiveNumber(section.b, DEFAULT_SECTION_B_MM),
-      h: sanitizePositiveNumber(section.h, DEFAULT_SECTION_H_MM),
-    };
-    member.color = sanitizeColor(section.color, defaultColorForSection('member', member.type));
-    return true;
+  _applyMemberSection(...args) {
+    return catalogState._applyMemberSection.apply(this, args);
   }
 
   // Resolves the best catalog section for a member (requested name, then the
   // type default, then any section of the type) and applies it via
   // _applyMemberSection. Falls back to sanitizing inline values when the
   // catalog has no section for the type at all.
-  _ensureMemberSection(member, requestedSectionName = null) {
-    const normalizedType = this._normalizeSectionType('member', member.type);
-    const sectionName = sanitizeText(requestedSectionName || member.sectionName);
-    let section = sectionName
-      ? this._getSectionRef('member', normalizedType, sectionName)
-      : null;
-
-    if (!section) {
-      const defaultName = this.getDefaultSectionName('member', normalizedType);
-      section = defaultName ? this._getSectionRef('member', normalizedType, defaultName) : null;
-    }
-    if (!section) {
-      section = this.sectionCatalog.find(s => s.target === 'member' && s.type === normalizedType) || null;
-    }
-
-    if (section && this._applyMemberSection(member, section.name)) return;
-
-    member.sectionName = sectionName || '';
-    member.material = sanitizeText(member.material) || 'steel';
-    member.section = {
-      b: sanitizePositiveNumber(member.section?.b, DEFAULT_SECTION_B_MM),
-      h: sanitizePositiveNumber(member.section?.h, DEFAULT_SECTION_H_MM),
-    };
-    member.color = sanitizeColor(member.color, defaultColorForSection('member', member.type));
+  _ensureMemberSection(...args) {
+    return catalogState._ensureMemberSection.apply(this, args);
   }
 
-  _getMemberSectionEndDefaults(member) {
-    const section = this._getSectionRef('member', member.type, member.sectionName);
-    return {
-      endI: this._normalizeMemberEnd(section?.defaultEndI),
-      endJ: this._normalizeMemberEnd(section?.defaultEndJ),
-    };
+  _getMemberSectionEndDefaults(...args) {
+    return catalogState._getMemberSectionEndDefaults.apply(this, args);
   }
 
-  _normalizeSectionEndDefaults(section) {
-    if (section?.target !== 'member') return;
-    section.defaultEndI = this._normalizeMemberEnd(section.defaultEndI);
-    section.defaultEndJ = this._normalizeMemberEnd(section.defaultEndJ);
+  _normalizeSectionEndDefaults(...args) {
+    return catalogState._normalizeSectionEndDefaults.apply(this, args);
   }
 
-  _normalizeSectionCatalogEndDefaults() {
-    for (const section of this.sectionCatalog) {
-      this._normalizeSectionEndDefaults(section);
-    }
+  _normalizeSectionCatalogEndDefaults(...args) {
+    return catalogState._normalizeSectionCatalogEndDefaults.apply(this, args);
   }
 
-  _ensureSurfaceSection(surface, requestedSectionName = null) {
-    const normalizedType = this._normalizeSectionType('surface', surface.type);
-    const sectionName = sanitizeText(requestedSectionName || surface.sectionName);
-    let section = sectionName
-      ? this._getSectionRef('surface', normalizedType, sectionName)
-      : null;
-
-    if (!section) {
-      const defaultName = this.getDefaultSectionName('surface', normalizedType);
-      section = defaultName ? this._getSectionRef('surface', normalizedType, defaultName) : null;
-    }
-    if (!section) {
-      section = this.sectionCatalog.find(s => s.target === 'surface' && s.type === normalizedType) || null;
-    }
-
-    surface.sectionName = section?.name || sectionName || '';
-    surface.color = sanitizeColor(
-      section?.color || surface.color,
-      defaultColorForSection('surface', surface.type)
-    );
+  _ensureSurfaceSection(...args) {
+    return catalogState._ensureSurfaceSection.apply(this, args);
   }
 
   // Member-end normalization validated against this state's spring catalog.
   // (section-catalog.js normalizeSectionDefaultEnd is the catalog-free variant.)
-  _normalizeMemberEnd(endInfo) {
-    return normalizeMemberEndInfo(endInfo, this.springCatalog);
+  _normalizeMemberEnd(...args) {
+    return catalogState._normalizeMemberEnd.apply(this, args);
   }
 
   _normalizeSurfaceHeightAndWeight(type, levelId, topLevelId, options = {}) {
@@ -922,7 +623,7 @@ export class AppState {
   }
 
   getNode(id) {
-    return this.nodes.find(n => n.id === id);
+    return this._getById('nodes', id);
   }
 
   updateNode(id, props) {
@@ -1009,7 +710,7 @@ export class AppState {
   }
 
   getMember(id) {
-    return this.members.find(m => m.id === id);
+    return this._getById('members', id);
   }
 
   updateMember(id, props) {
@@ -1249,7 +950,7 @@ export class AppState {
   }
 
   getSurface(id) {
-    return this.surfaces.find(s => s.id === id);
+    return this._getById('surfaces', id);
   }
 
   updateSurface(id, props) {
@@ -1603,7 +1304,7 @@ export class AppState {
   }
 
   getLoad(id) {
-    return this.loads.find(l => l.id === id);
+    return this._getById('loads', id);
   }
 
   updateLoad(id, props) {
@@ -1668,7 +1369,7 @@ export class AppState {
   }
 
   getSupport(id) {
-    return this.supports.find(s => s.id === id);
+    return this._getById('supports', id);
   }
 
   updateSupport(id, props) {
@@ -1725,130 +1426,14 @@ export class AppState {
 
 // --- Utility ---
 
-export function createDefaultLevels() {
-  return [
-    { id: 'L0', name: 'GL', z: 0 },
-    { id: 'L1', name: '2F', z: DEFAULT_STORY_HEIGHT_MM },
-  ];
-}
-
-export function normalizeLoadCase(value) {
-  const text = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  return LOAD_CASES.includes(text) ? text : DEFAULT_LOAD_CASE;
-}
-
-export function normalizeLoadFactors(factors) {
-  const result = {};
-  for (const loadCase of LOAD_CASES) {
-    const n = Number(factors?.[loadCase]);
-    if (Number.isFinite(n) && n !== 0) result[loadCase] = n;
-  }
-  return result;
-}
-
-export function createDefaultLoadCombinations() {
-  return [
-    { id: 'LC1', name: 'G+P', factors: { DL: 1, LL: 1 } },
-    { id: 'LC2', name: 'G+P+EQX', factors: { DL: 1, LL: 1, EQX: 1 } },
-    { id: 'LC3', name: 'G+P+EQY', factors: { DL: 1, LL: 1, EQY: 1 } },
-    { id: 'LC4', name: 'G+P+WX', factors: { DL: 1, LL: 1, WX: 1 } },
-    { id: 'LC5', name: 'G+P+WY', factors: { DL: 1, LL: 1, WY: 1 } },
-  ];
-}
-
 // Normalizes a loaded/imported axis record; returns null when unusable.
-export function normalizeAxisEntry(raw, fallbackId) {
-  if (!raw) return null;
-  const coord = Number(raw.coord);
-  if (!Number.isFinite(coord)) return null;
-  const dir = raw.dir === 'y' ? 'y' : 'x';
-  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : fallbackId;
-  return { id: raw.id || fallbackId, dir, name, coord };
-}
-
-function hasOwn(obj, key) {
-  return Object.prototype.hasOwnProperty.call(obj, key);
-}
 
 // Applies the per-field sanitizer table to a patch object in place.
-function sanitizePatchFields(patch, sanitizers, current) {
-  for (const [key, sanitize] of Object.entries(sanitizers)) {
-    if (hasOwn(patch, key)) {
-      patch[key] = sanitize(patch[key], current);
-    }
-  }
-}
 
 // Removes surface fields that do not apply to the given type. Shared by
 // updateSurface (patch + record) and _normalizeLoadedSurface.
-export function stripSurfaceFieldsForType(target, type) {
-  if (!isSlopedSurfaceType(type)) {
-    delete target.roofSlope;
-    delete target.roofDirection;
-    delete target.roofBaseOffset;
-  }
-  if (!isRoofSurfaceType(type)) {
-    delete target.roofGroupId;
-  }
-  if (!isGableWallSurfaceType(type)) {
-    delete target.gableStartTopOffset;
-    delete target.gableEndTopOffset;
-  }
-}
-
-export function sanitizeOptionalNumber(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function sanitizeOptionalPositiveNumber(value) {
-  const number = sanitizeOptionalNumber(value);
-  return number !== null && number > 0 ? number : null;
-}
-
-function sanitizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-export function sanitizeRoofGroupId(value, fallback = DEFAULT_ROOF_GROUP_ID) {
-  return sanitizeText(value) || sanitizeText(fallback) || DEFAULT_ROOF_GROUP_ID;
-}
 
 // Initial draw color for a surface before the section color is applied.
-export function defaultSurfaceDrawColor(type) {
-  return type === 'wall' || type === 'exteriorWall' ? '#b57a6b' : '#67a9cf';
-}
-
-function normalizeSurfaceHeightMode(value) {
-  const text = sanitizeText(value);
-  return SURFACE_HEIGHT_MODES.has(text) ? text : 'full';
-}
-
-export function normalizeMemberGeometryMode(value) {
-  const text = sanitizeText(value);
-  return MEMBER_GEOMETRY_MODES.has(text) ? text : 'level';
-}
-
-export function isWallSurfaceType(type) {
-  return type === 'wall' || type === 'exteriorWall' || type === 'gableWall';
-}
-
-export function isRoofSurfaceType(type) {
-  return type === 'roof';
-}
-
-export function isGableWallSurfaceType(type) {
-  return type === 'gableWall';
-}
-
-export function isEaveSurfaceType(type) {
-  return type === 'eave';
-}
-
-export function isSlopedSurfaceType(type) {
-  return type === 'roof' || type === 'eave';
-}
 
 function hitExteriorWallEdges(px, py, points, offset, tolerance) {
   const oPts = offsetPolygonOutward(points, offset);

@@ -29,7 +29,7 @@ import {
   isGableWallSurfaceType,
   isRoofSurfaceType,
   sanitizeRoofGroupId,
-} from './state.js';
+} from './domain/model.js';
 
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);

@@ -1,3 +1,4 @@
+import { toolHarness } from './helpers/ui-harness.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -45,20 +46,20 @@ test('display workflow controls are exposed in the toolbar and property panel', 
   assert.match(appSource, /canvas2d\.resize\(\)/);
 });
 
-test('2D drawing and selection use shared display visibility helpers', async () => {
-  const canvasSource = await readFile(new URL('../js/canvas2d.js', import.meta.url), 'utf8');
-  const toolsSource = await readFile(new URL('../js/tools.js', import.meta.url), 'utf8');
-
-  assert.match(canvasSource, /isMemberVisible\(m,\s*'2d'\)/);
-  assert.match(canvasSource, /isSurfaceVisible\(s,\s*'2d'\)/);
-  assert.match(canvasSource, /showMemberEndSymbols/);
-  assert.match(canvasSource, /_drawPreviewLabel/);
-
-  assert.match(toolsSource, /isMemberSelectable\(member\)/);
-  assert.match(toolsSource, /findSurfaceAt\(x,\s*y,\s*surface => this\.state\.isSurfaceSelectable\(surface\)\)/);
-  assert.match(toolsSource, /findMemberAt\(x,\s*y,\s*tolerance,\s*member => this\.state\.isMemberSelectable\(member\)\)/);
-  assert.match(toolsSource, /_findSelectableMemberNodeAt/);
-  assert.doesNotMatch(toolsSource, /function surfaceHitAt/);
+test('selection tools ignore hidden or locked members and surfaces', () => {
+  const { manager, state } = toolHarness();
+  const a = state.addNode(0, 0), b = state.addNode(1000, 0);
+  const member = state.addMember(a.id, b.id, { levelId: 'L1' });
+  const surface = state.addSurfaceRect(0, 0, 1000, 1000, { levelId: 'L1' });
+  state.settings.planLayerDisplayMode = 'halftone';
+  state.settings.planLayerSelectionLock = true;
+  assert.equal(manager._findSelectableMemberAt(500, 0, 10), null);
+  assert.equal(manager._findSelectableSurfaceAt(500, 500), null);
+  state.activeLevelId = 'L1';
+  assert.equal(manager._findSelectableMemberAt(500, 0, 10).id, member.id);
+  assert.equal(manager._findSelectableSurfaceAt(500, 500).id, surface.id);
+  state.settings.showMembers = false;
+  assert.equal(manager._findSelectableMemberAt(500, 0, 10), null);
 });
 
 test('3D viewer uses 3D layer display and element filters', async () => {

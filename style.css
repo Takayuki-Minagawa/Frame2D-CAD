@@ -967,3 +967,104 @@ body.property-collapsed #property-panel > * {
   border-color: var(--accent);
   background: var(--hover-bg);
 }
+
+/* Optional modeling tools share the existing sidebar theme. */
+.extension-tools fieldset {
+  min-width: 0;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.extension-tools label,
+.extension-tools small,
+.extension-tools output {
+  display: block;
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.extension-tools button,
+.extension-tools select,
+.extension-tools input[type="range"] {
+  max-width: 100%;
+  margin: 3px 0;
+}
+
+.extension-tools button,
+.extension-tools select,
+dialog button,
+dialog select,
+dialog input {
+  padding: 5px 7px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+dialog button {
+  margin: 4px;
+  cursor: pointer;
+}
+
+dialog p {
+  margin: 8px 0;
+}
+
+dialog select option {
+  padding: 5px;
+}
+
+.diagnostic-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-check-item button {
+  margin: 3px;
+}
+
+dialog {
+  margin: auto;
+  max-width: min(92vw, 1000px);
+  max-height: 85vh;
+  overflow: auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.analysis-workbench label {
+  display: inline-flex;
+  flex-direction: column;
+  margin: 8px;
+  max-width: 100%;
+}
+
+.analysis-output {
+  overflow: auto;
+}
+
+.analysis-output svg {
+  display: block;
+  width: 100%;
+  height: 320px;
+}
+
+.analysis-output th,
+.analysis-output td {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 12px;
+}

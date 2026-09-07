@@ -1,6 +1,16 @@
 // help-content.js - Help modal HTML content (extracted from i18n dictionaries)
 
 export const helpContentJa = `
+<h3>保存・復元履歴</h3>
+<p>自動保存は最新5世代を保持します。ツールバーで保存中・保存済・失敗と最終成功時刻を確認し、「復元履歴」で世代を選んで復元します。復元は1回のUndoで取り消せます。保存失敗時は再試行でき、最後の正常世代を保持します。CADファイルへの保存も併用してください。</p>
+<h3>診断から対象を確認</h3>
+<p>モデルチェックで重要度・対象種別を絞り込み、対象ボタンを押します。対象の階へ移動し、選択・カメラを合わせます。必要な表示フィルタが解除されます。属性を修正したら再診断してください。</p>
+<h3>3D切断・単独表示・GLB</h3>
+<p>3Dタブの「3D表示・出力」で切断軸X/Y/Zを選び、位置スライダと反転で内部を確認します。軸を解除すると戻ります。「選択を単独表示」「単独表示を解除」「選択へ移動」で対象を確認できます。表示操作でCADの幾何は変わりません。GLBは表示対象をm単位で保存し、切断面は開いたままです。</p>
+<h3>解析結果・荷重配分</h3>
+<p>「解析結果・荷重配分」から、同じCADモデルを外部OpenSeesPyで解析した結果JSONを読み込みます。表示面と変形倍率を指定し、変位・反力を確認できます。モデルが変わった結果は再読込・再解析が必要です。</p>
+<p>線荷重は作用部材、矩形面荷重は一方向スパンと支持辺2本を明示して配分を確認します。合力・モーメントは保存しますが、端点への集中化は分布荷重の部材内曲げを再現しません。制限を確認して配分済み解析JSONを保存し、解析後は同じJSONを任意の参照モデルとして読み込んでから結果を開きます。</p>
+<p>解析は両端rigidの線形線材と節点荷重が対象です。IFCは柱・梁・階・3種の断面の限定出力です。実行手順と対応範囲は <a href="docs/analysis-tools.md" target="_blank" rel="noopener">解析・IFCツール</a>を参照してください。</p>
 <h3>基本操作</h3>
 <table>
   <tr><td><b>線材作成</b></td><td>「線材」ツール(Mキー)を選択し、キャンバス上で始点をクリック → 終点をクリック</td></tr>
@@ -141,6 +151,16 @@ export const helpContentJa = `
 `;
 
 export const helpContentEn = `
+<h3>Save status and recovery</h3>
+<p>Autosave keeps the latest five generations. The toolbar shows saving, saved or failed status and the last successful time. Open Recovery history to choose a generation; Undo reverses restoration in one step. Failed saves can be retried and retain the last successful generation. Continue saving CAD files as well.</p>
+<h3>Navigate from diagnostics</h3>
+<p>Filter Model Check by severity and element type, then select a target button. The app switches level, selects the target and frames it, clearing necessary display filters. Edit its properties and run the check again.</p>
+<h3>3D clipping, isolation and GLB</h3>
+<p>On the 3D tab, choose X/Y/Z in 3D view and export, then move or flip the cutting plane. Off restores the full view. Use Isolate selection, Clear isolation and Focus selection to inspect elements. These operations preserve CAD geometry. GLB exports the displayed model in meters with open cut faces.</p>
+<h3>Results and load assignment</h3>
+<p>Open Results / load assignment and load the result JSON produced by the external OpenSeesPy CLI from the same CAD model. Choose projection and deformation scale to inspect displacements and reactions. Changed models require new analysis and result import.</p>
+<p>For line loads choose one member; for rectangular area loads choose the one-way span and both supporting edges. The preview preserves resultant forces and moments, but endpoint lumping does not reproduce distributed-load member bending. Accept this limitation before exporting distributed analysis JSON. After solving it, load that same JSON as the optional reference before loading results.</p>
+<p>The solver supports rigid-ended linear frame elements and nodal loads. IFC export covers beams, columns, storeys and three section profiles. See <a href="docs/analysis-tools.md" target="_blank" rel="noopener">analysis / IFC tools</a> for commands and supported inputs.</p>
 <h3>Basic Operations</h3>
 <table>
   <tr><td><b>Create line</b></td><td>Select "Line" tool (M key), click start point → click end point</td></tr>

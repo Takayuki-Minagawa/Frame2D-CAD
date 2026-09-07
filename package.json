@@ -1,22 +1,32 @@
 {
   "name": "lineframe-cad",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "2D CAD + 3D Viewer for structural frame layout",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test test/*.test.js",
     "version:sync": "node scripts/version-sync.mjs",
     "version:check": "node scripts/version-check.mjs",
     "lint": "eslint js/",
     "lint:html": "htmlhint index.html",
     "lint:css": "stylelint style.css",
-    "lint:all": "npm run lint && npm run lint:html && npm run lint:css"
+    "lint:all": "npm run lint && npm run lint:html && npm run lint:css",
+    "check": "npm run version:check && npm test && npm run test:analysis:core && npm run lint:all",
+    "test:e2e": "playwright test",
+    "benchmark": "node scripts/benchmark.mjs",
+    "test:analysis:core": "python3 scripts/analysis_tests.py --suite core",
+    "test:analysis": "python3 scripts/analysis_tests.py --suite all"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "eslint": "^9.0.0",
     "htmlhint": "^1.1.0",
     "stylelint": "^16.0.0",
-    "stylelint-config-standard": "^36.0.0"
+    "stylelint-config-standard": "^36.0.0",
+    "three": "0.170.0"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

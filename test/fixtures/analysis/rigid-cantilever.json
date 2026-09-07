@@ -1,0 +1,126 @@
+{
+  "format": "element-modeler-analysis",
+  "version": 2,
+  "units": {
+    "length": "mm",
+    "force": "N",
+    "moment": "N*mm",
+    "lineLoad": "N/mm",
+    "areaLoad": "N/mm2",
+    "area": "mm2",
+    "elasticModulus": "N/mm2",
+    "shearModulus": "N/mm2",
+    "secondMomentOfArea": "mm4",
+    "torsionConstant": "mm4"
+  },
+  "meta": {
+    "name": "Rigid fixed cantilever",
+    "coordinates": {
+      "verticalAxis": "z",
+      "handedness": "right"
+    }
+  },
+  "levels": [
+    {
+      "id": "L0",
+      "name": "Ground",
+      "z": 0
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3000,
+      "y": 0,
+      "z": 0
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "type": "beam",
+      "nodeI": 1,
+      "nodeJ": 2,
+      "sectionId": 1,
+      "sectionName": "R100x200",
+      "material": "steel",
+      "levelId": "L0",
+      "endI": {
+        "condition": "rigid"
+      },
+      "endJ": {
+        "condition": "rigid"
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": 1,
+      "name": "R100x200",
+      "shape": "rectangle",
+      "b": 100,
+      "h": 200,
+      "A": 20000,
+      "Iy": 66666666.666666664,
+      "Iz": 16666666.666666666,
+      "J": 45776041.666666664
+    }
+  ],
+  "materials": [
+    {
+      "name": "steel",
+      "E": 205000,
+      "G": 79000,
+      "density": 7850
+    }
+  ],
+  "supports": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-S1",
+      "nodeId": 1,
+      "dx": true,
+      "dy": true,
+      "dz": true,
+      "rx": true,
+      "ry": true,
+      "rz": true
+    }
+  ],
+  "loads": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-P1",
+      "type": "pointLoad",
+      "loadCase": "LL",
+      "levelId": "L0",
+      "x1": 3000,
+      "y1": 0,
+      "z": 0,
+      "fx": 0,
+      "fy": 0,
+      "fz": -1000,
+      "mx": 0,
+      "my": 0,
+      "mz": 0
+    }
+  ],
+  "loadCases": [
+    "DL",
+    "LL"
+  ],
+  "loadCombinations": [],
+  "springs": [],
+  "selfWeight": {
+    "mode": "includedInDL"
+  },
+  "massSources": {}
+}

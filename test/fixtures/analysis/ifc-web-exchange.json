@@ -1,0 +1,199 @@
+{
+  "format": "element-modeler-analysis",
+  "version": 2,
+  "units": {
+    "length": "mm",
+    "force": "N",
+    "moment": "N*mm",
+    "lineLoad": "N/mm",
+    "areaLoad": "N/mm2",
+    "area": "mm2",
+    "elasticModulus": "N/mm2",
+    "shearModulus": "N/mm2",
+    "secondMomentOfArea": "mm4",
+    "torsionConstant": "mm4"
+  },
+  "meta": {
+    "name": "IFC independent exchange sample",
+    "coordinates": {
+      "verticalAxis": "z",
+      "handedness": "right"
+    }
+  },
+  "levels": [
+    {
+      "id": "L0",
+      "name": "Ground",
+      "z": 0
+    },
+    {
+      "id": "L1",
+      "name": "1階",
+      "z": 3000
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "x": 100,
+      "y": -200,
+      "z": 0
+    },
+    {
+      "id": 2,
+      "x": 3100,
+      "y": -200,
+      "z": 0
+    },
+    {
+      "id": 3,
+      "x": 3100,
+      "y": -200,
+      "z": 3000
+    },
+    {
+      "id": 4,
+      "x": 5100,
+      "y": 800,
+      "z": 4000
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-B1",
+      "sourceBranch": "primary",
+      "type": "beam",
+      "nodeI": 1,
+      "nodeJ": 2,
+      "sectionId": 1,
+      "sectionName": "R100x200",
+      "material": "steel",
+      "levelId": "L0",
+      "endI": {
+        "condition": "rigid"
+      },
+      "endJ": {
+        "condition": "rigid"
+      }
+    },
+    {
+      "id": 2,
+      "sourceId": "M2",
+      "sourceBranch": "primary",
+      "type": "column",
+      "nodeI": 2,
+      "nodeJ": 3,
+      "sectionId": 2,
+      "sectionName": "R100x200",
+      "material": "steel",
+      "levelId": "L0",
+      "endI": {
+        "condition": "rigid"
+      },
+      "endJ": {
+        "condition": "rigid"
+      }
+    },
+    {
+      "id": 3,
+      "sourceId": "M3",
+      "sourceBranch": "primary",
+      "type": "beam",
+      "nodeI": 3,
+      "nodeJ": 4,
+      "sectionId": 3,
+      "sectionName": "R100x200",
+      "material": "steel",
+      "levelId": "L1",
+      "endI": {
+        "condition": "rigid"
+      },
+      "endJ": {
+        "condition": "rigid"
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": 1,
+      "name": "R100x200",
+      "shape": "rectangle",
+      "b": 100,
+      "h": 200,
+      "A": 20000,
+      "Iy": 66666666.666666664,
+      "Iz": 16666666.666666666,
+      "J": 45776041.666666664
+    },
+    {
+      "id": 2,
+      "name": "hSection",
+      "shape": "hSection",
+      "b": 150,
+      "h": 300,
+      "flangeThickness": 12,
+      "webThickness": 8,
+      "boxThickness": 10
+    },
+    {
+      "id": 3,
+      "name": "R150x300",
+      "shape": "rectangle",
+      "b": 150,
+      "h": 300,
+      "flangeThickness": 12,
+      "webThickness": 8,
+      "boxThickness": 10
+    }
+  ],
+  "materials": [
+    {
+      "name": "steel",
+      "E": 205000,
+      "G": 79000,
+      "density": 7850
+    }
+  ],
+  "supports": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-S1",
+      "nodeId": 1,
+      "dx": true,
+      "dy": true,
+      "dz": true,
+      "rx": true,
+      "ry": true,
+      "rz": true
+    }
+  ],
+  "loads": [
+    {
+      "id": 1,
+      "sourceId": "DEMO-P1",
+      "type": "pointLoad",
+      "loadCase": "LL",
+      "levelId": "L0",
+      "x1": 3100,
+      "y1": -200,
+      "z": 0,
+      "fx": 0,
+      "fy": 0,
+      "fz": -1000,
+      "mx": 0,
+      "my": 0,
+      "mz": 0
+    }
+  ],
+  "loadCases": [
+    "DL",
+    "LL"
+  ],
+  "loadCombinations": [],
+  "springs": [],
+  "selfWeight": {
+    "mode": "includedInDL"
+  },
+  "massSources": {}
+}

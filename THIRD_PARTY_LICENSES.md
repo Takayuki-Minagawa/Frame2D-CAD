@@ -43,6 +43,15 @@ THE SOFTWARE.
 
 以下はCI/開発時のみ使用され、本番環境には含まれません。
 
+### Playwright
+
+- **Version**: ^1.63.0
+- **License**: Apache-2.0
+- **URL**: https://github.com/microsoft/playwright
+- **Usage**: ローカルのChromium / Firefox / WebKit操作検証
+
+テスト用にもthree.js 0.170.0（上記MIT License）を固定して使用します。
+
 ### ESLint
 
 - **Version**: ^9.0.0
@@ -70,3 +79,16 @@ THE SOFTWARE.
 - **License**: MIT License
 - **URL**: https://github.com/stylelint/stylelint-config-standard
 - **Usage**: Stylelint標準ルールセット
+
+## Optional external analysis environment
+
+The web application does not bundle these Python packages. Install them separately
+with `scripts/analysis-requirements.txt` to use the external CLIs.
+
+| Package | Pinned version | Upstream license information |
+|---|---|---|
+| [OpenSeesPy](https://github.com/zhuminjie/openseespy) | 3.7.1.2 | Package metadata permits research, education and internal use; commercial redistribution requires a separate license. See upstream terms. |
+| [IfcOpenShell](https://github.com/IfcOpenShell/IfcOpenShell) | 0.8.4.post1 | LGPL-3.0-or-later (package metadata) |
+| [pytest](https://github.com/pytest-dev/pytest) | 8.4.2 | MIT; required by the pinned IFC EXPRESS validation implementation |
+
+Platform-specific solver and geometry wheels have their own dependencies and notices.

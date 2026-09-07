@@ -169,3 +169,107 @@ test('transact records an undo entry only when the callback reports a change', (
   assert.equal(history.undo(), true);
   assert.equal(state.nodes.length, 0);
 });
+
+test('history restores unused catalogs, nested definitions, counters and runtime exactly', () => {
+  const state = new AppState();
+  const history = new History(state);
+  state.addSection({ target: 'member', type: 'beam', name: 'unused', b: 111, h: 222 });
+  state.addSpring({ symbol: 'UNUSED' });
+  state.addMaterial({ name: 'custom', E: 100, G: 40, density: 400 });
+  const node = state.addNode(1, 2);
+  state.select('node', node.id);
+  state.memberDraftSections.beam = 'unused';
+  state._nodeCounter = 200;
+  const before = structuredClone({ ...state });
+  history.save();
+  state.sectionCatalog.find(s => s.name === 'unused').b = 555;
+  state.springCatalog = [];
+  state.materialCatalog = [];
+  state.memberDraftSections.beam = 'changed';
+  state.clearSelection();
+  state.addNode(9, 9);
+  const after = structuredClone({ ...state });
+  const revision = state.revision;
+  history.undo();
+  assert.ok(state.revision > revision);
+  assert.deepEqual({ ...state, revision: before.revision }, before);
+  history.redo();
+  assert.deepEqual({ ...state, revision: after.revision }, after);
+  history.undo();
+  assert.equal(state.addNode(5, 5).id, 201);
+});
+
+test('transaction exceptions roll back partial mutations and preserve redo', () => {
+  const state = new AppState();
+  const history = new History(state);
+  history.save();
+  state.addNode(0, 0);
+  history.undo();
+  const before = structuredClone({ ...state });
+  const redo = structuredClone(history.redoStack);
+  assert.throws(() => history.transact(() => {
+    state.addNode(100, 100);
+    state.sectionCatalog[0].b = 900;
+    state.memberDraftSections.beam = 'broken';
+    throw new Error('failed operation');
+  }), /failed operation/);
+  assert.deepEqual({ ...state }, before);
+  assert.deepEqual(history.redoStack, redo);
+  assert.equal(history.undoStack.length, 0);
+});
+
+test('failed snapshot restore leaves model and both stacks intact', () => {
+  const state = new AppState();
+  const history = new History(state);
+  history.save();
+  state.addNode(0, 0);
+  history.undoStack[0].version = 999;
+  const before = structuredClone({ ...state });
+  const undo = structuredClone(history.undoStack);
+  assert.throws(() => history.undo(), /Invalid history snapshot/);
+  assert.deepEqual({ ...state }, before);
+  assert.deepEqual(history.undoStack, undo);
+  assert.equal(history.redoStack.length, 0);
+});
+
+test('history discards derived indexes and initializes them for the restored model', () => {
+  class IndexedState extends AppState {
+    invalidateDerivedCaches() { this._nodeIndex = null; this._nodeIndexRevision = -1; }
+    lookup(id) {
+      if (!this._nodeIndex) this._nodeIndex = new Map(this.nodes.map(n => [n.id, n]));
+      return this._nodeIndex.get(id);
+    }
+  }
+  const state = new IndexedState();
+  const node = state.addNode(0, 0);
+  state.lookup(node.id);
+  const history = new History(state);
+  history.save();
+  assert.equal('_nodeIndex' in history.undoStack[0].data, false);
+  state.nodes[0].x = 42;
+  history.undo();
+  assert.equal(state._nodeIndex, null);
+  assert.equal(state._nodeIndexRevision, -1);
+  assert.equal(state.lookup(node.id), state.nodes[0]);
+  assert.equal(state.lookup(node.id).x, 0);
+});
+
+test('incomplete snapshot data cannot replace live state', () => {
+  const state = new AppState();
+  const history = new History(state);
+  history.save();
+  history.undoStack[0].data = {};
+  const before = structuredClone({ ...state });
+  assert.throws(() => history.undo(), /Invalid history snapshot data/);
+  assert.deepEqual({ ...state }, before);
+  assert.equal(history.undoStack.length, 1);
+  assert.equal(history.redoStack.length, 0);
+});
+
+test('async transactions are rejected before their callbacks run', () => {
+  const state = new AppState();
+  const history = new History(state);
+  assert.throws(() => history.transact(async () => { state.addNode(0, 0); }), /synchronous/);
+  assert.equal(state.nodes.length, 0);
+  assert.equal(history.undoStack.length, 0);
+});
